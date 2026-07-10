@@ -1,0 +1,124 @@
+/**
+ * Golden Path 2 demo (M2 exit criteria): inline edit → confirmed write →
+ * receipt → audit log → model awareness via updateModelContext.
+ *
+ *   pnpm demo:m2
+ */
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { MockCrmAdapter } from "@cardstack/crm-adapters";
+import type { RecordCardPayload, WriteReceiptPayload } from "@cardstack/core";
+import { createCardstackServer } from "../src/server.js";
+import { DEMO_TENANT_ID, InMemoryConfigStore } from "../src/config/store.js";
+import { InMemoryAuditLog } from "../src/audit.js";
+
+const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
+const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
+const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
+const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
+
+const textOf = (result: { content?: unknown }): string => {
+  const content = result.content as { type: string; text?: string }[];
+  return content.find((c) => c.type === "text")?.text ?? "";
+};
+
+async function main() {
+  const auditLog = new InMemoryAuditLog();
+  const server = createCardstackServer({
+    adapter: new MockCrmAdapter(),
+    configStore: new InMemoryConfigStore(),
+    auditLog,
+    tenantId: DEMO_TENANT_ID,
+  });
+  const client = new Client({ name: "demo-host", version: "0.0.1" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+
+  console.log(bold("\n(record card for Meridian Health is showing)"));
+  const card = await client.callTool({
+    name: "crm_get_record",
+    arguments: { object: "deals", id: "d-001" },
+  });
+  const cardPayload = card.structuredContent as unknown as RecordCardPayload;
+  console.log(
+    dim(`editable fields per config ∩ CRM: ${cardPayload.capabilities.editableFields.join(", ")}\n`),
+  );
+
+  console.log(bold("User edits Stage → Negotiation, Amount → 135000, clicks [Review & save…]"));
+  console.log(`${dim("widget shows the confirmation diff:")}
+    FIELD    BEFORE          AFTER
+    Stage    ${red("C̶o̶n̶t̶r̶a̶c̶t̶ ̶s̶e̶n̶t̶")}   ${green("Negotiation")}
+    Amount   ${red("1̶2̶8̶4̶0̶0̶")}          ${green("135000")}
+    ${dim("Written as Dan K. · logged in HubSpot history")}
+`);
+  console.log(bold("User clicks [✎ Confirm & write to HubSpot] → widget calls crm_update_record via the HOST\n"));
+
+  const write = await client.callTool({
+    name: "crm_update_record",
+    arguments: {
+      object: "deals",
+      id: "d-001",
+      patch: { dealstage: "Negotiation", amount: 135000 },
+    },
+  });
+  const receipt = write.structuredContent as unknown as WriteReceiptPayload;
+  console.log(bold("widget collapses to a receipt (4c):"));
+  console.log(`  ${green("✓")} ${receipt.savedCount} fields written to ${receipt.provenance.crmLabel}  ${dim(`${receipt.timestamp} · ${receipt.writtenAs}`)}`);
+  for (const r of receipt.results) {
+    console.log(`    ${r.label}: ${r.before} → ${r.after}`);
+  }
+
+  console.log(bold("\nwidget pushes updateModelContext (mirrors the receipt):"));
+  console.log(dim(`  "${textOf(write)}"`));
+
+  console.log(bold("\nUser: \"what did I just change?\" → model answers from pushed context, NO extra tool call"));
+
+  const entries = await auditLog.list(DEMO_TENANT_ID);
+  console.log(bold("\naudit log:"));
+  for (const e of entries) {
+    console.log(
+      dim(
+        `  [${e.id}] ${e.timestamp} ${e.user} ${e.object}/${e.recordId} ` +
+          e.changes.map((c) => `${c.field}: ${c.before}→${c.after}`).join(", "),
+      ),
+    );
+  }
+
+  console.log(bold("\n--- partial failure path (design 1e) ---"));
+  console.log(bold("User tries Stage → Closed lost (no loss reason) + Amount → 130000\n"));
+  const partial = await client.callTool({
+    name: "crm_update_record",
+    arguments: {
+      object: "deals",
+      id: "d-001",
+      patch: { dealstage: "Closed lost", amount: 130000 },
+    },
+  });
+  const partialReceipt = partial.structuredContent as unknown as WriteReceiptPayload;
+  console.log(bold(`widget shows: Saved ${partialReceipt.savedCount} of ${partialReceipt.results.length} changes`));
+  for (const r of partialReceipt.results) {
+    if (r.ok) console.log(`    ${green("✓")} ${r.label}  ${r.before} → ${r.after}`);
+    else console.log(`    ${red("✕")} ${r.label}  ${red(r.error ?? "")}  ${dim("[Edit & retry]")}`);
+  }
+
+  const verify = await client.callTool({
+    name: "crm_get_record",
+    arguments: { object: "deals", id: "d-001" },
+  });
+  const fresh = (verify.structuredContent as unknown as RecordCardPayload).record.fields;
+  if (fresh.dealstage !== "Negotiation" || fresh.amount !== 130000) {
+    throw new Error("demo: post-write record state is wrong");
+  }
+  console.log(
+    `\n${bold("✓ CRM state verified")} ${dim(`— stage stayed "Negotiation" (rejected write untouched), amount saved as 130000`)}`,
+  );
+
+  await client.close();
+  await server.close();
+  console.log(bold("\nGolden Path 2 complete.\n"));
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

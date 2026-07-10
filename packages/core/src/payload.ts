@@ -9,6 +9,7 @@
 import type { LayoutConfig, ListViewConfig } from "./layout-config.js";
 import type {
   ActivityEntry,
+  CrmFieldValue,
   CrmRecord,
   FieldDescribe,
   RecordPage,
@@ -29,6 +30,8 @@ export interface WidgetProvenance {
   crmLabel: string;
   layoutName?: string;
   layoutRevision: number;
+  /** CRM user writes are attributed to ("Written as Dan K." in the diff footer). */
+  connectedUser?: string;
 }
 
 /** structuredContent for crm_get_record → the record-card widget. */
@@ -59,4 +62,31 @@ export interface ResultsTablePayload {
   provenance: WidgetProvenance;
 }
 
-export type WidgetPayload = RecordCardPayload | ResultsTablePayload;
+/** Per-field outcome of a confirmed write (design 1e partial failure / 4c receipt). */
+export interface FieldWriteResult {
+  field: string;
+  label: string;
+  before: CrmFieldValue;
+  after: CrmFieldValue;
+  ok: boolean;
+  /** Verbatim CRM validation message when ok === false — never a generic error. */
+  error?: string;
+}
+
+/** structuredContent for crm_update_record → consumed by the record-card widget. */
+export interface WriteReceiptPayload {
+  kind: "write-receipt";
+  object: string;
+  recordId: string;
+  recordName: string;
+  results: FieldWriteResult[];
+  savedCount: number;
+  failedCount: number;
+  writtenAs: string;
+  timestamp: string;
+  /** Fresh post-write record, denylist-filtered like any record payload. */
+  record: CrmRecord;
+  provenance: WidgetProvenance;
+}
+
+export type WidgetPayload = RecordCardPayload | ResultsTablePayload | WriteReceiptPayload;

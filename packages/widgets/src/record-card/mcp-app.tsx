@@ -2,12 +2,15 @@ import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type {
   ActivityEntry,
-  CrmRecord,
+  CrmFieldValue,
+  FieldWriteResult,
   LayoutSection,
   RecordCardPayload,
   RecordPage,
   RelatedListConfig,
+  WriteReceiptPayload,
 } from "@cardstack/core";
+import type { App } from "@modelcontextprotocol/ext-apps";
 import { useWidget } from "../shared/use-widget.js";
 import {
   FieldInfo,
@@ -19,40 +22,43 @@ import {
   StagePill,
 } from "../shared/components.tsx";
 import { formatRelative, formatValue, initials, stageTone } from "../shared/format.ts";
+import { dirtyCount, type CardMode, type Draft } from "./edit-machine.ts";
+import { FieldInput } from "./editors.tsx";
+import { DiffTable, PartialFailureView, ReceiptView } from "./write-states.tsx";
 import "../shared/theme.css";
 import "./record-card.css";
 
 function RecordCardApp() {
-  const { app, payload, toolError, connectionError, locale } = useWidget<RecordCardPayload>(
-    "Record Card",
-  );
+  const { app, payload, setPayload, toolError, connectionError, locale } =
+    useWidget<RecordCardPayload>("Record Card");
 
   if (connectionError) {
     return <MessageCard title="Couldn't connect to the chat host" body={connectionError.message} />;
   }
   if (toolError) {
-    return (
-      <MessageCard
-        title={toolError}
-        body="Nothing was written."
-      />
-    );
+    return <MessageCard title={toolError} body="Nothing was written." />;
   }
   if (!payload) {
     return <LoadingCard label="Loading record…" />;
   }
-  return <RecordCard payload={payload} locale={locale} app={app} />;
+  return <RecordCard payload={payload} setPayload={setPayload} locale={locale} app={app} />;
 }
 
 function RecordCard({
   payload,
+  setPayload,
   locale,
   app,
 }: {
   payload: RecordCardPayload;
+  setPayload: (payload: RecordCardPayload) => void;
   locale: string;
-  app: ReturnType<typeof useWidget>["app"];
+  app: App | null;
 }) {
+  const [mode, setMode] = useState<CardMode>({ kind: "ready" });
+  // Attempted values survive a partial failure so "Edit & retry" can restore them.
+  const [lastDraft, setLastDraft] = useState<Draft>({});
+
   const { layout, meta, record, provenance, capabilities } = payload;
   const { header, sections, relatedLists } = layout.recordCard;
 
@@ -65,82 +71,306 @@ function RecordCard({
     );
   }
 
+  const fmt = (api: string, value: CrmFieldValue | undefined) =>
+    formatValue(value, meta[api], locale);
+  const fmtResult = (result: FieldWriteResult, value: FieldWriteResult["before"]) =>
+    fmt(result.field, value) ?? "—";
+  const editableSet = new Set(capabilities.editableFields);
+  const canEdit = capabilities.writeEnabled && editableSet.size > 0;
+
+  const setDraftValue = (api: string, value: CrmFieldValue) => {
+    if (mode.kind !== "editing") return;
+    const draft = { ...mode.draft };
+    const original = record.fields[api] ?? null;
+    if (value === original) delete draft[api];
+    else draft[api] = value;
+    setMode({ kind: "editing", draft });
+  };
+
+  const confirmWrite = async (draft: Draft) => {
+    if (!app) return;
+    setMode({ kind: "writing", draft });
+    setLastDraft(draft);
+    try {
+      // The write goes through the HOST as a tool call — auditable, never direct.
+      const result = await app.callServerTool({
+        name: "crm_update_record",
+        arguments: { object: layout.object, id: record.id, patch: draft },
+      });
+      if (result.isError) {
+        const text = result.content?.find((c) => c.type === "text");
+        setMode({
+          kind: "confirming",
+          draft,
+          writeError: text?.type === "text" ? text.text : "The write failed. Nothing was saved.",
+        });
+        return;
+      }
+      const receipt = result.structuredContent as unknown as WriteReceiptPayload;
+      // Fresh values into the card; the model gets the same summary the receipt shows.
+      setPayload({ ...payload, record: { ...record, fields: { ...record.fields, ...receipt.record.fields } } });
+      const summary = result.content?.find((c) => c.type === "text");
+      if (summary?.type === "text") {
+        app.updateModelContext({ content: [{ type: "text", text: summary.text }] }).catch(() => {});
+      }
+      setMode(
+        receipt.failedCount > 0 ? { kind: "partial", receipt } : { kind: "receipt", receipt },
+      );
+    } catch (error) {
+      setMode({ kind: "confirming", draft, writeError: String(error) });
+    }
+  };
+
+  const openCurrentCard = async () => {
+    if (!app || mode.kind !== "receipt") return;
+    setMode({ ...mode, opening: true });
+    try {
+      const result = await app.callServerTool({
+        name: "crm_get_record",
+        arguments: { object: layout.object, id: record.id },
+      });
+      if (!result.isError && result.structuredContent) {
+        setPayload(result.structuredContent as unknown as RecordCardPayload);
+      }
+    } finally {
+      setMode({ kind: "ready" });
+    }
+  };
+
+  const editRetry = () => {
+    if (mode.kind !== "partial") return;
+    const failed: Draft = {};
+    for (const r of mode.receipt.results) {
+      if (!r.ok && lastDraft[r.field] !== undefined) failed[r.field] = lastDraft[r.field]!;
+    }
+    setMode({ kind: "editing", draft: failed });
+  };
+
   const title = record.fields[header.title];
   const subtitle = header.subtitle ? record.fields[header.subtitle] : null;
   const badge = header.badge ? record.fields[header.badge] : null;
-  const pipeline = record.fields.pipeline;
+
+  const collapsed = mode.kind === "receipt" || mode.kind === "partial";
+  const diffRows =
+    mode.kind === "confirming" || mode.kind === "writing"
+      ? Object.entries(mode.draft).map(([api, value]) => ({
+          label: meta[api]?.label ?? api,
+          before: fmt(api, record.fields[api] ?? null),
+          after: fmt(api, value),
+        }))
+      : [];
 
   return (
     <div className="cs-card">
       <header className="rc-header">
         <div className="rc-header-main">
           <h1 className="rc-title">{title ?? <NullValue />}</h1>
-          <div className="rc-subtitle cs-muted">
-            {[subtitle, pipeline].filter(Boolean).join(" · ") || " "}
-          </div>
+          <div className="rc-subtitle cs-muted">{[subtitle].filter(Boolean).join(" · ") || " "}</div>
         </div>
         {badge != null && <StagePill value={String(badge)} tone={stageTone(String(badge))} />}
       </header>
 
-      {sections.map((section) => (
-        <Section
-          key={section.label}
-          section={section}
-          record={record}
-          payload={payload}
-          locale={locale}
+      {mode.kind === "receipt" && (
+        <ReceiptView
+          receipt={mode.receipt}
+          formatFieldValue={fmtResult}
+          onOpenCurrent={openCurrentCard}
+          opening={mode.opening}
         />
-      ))}
-
-      {(relatedLists.length > 0 || payload.activity.length > 0) && (
-        <div className="rc-lists">
-          {relatedLists.map((rel) => (
-            <RelatedList
-              key={rel.relationship}
-              rel={rel}
-              page={payload.related[rel.relationship] ?? { rows: [], hasMore: false }}
-              payload={payload}
-              app={app}
-            />
-          ))}
-          {payload.activity.length > 0 && <ActivityTimeline entries={payload.activity} locale={locale} />}
-        </div>
+      )}
+      {mode.kind === "partial" && (
+        <PartialFailureView
+          receipt={mode.receipt}
+          formatFieldValue={fmtResult}
+          onEditRetry={editRetry}
+        />
       )}
 
-      <footer className="rc-footer">
-        <span className="rc-footer-left">
-          <LayoutChip provenance={provenance} />
-          {capabilities.writeEnabled && (
-            <span className="cs-muted rc-trust">🔒 Writes require confirmation</span>
+      {(mode.kind === "confirming" || mode.kind === "writing") && (
+        <section className="rc-section">
+          <h2 className="rc-section-label">Review changes</h2>
+          <DiffTable rows={diffRows} />
+          {mode.kind === "confirming" && mode.writeError && (
+            <div className="wd-write-error">
+              {mode.writeError} <span className="cs-muted">Nothing was written.</span>
+            </div>
           )}
+        </section>
+      )}
+
+      {(mode.kind === "ready" || mode.kind === "editing") &&
+        sections.map((section) => (
+          <Section
+            key={section.label}
+            section={section}
+            payload={payload}
+            locale={locale}
+            editing={mode.kind === "editing"}
+            draft={mode.kind === "editing" ? mode.draft : undefined}
+            editableSet={editableSet}
+            onChange={setDraftValue}
+          />
+        ))}
+
+      {!collapsed &&
+        mode.kind === "ready" &&
+        (relatedLists.length > 0 || payload.activity.length > 0) && (
+          <div className="rc-lists">
+            {relatedLists.map((rel) => (
+              <RelatedList
+                key={rel.relationship}
+                rel={rel}
+                page={payload.related[rel.relationship] ?? { rows: [], hasMore: false }}
+                payload={payload}
+                app={app}
+              />
+            ))}
+            {payload.activity.length > 0 && (
+              <ActivityTimeline entries={payload.activity} locale={locale} />
+            )}
+          </div>
+        )}
+
+      <footer className="rc-footer">
+        <FooterControls
+          mode={mode}
+          canEdit={canEdit}
+          crmLabel={provenance.crmLabel}
+          connectedUser={provenance.connectedUser}
+          onEdit={() => setMode({ kind: "editing", draft: {} })}
+          onDiscard={() => setMode({ kind: "ready" })}
+          onReview={() => mode.kind === "editing" && setMode({ kind: "confirming", draft: mode.draft })}
+          onBack={() => mode.kind === "confirming" && setMode({ kind: "editing", draft: mode.draft })}
+          onConfirm={() =>
+            (mode.kind === "confirming" || mode.kind === "writing") && confirmWrite(mode.draft)
+          }
+        />
+        <span className="rc-footer-right">
+          <LayoutChip provenance={provenance} />
+          <MakerChip provenance={provenance} />
         </span>
-        <MakerChip provenance={provenance} />
       </footer>
     </div>
   );
 }
 
+function FooterControls({
+  mode,
+  canEdit,
+  crmLabel,
+  connectedUser,
+  onEdit,
+  onDiscard,
+  onReview,
+  onBack,
+  onConfirm,
+}: {
+  mode: CardMode;
+  canEdit: boolean;
+  crmLabel: string;
+  connectedUser?: string | undefined;
+  onEdit: () => void;
+  onDiscard: () => void;
+  onReview: () => void;
+  onBack: () => void;
+  onConfirm: () => void;
+}) {
+  switch (mode.kind) {
+    case "ready":
+      return (
+        <span className="rc-footer-left">
+          {canEdit && (
+            <button type="button" className="cs-btn cs-btn--primary" onClick={onEdit}>
+              Edit fields
+            </button>
+          )}
+          {canEdit && <span className="cs-muted rc-trust">🔒 Writes require confirmation</span>}
+        </span>
+      );
+    case "editing": {
+      const count = dirtyCount(mode.draft);
+      return (
+        <span className="rc-footer-left">
+          <span className={`rc-dirty-count${count > 0 ? " rc-dirty-count--active" : ""}`}>
+            {count} unsaved {count === 1 ? "change" : "changes"}
+          </span>
+          <button type="button" className="cs-btn cs-btn--ghost" onClick={onDiscard}>
+            Discard
+          </button>
+          <button
+            type="button"
+            className="cs-btn cs-btn--primary"
+            onClick={onReview}
+            disabled={count === 0}
+          >
+            Review &amp; save…
+          </button>
+        </span>
+      );
+    }
+    case "confirming":
+    case "writing": {
+      const writing = mode.kind === "writing";
+      return (
+        <span className="rc-footer-left rc-footer-left--column">
+          <span>
+            <button type="button" className="cs-btn cs-btn--ghost" onClick={onBack} disabled={writing}>
+              Back
+            </button>{" "}
+            <button
+              type="button"
+              className="cs-btn cs-btn--primary"
+              onClick={onConfirm}
+              disabled={writing}
+            >
+              {writing ? "Writing…" : `✎ Confirm & write to ${crmLabel}`}
+            </button>
+          </span>
+          <span className="cs-muted rc-trust">
+            Written as {connectedUser ?? "you"} · logged in {crmLabel} history
+          </span>
+        </span>
+      );
+    }
+    default:
+      return <span className="rc-footer-left" />;
+  }
+}
+
 function Section({
   section,
-  record,
   payload,
   locale,
+  editing,
+  draft,
+  editableSet,
+  onChange,
 }: {
   section: LayoutSection;
-  record: CrmRecord;
   payload: RecordCardPayload;
   locale: string;
+  editing: boolean;
+  draft: Draft | undefined;
+  editableSet: Set<string>;
+  onChange: (api: string, value: CrmFieldValue) => void;
 }) {
+  const { record } = payload;
   return (
     <section className="rc-section">
       <h2 className="rc-section-label">{section.label}</h2>
       <div className={`rc-field-grid rc-cols-${section.columns}`}>
         {section.fields.map((field) => {
           const fieldMeta = payload.meta[field.api];
-          const formatted = formatValue(record.fields[field.api], fieldMeta, locale);
+          const original = record.fields[field.api] ?? null;
+          const isDirty = draft ? field.api in draft : false;
+          const currentValue = isDirty ? (draft![field.api] ?? null) : original;
+          const editableHere = editing && editableSet.has(field.api);
+          const flsBlocked = editing && field.editable && !editableSet.has(field.api);
+          const formatted = formatValue(currentValue, fieldMeta, locale);
           return (
             <div key={field.api} className="rc-field">
               <div className="rc-field-label">
+                {isDirty && <span className="wd-dirty-dot" aria-label="unsaved change" />}
                 {fieldMeta?.label ?? field.api}
                 {fieldMeta?.description && (
                   <FieldInfo
@@ -149,7 +379,24 @@ function Section({
                   />
                 )}
               </div>
-              <div className="rc-field-value">{formatted ?? <NullValue />}</div>
+              {editableHere ? (
+                <FieldInput
+                  field={field}
+                  meta={fieldMeta}
+                  value={currentValue}
+                  dirty={isDirty}
+                  onChange={(value) => onChange(field.api, value)}
+                />
+              ) : (
+                <div className="rc-field-value">
+                  {formatted ?? <NullValue />}
+                  {flsBlocked && (
+                    <span className="cs-pill wd-fls-pill">
+                      Read-only · {payload.provenance.crmLabel} field security
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
@@ -167,7 +414,7 @@ function RelatedList({
   rel: RelatedListConfig;
   page: RecordPage;
   payload: RecordCardPayload;
-  app: ReturnType<typeof useWidget>["app"];
+  app: App | null;
 }) {
   const [rows, setRows] = useState(page.rows);
   const [hasMore, setHasMore] = useState(page.hasMore);
@@ -220,7 +467,7 @@ function RelatedList({
                 {detailCols
                   .map((col) => row.fields[col])
                   .filter((v) => v != null && v !== "")
-                  .join(" · ") || " "}
+                  .join(" · ") || " "}
               </span>
             </span>
           </div>

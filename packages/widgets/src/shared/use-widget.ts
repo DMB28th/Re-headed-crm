@@ -19,6 +19,8 @@ export interface WidgetState<Payload> {
   app: App | null;
   /** Parsed structuredContent, once the tool result arrives. */
   payload: Payload | null;
+  /** Local payload replace (e.g. re-fetch after a write). Host tool results still win. */
+  setPayload: (payload: Payload) => void;
   /** Model-facing error text when the tool result reported isError. */
   toolError: string | null;
   connectionError: Error | null;
@@ -70,6 +72,7 @@ export function useWidget<Payload>(name: string): WidgetState<Payload> {
   return {
     app,
     payload,
+    setPayload,
     toolError,
     connectionError,
     hostContext,

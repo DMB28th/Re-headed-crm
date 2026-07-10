@@ -153,6 +153,198 @@
   font-size: 11px;
 }
 
+.rc-footer-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.rc-footer-left--column {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+/* --- Edit mode (design 1b) --- */
+
+.wd-input {
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--cs-text);
+  background: var(--cs-card);
+  border: 1px solid var(--cs-border);
+  border-radius: var(--cs-radius-control);
+  padding: 5px 9px;
+  width: 100%;
+  min-height: 32px;
+  transition: border-color 120ms ease;
+}
+.wd-input:focus-visible {
+  outline: 2px solid var(--color-ring-primary, rgba(31, 32, 35, 0.35));
+  outline-offset: 1px;
+}
+/* Dirty: amber border + amber dot on the label — state, not just color. */
+.wd-input--dirty {
+  border-color: var(--cs-dirty, #c47d1e);
+}
+.wd-dirty-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cs-dirty, #c47d1e);
+  margin-right: 5px;
+  vertical-align: 1px;
+}
+.rc-dirty-count {
+  font-size: 12px;
+  color: var(--cs-text-secondary);
+}
+.rc-dirty-count--active {
+  color: var(--cs-dirty, #c47d1e);
+  font-weight: 500;
+}
+.wd-fls-pill {
+  margin-left: 7px;
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+/* --- Confirmation diff (design 1c): the signing moment --- */
+
+.wd-diff {
+  border: 1px solid var(--cs-border-soft);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.wd-diff-row {
+  display: grid;
+  grid-template-columns: 150px 1fr 1fr;
+  gap: 10px;
+  padding: 8px 12px;
+  align-items: center;
+}
+.wd-diff-row + .wd-diff-row {
+  border-top: 1px solid var(--cs-border-soft);
+}
+.wd-diff-head {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--cs-text-secondary);
+  padding-bottom: 5px;
+}
+.wd-diff-field {
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.wd-diff-before {
+  color: var(--cs-danger-text);
+  font-size: 13px;
+}
+.wd-diff-after {
+  display: inline-block;
+  background: var(--cs-ok-bg);
+  color: var(--cs-ok-text);
+  border-radius: var(--cs-radius-pill);
+  padding: 2px 9px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.wd-write-error {
+  margin-top: 10px;
+  background: var(--cs-danger-bg);
+  color: var(--cs-danger-text);
+  border-radius: 8px;
+  padding: 8px 11px;
+  font-size: 12.5px;
+}
+
+/* --- Receipt (4c) & partial failure (1e) --- */
+
+.wd-receipt {
+  padding: 16px 20px 18px;
+  border-bottom: 1px solid var(--cs-border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}
+.wd-receipt-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.wd-receipt-check {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--cs-ok-bg);
+  color: var(--cs-ok-text);
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.wd-receipt-warn {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--cs-warn-bg);
+  color: var(--cs-warn-text);
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.wd-receipt-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.wd-receipt-meta {
+  font-size: 11.5px;
+}
+.wd-receipt-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+}
+.wd-receipt-line {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  font-size: 12.5px;
+  flex-wrap: wrap;
+}
+.wd-receipt-line--failed {
+  background: var(--cs-danger-bg);
+  border-radius: 8px;
+  padding: 6px 9px;
+}
+.wd-field-ok {
+  color: var(--cs-ok-text);
+  font-weight: 500;
+}
+.wd-field-fail {
+  color: var(--cs-danger-text);
+  font-weight: 500;
+}
+.wd-fail-message {
+  color: var(--cs-danger-text);
+  font-size: 12px;
+  flex: 1;
+  text-align: right;
+}
+
 /* Mobile 380 (design 1g): single column, label-left/value-right rows. */
 @media (max-width: 420px) {
   .rc-field-grid {

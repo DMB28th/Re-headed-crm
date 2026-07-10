@@ -45,6 +45,8 @@ export interface CrmAdapter {
 
   // Auth
   refreshTokenIfNeeded(): Promise<void>;
+  /** Display name of the CRM user this connection acts as (writes are attributed to them). */
+  getConnectedUser(): Promise<string>;
 }
 
 export class CrmObjectNotFoundError extends Error {
@@ -58,6 +60,13 @@ export class CrmRecordNotFoundError extends Error {
   constructor(objectApi: string, id: string) {
     super(`No ${objectApi} record with id ${id}`);
     this.name = "CrmRecordNotFoundError";
+  }
+}
+
+export class CrmAuthError extends Error {
+  constructor(crmLabel: string) {
+    super(`${crmLabel} connection expired. Reconnect to continue; unsaved edits are kept.`);
+    this.name = "CrmAuthError";
   }
 }
 

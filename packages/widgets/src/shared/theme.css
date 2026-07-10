@@ -27,6 +27,7 @@
   --cs-danger-text: #9a3b30;
   --cs-danger-bg: #fbeae7;
   --cs-neutral-pill-bg: rgba(0, 0, 0, 0.06);
+  --cs-dirty: #c47d1e;
 }
 
 [data-theme="dark"],
@@ -47,6 +48,7 @@
   --cs-danger-text: #e08c7f;
   --cs-danger-bg: rgba(224, 140, 127, 0.12);
   --cs-neutral-pill-bg: rgba(255, 255, 255, 0.08);
+  --cs-dirty: #e0b46a;
 }
 
 * {

@@ -9,7 +9,8 @@
     "test": "vitest run",
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
-    "demo": "tsx scripts/demo.ts"
+    "demo": "tsx scripts/demo.ts",
+    "demo:m2": "tsx scripts/demo-m2.ts"
   },
   "dependencies": {
     "@cardstack/core": "workspace:*",

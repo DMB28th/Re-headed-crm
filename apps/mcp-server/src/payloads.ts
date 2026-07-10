@@ -56,7 +56,10 @@ export async function buildResultsTablePayload(args: {
     meta: buildMeta(describe.fields, allowed),
     page: filterPage(args.page, allowed),
     ...(args.savedViewName ? { savedViewName: args.savedViewName } : {}),
-    provenance: provenanceFor(config),
+    provenance: {
+      ...provenanceFor(config),
+      connectedUser: await args.adapter.getConnectedUser(),
+    },
   };
 }
 
@@ -86,7 +89,10 @@ export async function buildRecordCardPayload(args: {
     related,
     activity,
     capabilities: buildCapabilities(config, describeMap(describe)),
-    provenance: provenanceFor(config),
+    provenance: {
+      ...provenanceFor(config),
+      connectedUser: await adapter.getConnectedUser(),
+    },
   };
 }
 

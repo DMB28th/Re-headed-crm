@@ -204,6 +204,10 @@ export class MockCrmAdapter implements CrmAdapter {
     // no-op: the mock portal has no auth
   }
 
+  async getConnectedUser(): Promise<string> {
+    return "Dan K.";
+  }
+
   // --- internals ---
 
   private table(objectApi: string): FixtureRecord[] {

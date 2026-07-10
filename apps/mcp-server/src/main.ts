@@ -8,8 +8,15 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { MockCrmAdapter } from "@cardstack/crm-adapters";
 import { createCardstackServer } from "./server.js";
 import { DEMO_TENANT_ID, InMemoryConfigStore } from "./config/store.js";
+import { InMemoryAuditLog } from "./audit.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
+
+// Durable-ish state shared across stateless requests (Postgres in M3+; the
+// mock adapter is also shared so demo writes survive between tool calls).
+const auditLog = new InMemoryAuditLog();
+const adapter = new MockCrmAdapter();
+const configStore = new InMemoryConfigStore();
 
 const app = express();
 app.use(cors());
@@ -21,8 +28,9 @@ app.get("/healthz", (_req, res) => {
 
 app.all("/mcp", async (req, res) => {
   const server = createCardstackServer({
-    adapter: new MockCrmAdapter(),
-    configStore: new InMemoryConfigStore(),
+    adapter,
+    configStore,
+    auditLog,
     tenantId: DEMO_TENANT_ID,
   });
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });

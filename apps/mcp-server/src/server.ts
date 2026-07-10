@@ -11,19 +11,34 @@ import {
   RESOURCE_MIME_TYPE,
 } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
-import type { FieldFilter, LayoutConfig, SearchQuery } from "@cardstack/core";
-import type { CrmAdapter } from "@cardstack/crm-adapters";
+import {
+  applyDenylist,
+  buildCapabilities,
+  recordCardFieldPaths,
+  filterRecord,
+  type CrmFieldValue,
+  type FieldFilter,
+  type FieldWriteResult,
+  type LayoutConfig,
+  type SearchQuery,
+  type WriteReceiptPayload,
+} from "@cardstack/core";
+import { CrmValidationError, type CrmAdapter } from "@cardstack/crm-adapters";
 import { getWidgetHtml, type WidgetName } from "@cardstack/widgets";
 import { DEMO_TENANT_ID, InMemoryConfigStore, type ConfigStore } from "./config/store.js";
+import type { AuditLog } from "./audit.js";
 import {
   buildRecordCardPayload,
   buildResultsTablePayload,
   fieldNotes,
+  provenanceFor,
 } from "./payloads.js";
 
 export interface ServerDeps {
   adapter: CrmAdapter;
   configStore: ConfigStore;
+  /** Shared across requests (durable state); the MCP server itself stays stateless. */
+  auditLog: AuditLog;
   /** M1: single-tenant. OAuth 2.1 token → tenant resolution lands in M7. */
   tenantId: string;
 }
@@ -35,7 +50,7 @@ const OPEN_STAGE_EXCLUSIONS = ["Closed won", "Closed lost"];
 
 export function createCardstackServer(deps: ServerDeps): McpServer {
   const server = new McpServer({ name: "Cardstack CRM", version: "0.0.1" });
-  const { adapter, configStore, tenantId } = deps;
+  const { adapter, configStore, auditLog, tenantId } = deps;
 
   const requireLayout = async (object: string): Promise<LayoutConfig> => {
     const config = await configStore.getLayout(tenantId, object);
@@ -288,7 +303,208 @@ export function createCardstackServer(deps: ServerDeps): McpServer {
     },
   );
 
+  // --- crm_update_record (widget-invoked after the confirmation diff, or model-invoked) ---
+  server.registerTool(
+    "crm_update_record",
+    {
+      title: "Update a CRM record",
+      description:
+        "Write field changes to a CRM record. Only fields the layout marks editable are writable. " +
+        "Returns per-field outcomes — a validation failure on one field does not block the others.",
+      inputSchema: {
+        object: z.string().default("deals"),
+        id: z.string(),
+        patch: z
+          .record(z.union([z.string(), z.number(), z.boolean(), z.null()]))
+          .describe("Field API name → new value"),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    },
+    async (args): Promise<CallToolResult> => {
+      try {
+        const config = await requireLayout(args.object);
+        if (!config.permissions.writeEnabled) {
+          throw new Error(`Writes are disabled for ${args.object}.`);
+        }
+        const describe = await adapter.describeObject(config.object);
+        const describeByApi = new Map(describe.fields.map((f) => [f.api, f]));
+        const caps = buildCapabilities(config, describeByApi);
+        const patch = args.patch as Record<string, CrmFieldValue>;
+        const disallowed = Object.keys(patch).filter(
+          (field) => !caps.editableFields.includes(field),
+        );
+        if (disallowed.length > 0) {
+          // Config violation, not a CRM rejection: refuse the whole call.
+          throw new Error(
+            `Not editable on this layout: ${disallowed.join(", ")}. Editable fields: ${caps.editableFields.join(", ")}.`,
+          );
+        }
+
+        const fields = Object.keys(patch);
+        const before = await adapter.getRecord(config.object, args.id, fields);
+        const results: FieldWriteResult[] = [];
+        const resultFor = (field: string, ok: boolean, error?: string): FieldWriteResult => ({
+          field,
+          label: describeByApi.get(field)?.label ?? field,
+          before: before.fields[field] ?? null,
+          after: ok ? (patch[field] ?? null) : (before.fields[field] ?? null),
+          ok,
+          ...(error ? { error } : {}),
+        });
+
+        try {
+          await adapter.updateRecord(config.object, args.id, patch);
+          for (const field of fields) results.push(resultFor(field, true));
+        } catch (error) {
+          if (!(error instanceof CrmValidationError)) throw error;
+          // Batch rejected — salvage per field so one bad value doesn't sink the rest.
+          for (const field of fields) {
+            try {
+              await adapter.updateRecord(config.object, args.id, { [field]: patch[field]! });
+              results.push(resultFor(field, true));
+            } catch (fieldError) {
+              if (!(fieldError instanceof CrmValidationError)) throw fieldError;
+              results.push(resultFor(field, false, fieldError.message));
+            }
+          }
+        }
+
+        const saved = results.filter((r) => r.ok);
+        const writtenAs = await adapter.getConnectedUser();
+        const timestamp = new Date().toISOString();
+        if (saved.length > 0) {
+          await auditLog.append({
+            tenantId,
+            user: writtenAs,
+            object: config.object,
+            recordId: args.id,
+            changes: saved.map(({ field, before, after }) => ({ field, before, after })),
+            timestamp,
+          });
+        }
+
+        const sanitized = applyDenylist(config);
+        const fresh = filterRecord(
+          await adapter.getRecord(config.object, args.id, []),
+          new Set(recordCardFieldPaths(sanitized)),
+        );
+        const recordName = String(fresh.fields[config.recordCard.header.title] ?? args.id);
+        const payload: WriteReceiptPayload = {
+          kind: "write-receipt",
+          object: config.object,
+          recordId: args.id,
+          recordName,
+          results,
+          savedCount: saved.length,
+          failedCount: results.length - saved.length,
+          writtenAs,
+          timestamp,
+          record: fresh,
+          provenance: { ...provenanceFor(sanitized), connectedUser: writtenAs },
+        };
+
+        return {
+          content: [{ type: "text", text: receiptText(payload) }],
+          structuredContent: payload as unknown as Record<string, unknown>,
+          isError: false,
+        };
+      } catch (error) {
+        return asToolError(error);
+      }
+    },
+  );
+
+  // --- crm_create_record ---
+  server.registerTool(
+    "crm_create_record",
+    {
+      title: "Create a CRM record",
+      description:
+        "Create a new CRM record. Denylisted and CRM read-only fields are not accepted.",
+      inputSchema: {
+        object: z.string().default("deals"),
+        fields: z
+          .record(z.union([z.string(), z.number(), z.boolean(), z.null()]))
+          .describe("Field API name → value"),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false },
+    },
+    async (args): Promise<CallToolResult> => {
+      try {
+        const config = await requireLayout(args.object);
+        if (!config.permissions.writeEnabled) {
+          throw new Error(`Writes are disabled for ${args.object}.`);
+        }
+        const describe = await adapter.describeObject(config.object);
+        const describeByApi = new Map(describe.fields.map((f) => [f.api, f]));
+        const deny = config.permissions.fieldDenylist;
+        for (const field of Object.keys(args.fields)) {
+          const meta = describeByApi.get(field);
+          if (!meta || meta.readOnly || deny.some((d) => field === d || field.startsWith(`${d}.`))) {
+            throw new Error(`Field "${field}" is not writable for ${args.object}.`);
+          }
+        }
+        const created = await adapter.createRecord(
+          config.object,
+          args.fields as Record<string, CrmFieldValue>,
+        );
+        const writtenAs = await adapter.getConnectedUser();
+        await auditLog.append({
+          tenantId,
+          user: writtenAs,
+          object: config.object,
+          recordId: created.id,
+          changes: Object.entries(args.fields).map(([field, after]) => ({
+            field,
+            before: null,
+            after,
+          })),
+          timestamp: new Date().toISOString(),
+        });
+        const sanitized = applyDenylist(config);
+        const fresh = filterRecord(created, new Set(recordCardFieldPaths(sanitized)));
+        const name = fresh.fields[config.recordCard.header.title] ?? created.id;
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Created ${config.object} "${name}" (id ${created.id}), written as ${writtenAs} and logged.`,
+            },
+          ],
+          structuredContent: { record: fresh },
+        };
+      } catch (error) {
+        return asToolError(error);
+      }
+    },
+  );
+
   return server;
+}
+
+/** Model-facing mirror of the write receipt — same content the card collapses to (4c). */
+function receiptText(payload: WriteReceiptPayload): string {
+  const saved = payload.results.filter((r) => r.ok);
+  const failed = payload.results.filter((r) => !r.ok);
+  const changes = saved
+    .map((r) => `${r.label} ${formatPlain(r.before)}→${formatPlain(r.after)}`)
+    .join(", ");
+  let text =
+    failed.length === 0
+      ? `Updated ${payload.object} "${payload.recordName}": ${changes}.`
+      : saved.length === 0
+        ? `No changes were written to "${payload.recordName}".`
+        : `Saved ${saved.length} of ${payload.results.length} changes to "${payload.recordName}": ${changes}.`;
+  for (const f of failed) {
+    text += ` ${f.label} was rejected by ${payload.provenance.crmLabel}: ${f.error}`;
+  }
+  text += ` Written as ${payload.writtenAs}; logged in ${payload.provenance.crmLabel} history.`;
+  return text;
+}
+
+function formatPlain(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  return String(value);
 }
 
 function searchTitle(

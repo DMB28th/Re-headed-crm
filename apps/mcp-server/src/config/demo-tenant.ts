@@ -47,8 +47,8 @@ export const demoDealsLayout: LayoutConfig = parseLayoutConfig({
     actions: [{ type: "update_record", label: "Save changes" }],
   },
   permissions: {
-    // M1 is read-only; M2 flips writeEnabled and adds the edit/confirm/receipt flow.
-    writeEnabled: false,
+    // M2: writes on — edit mode, confirmation diff, receipt, partial failure.
+    writeEnabled: true,
     fieldDenylist: ["commission"],
     requireConfirmation: true,
   },

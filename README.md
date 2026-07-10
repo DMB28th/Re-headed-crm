@@ -9,16 +9,22 @@ standard (SEP-1865).
 - **design/** — high-fidelity design reference (open `design/Cardstack Designs.dc.html` in a browser; ids `1a`–`12b` map to `design/README.md`)
 - **CLAUDE.md** — working rules + current milestone
 
-## Status: M1
+## Status: M2
 
-Read-only record card + results table against the mock adapter. Golden Path 1
-(search → results table → record card) runs end-to-end:
+Record card + results table with the full write path against the mock adapter.
+Both golden paths run end-to-end:
 
 ```bash
 pnpm install
 pnpm build
-pnpm demo:m1
+pnpm demo:m1   # search → results table → record card
+pnpm demo:m2   # edit → confirmation diff → receipt → audit log → model context
 ```
+
+Writes follow the design's spine: every write shows a FIELD/BEFORE/AFTER
+confirmation diff, collapses to a receipt on success, salvages partial failures
+per field with the CRM's verbatim validation message, lands in the audit log,
+and mirrors itself to the model via `updateModelContext`.
 
 ## Try it in an MCP host
 

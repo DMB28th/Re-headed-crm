@@ -14,7 +14,8 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "dev": "turbo run dev",
-    "demo:m1": "pnpm --filter @cardstack/mcp-server demo"
+    "demo:m1": "pnpm --filter @cardstack/mcp-server demo",
+    "demo:m2": "pnpm --filter @cardstack/mcp-server demo:m2"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild"]

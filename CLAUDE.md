@@ -9,11 +9,15 @@ map to `design/README.md`).
 
 ## Current phase
 
-**M1 — read-only record card + results table against the mock adapter.**
-Exit criteria: `pnpm demo:m1` walks Golden Path 1 (search → results table →
-record card) end-to-end against `MockCrmAdapter`; widgets render from the layout
-config with live-merged describe metadata. (M0 — widget/tool round trip — is
-folded into the M1 server and verified by integration tests.)
+**M2 — writes — is complete.** `pnpm demo:m2` walks Golden Path 2 (edit →
+confirmation diff → confirmed write → receipt → audit log → updateModelContext)
+against `MockCrmAdapter`; partial failure (1e) surfaces the CRM's verbatim
+validation message per field. M1 (`pnpm demo:m1`, Golden Path 1) also passes.
+
+**Next: M2.5 — saved views** (sync, exposure config, `crm_list_view`,
+ambiguous-ask picker; design refs 5a, 5b). Adapter + fixtures already carry
+saved views. Still open from M2's design refs: stale-card strip and re-auth
+state (need host/staleness signals — revisit alongside M2.5).
 
 ## Hard rules
 
@@ -40,7 +44,8 @@ folded into the M1 server and verified by integration tests.)
 
 - `pnpm build` — build all packages (turbo; widgets build first, server inlines them)
 - `pnpm typecheck` / `pnpm test` / `pnpm lint`
-- `pnpm demo:m1` — Golden Path 1 demo against the mock adapter
+- `pnpm demo:m1` — Golden Path 1 demo (search → results table → record card)
+- `pnpm demo:m2` — Golden Path 2 demo (edit → confirm → receipt → audit)
 - `pnpm --filter @cardstack/mcp-server dev` — run the MCP server locally (streamable HTTP on :3001)
 - MCP Inspector: `npx @modelcontextprotocol/inspector` → connect to `http://localhost:3001/mcp`
 
