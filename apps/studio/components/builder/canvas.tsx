@@ -20,6 +20,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { useState } from "react";
 import type { LayoutConfig, LayoutField, ObjectDescribe } from "@cardstack/core";
 
 type SetConfig = (updater: (prev: LayoutConfig | null) => LayoutConfig | null) => void;
@@ -298,36 +299,16 @@ export function Canvas({
                 </span>
               </div>
               {relDescribe && (
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] text-ink-45">columns</span>
-                  {relDescribe.fields.map((field) => {
-                    const on = rel.columns.includes(field.api);
-                    return (
-                      <button
-                        key={field.api}
-                        type="button"
-                        className={`rounded-full border px-2 py-0.5 text-[11px] ${
-                          on ? "border-accent bg-accent text-white" : "border-line text-ink-55"
-                        }`}
-                        title={on && rel.columns.length === 1 ? "At least one column" : field.label}
-                        onClick={() =>
-                          mutateRelatedLists((lists) => {
-                            const cols = lists[i]!.columns;
-                            if (on) {
-                              if (cols.length === 1) return lists; // keep ≥1 column
-                              lists[i]!.columns = cols.filter((c) => c !== field.api);
-                            } else {
-                              lists[i]!.columns = [...cols, field.api];
-                            }
-                            return lists;
-                          })
-                        }
-                      >
-                        {field.label}
-                      </button>
-                    );
-                  })}
-                </div>
+                <ColumnPicker
+                  describe={relDescribe}
+                  columns={rel.columns}
+                  onChange={(columns) =>
+                    mutateRelatedLists((lists) => {
+                      lists[i]!.columns = columns;
+                      return lists;
+                    })
+                  }
+                />
               )}
             </div>
           );
@@ -364,16 +345,177 @@ export function Canvas({
 
       <div className="st-card mt-3 p-3">
         <span className="st-section-label">Actions</span>
-        <div className="mt-2 flex items-center gap-2 text-[12px]">
-          {config.recordCard.actions.map((action) => (
-            <span key={action.label} className="rounded-full border border-line px-2.5 py-0.5">
-              {action.label}
-            </span>
+        <p className="mt-1 text-[11.5px] text-ink-55">
+          The buttons on the card's footer. “Save changes” submits the rep's edits (with the
+          confirmation diff); “create related” opens a prefilled new-record form in chat.
+        </p>
+        <div className="mt-2 space-y-1.5">
+          {config.recordCard.actions.map((action, i) => (
+            <div key={i} className="flex items-center gap-2 text-[12px]">
+              <span className="st-chip-mono bg-paper text-ink-45">
+                {action.type === "update_record"
+                  ? "save"
+                  : action.type === "create_related"
+                    ? `create ${action.object}`
+                    : "flow"}
+              </span>
+              <input
+                className="st-input flex-1 py-1 text-[12px]"
+                value={action.label}
+                onChange={(e) =>
+                  onChange((prev) => {
+                    if (!prev) return prev;
+                    const actions = structuredClone(prev.recordCard.actions);
+                    actions[i]!.label = e.target.value;
+                    return { ...prev, recordCard: { ...prev.recordCard, actions } };
+                  })
+                }
+              />
+              {action.type !== "update_record" && (
+                <button
+                  type="button"
+                  className="text-ink-45 hover:text-drift-ink"
+                  aria-label={`Remove ${action.label}`}
+                  onClick={() =>
+                    onChange((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            recordCard: {
+                              ...prev.recordCard,
+                              actions: prev.recordCard.actions.filter((_, j) => j !== i),
+                            },
+                          }
+                        : prev,
+                    )
+                  }
+                >
+                  ×
+                </button>
+              )}
+            </div>
           ))}
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {describe.relationships
+            .filter(
+              (rel) =>
+                !config.recordCard.actions.some(
+                  (a) => a.type === "create_related" && a.object === rel.relatedObject,
+                ),
+            )
+            .map((rel) => (
+              <button
+                key={rel.api}
+                type="button"
+                className="rounded-[8px] border border-dashed border-line px-2.5 py-1 text-[11.5px] text-ink-45 hover:text-ink"
+                onClick={() =>
+                  onChange((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          recordCard: {
+                            ...prev.recordCard,
+                            actions: [
+                              ...prev.recordCard.actions,
+                              {
+                                type: "create_related",
+                                object: rel.relatedObject,
+                                label: `Add ${rel.label.replace(/s$/, "").toLowerCase()}`,
+                              },
+                            ],
+                          },
+                        }
+                      : prev,
+                  )
+                }
+              >
+                + create {rel.label.toLowerCase()}
+              </button>
+            ))}
           <span className="text-[11px] text-ink-45">🔒 trust line is not removable</span>
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * Related-list column picker: selected chips + a search box — real portals
+ * have hundreds of properties, a chip wall is unusable (feedback round 2).
+ */
+function ColumnPicker({
+  describe,
+  columns,
+  onChange,
+}: {
+  describe: ObjectDescribe;
+  columns: string[];
+  onChange: (columns: string[]) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const labelOf = (api: string) => describe.fields.find((f) => f.api === api)?.label ?? api;
+  const matches = query
+    ? describe.fields
+        .filter(
+          (f) =>
+            !columns.includes(f.api) &&
+            (f.label.toLowerCase().includes(query.toLowerCase()) ||
+              f.api.toLowerCase().includes(query.toLowerCase())),
+        )
+        .slice(0, 8)
+    : [];
+
+  return (
+    <div className="mt-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[11px] text-ink-45">columns</span>
+        {columns.map((api) => (
+          <span
+            key={api}
+            className="inline-flex items-center gap-1 rounded-full border border-accent bg-accent px-2 py-0.5 text-[11px] text-white"
+          >
+            {labelOf(api)}
+            <button
+              type="button"
+              className="opacity-70 hover:opacity-100"
+              aria-label={`Remove column ${labelOf(api)}`}
+              title={columns.length === 1 ? "At least one column" : undefined}
+              onClick={() => {
+                if (columns.length > 1) onChange(columns.filter((c) => c !== api));
+              }}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <input
+          type="search"
+          className="st-input w-[180px] py-0.5 text-[11.5px]"
+          placeholder={`Search ${describe.fields.length} fields…`}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
+      {matches.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {matches.map((field) => (
+            <button
+              key={field.api}
+              type="button"
+              className="rounded-full border border-line px-2 py-0.5 text-[11px] text-ink-55 hover:border-accent hover:text-ink"
+              title={field.api}
+              onClick={() => {
+                onChange([...columns, field.api]);
+                setQuery("");
+              }}
+            >
+              + {field.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -444,8 +586,16 @@ function FieldChip({
         <span {...attributes} {...listeners} className="cursor-grab text-ink-45" title="Drag to reorder">
           ⠿
         </span>
-        {label}
-        <span className="st-chip-mono bg-paper text-ink-45">{field.api}</span>
+        <span className="inline-block max-w-[180px] truncate" title={label}>
+          {label}
+        </span>
+        {/* Real portals have very long internal names — truncate, full name on hover. */}
+        <span
+          className="st-chip-mono inline-block max-w-[140px] truncate bg-paper text-ink-45"
+          title={field.api}
+        >
+          {field.api}
+        </span>
         {denied && <span className="st-chip-mono bg-drift text-drift-ink">denylisted</span>}
       </span>
       <span className="flex items-center gap-2">

@@ -384,9 +384,16 @@ function Section({
               <div className="rc-field-label">
                 {isDirty && <span className="wd-dirty-dot" aria-label="unsaved change" />}
                 {fieldMeta?.label ?? field.api}
-                {fieldMeta?.description && (
+                {fieldMeta && (
                   <FieldInfo
-                    description={fieldMeta.description}
+                    {...(fieldMeta.description ? { description: fieldMeta.description } : {})}
+                    detail={`${fieldMeta.type[0]!.toUpperCase()}${fieldMeta.type.slice(1)} · ${
+                      payload.capabilities.editableFields.includes(field.api)
+                        ? "editable from chat"
+                        : fieldMeta.readOnly
+                          ? `read-only in ${payload.provenance.crmLabel}`
+                          : "read-only on this card"
+                    }`}
                     crmLabel={payload.provenance.crmLabel}
                   />
                 )}

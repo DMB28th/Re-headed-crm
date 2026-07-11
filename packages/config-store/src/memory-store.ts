@@ -1,9 +1,10 @@
-import type {
-  CustomList,
-  HomeCardConfig,
-  LayoutConfig,
-  ViewExposure,
-  ViewExposuresConfig,
+import {
+  ViewExposuresConfig as ViewExposuresSchema,
+  type CustomList,
+  type HomeCardConfig,
+  type LayoutConfig,
+  type ViewExposure,
+  type ViewExposuresConfig,
 } from "@cardstack/core";
 import {
   exposureKey,
@@ -194,7 +195,10 @@ export abstract class BaseConfigStore implements AdminConfigStore {
     object: string,
   ): Promise<ViewExposuresConfig | undefined> {
     const state = await this.load();
-    return state.viewExposures[exposureKey(tenantId, object)];
+    const raw = state.viewExposures[exposureKey(tenantId, object)];
+    // Normalize through the schema: rows written before customLists existed
+    // (v2 note) otherwise reach clients without the field and crash them.
+    return raw ? ViewExposuresSchema.parse(raw) : undefined;
   }
 
   async setViewExposures(config: ViewExposuresConfig): Promise<void> {

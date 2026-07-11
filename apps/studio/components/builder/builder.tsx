@@ -105,7 +105,10 @@ export function Builder({ object }: { object: string }) {
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    // Viewport-bounded so palette / canvas / preview scroll INDEPENDENTLY —
+    // on real portals the palette has hundreds of fields and must not scroll
+    // the whole page (feedback round 2).
+    <div className="flex h-[calc(100vh-48px)] min-h-0 flex-col">
       <header className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <h1 className="text-[16px] font-semibold capitalize">{object}</h1>

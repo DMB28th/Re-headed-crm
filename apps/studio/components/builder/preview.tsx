@@ -34,6 +34,7 @@ export function Preview({ config }: { config: LayoutConfig }) {
   const [width, setWidth] = useState<680 | 380>(680);
   const [dark, setDark] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [modelContext, setModelContext] = useState<string | null>(null);
   const [buildError, setBuildError] = useState<string | null>(null);
 
@@ -129,6 +130,33 @@ export function Preview({ config }: { config: LayoutConfig }) {
     );
   }
 
+  const cardArea = (cardWidth: number) => (
+    <div
+      className={dark ? "dark" : ""}
+      style={{
+        background: dark ? "#262624" : "#f4f3f1",
+        borderRadius: 12,
+        padding: 14,
+        overflow: "auto",
+      }}
+    >
+      <div style={{ width: cardWidth, maxWidth: "100%", margin: "0 auto" }}>
+        {buildError && (
+          <div className="rounded-[10px] bg-drift p-3 text-[11.5px] text-drift-ink">{buildError}</div>
+        )}
+        {payload && !buildError && (
+          <RecordCard
+            key={payloadKey}
+            payload={payload}
+            setPayload={setPayload}
+            locale="en-US"
+            host={host}
+          />
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <aside className="w-[396px] shrink-0 overflow-y-auto">
       <div className="mb-2 flex items-center justify-between">
@@ -159,6 +187,14 @@ export function Preview({ config }: { config: LayoutConfig }) {
           </button>
           <button
             type="button"
+            onClick={() => setExpanded(true)}
+            className="rounded-[7px] border border-line px-2 py-0.5 text-[11px] text-ink-55"
+            title="Pop the preview out (full size)"
+          >
+            ⤢
+          </button>
+          <button
+            type="button"
             onClick={() => setCollapsed(true)}
             className="rounded-[7px] border border-line px-2 py-0.5 text-[11px] text-ink-55"
             title="Collapse the preview"
@@ -168,30 +204,7 @@ export function Preview({ config }: { config: LayoutConfig }) {
         </span>
       </div>
 
-      <div
-        className={dark ? "dark" : ""}
-        style={{
-          background: dark ? "#262624" : "#f4f3f1",
-          borderRadius: 12,
-          padding: 14,
-          overflow: "auto",
-        }}
-      >
-        <div style={{ width, maxWidth: "100%", margin: "0 auto" }}>
-          {buildError && (
-            <div className="rounded-[10px] bg-drift p-3 text-[11.5px] text-drift-ink">{buildError}</div>
-          )}
-          {payload && !buildError && (
-            <RecordCard
-              key={payloadKey}
-              payload={payload}
-              setPayload={setPayload}
-              locale="en-US"
-              host={host}
-            />
-          )}
-        </div>
-      </div>
+      {cardArea(width)}
 
       <div className="mt-2 space-y-1 text-[11px] text-ink-45">
         <div>
@@ -205,6 +218,29 @@ export function Preview({ config }: { config: LayoutConfig }) {
           </div>
         )}
       </div>
+
+      {/* Pop-out (feedback round 2): the same live preview, full size, over the builder. */}
+      {expanded && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center bg-[rgba(20,24,40,0.45)] p-8"
+          onClick={() => setExpanded(false)}
+        >
+          <div
+            className="max-h-full w-[760px] max-w-full overflow-y-auto rounded-[14px] bg-surface p-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <span className="st-section-label">
+                Preview · full size{live ? " · live data" : ""}
+              </span>
+              <button type="button" className="st-btn" onClick={() => setExpanded(false)}>
+                Close ✕
+              </button>
+            </div>
+            {cardArea(680)}
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

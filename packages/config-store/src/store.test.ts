@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -133,5 +133,21 @@ describe("diffLayouts (publish modal, 2b)", () => {
     const diff = diffLayouts(demoDealsLayout, editedDraft());
     expect(diff.removed).toContain("Deal details · next_step");
     expect(diff.added).toHaveLength(0);
+  });
+});
+
+describe("pre-customLists rows (live-portal crash regression)", () => {
+  it("normalizes stored exposures missing customLists through the schema", async () => {
+    const file = path.join(mkdtempSync(path.join(tmpdir(), "cardstack-")), "config.json");
+    const store = new FileConfigStore(file);
+    // Simulate a row written before view-exposures v2: strip customLists.
+    const raw = JSON.parse(readFileSync(file, "utf-8"));
+    const key = `${DEMO_TENANT_ID}::deals`;
+    delete raw.viewExposures[key].customLists;
+    writeFileSync(file, JSON.stringify(raw));
+
+    const config = await store.getViewExposuresConfig(DEMO_TENANT_ID, "deals");
+    expect(config?.customLists).toEqual([]); // defaulted, not undefined
+    expect(await store.getCustomLists(DEMO_TENANT_ID, "deals")).toEqual([]);
   });
 });

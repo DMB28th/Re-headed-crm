@@ -6,6 +6,7 @@
  * widget "as the rep" and is clickable: tiles drill into the real results
  * table, recent rows into the real record card (feedback 2026-07-11).
  */
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   DndContext,
@@ -270,56 +271,82 @@ export function HomeCardBuilder() {
       </header>
 
       <div className="flex min-h-0 flex-1 gap-4">
-        <section className="min-w-0 flex-1 space-y-3 overflow-y-auto">
-          <div className="st-card p-3">
-            <span className="st-section-label">Header · always first</span>
-            <p className="mt-1 text-[11.5px] text-ink-55">
-              Greeting, CRM + connected user. Not configurable — identity is not a block.
-            </p>
+        <section className="min-w-0 flex-1 overflow-y-auto">
+          {/* The template mirrors the card itself (feedback round 2): one
+              card-shaped frame, blocks in render order, drag inside it. */}
+          <div className="mx-auto max-w-[560px] rounded-[14px] border border-line bg-surface p-4 shadow-sm">
+            <div
+              className="flex items-baseline justify-between border-b border-line-soft pb-3"
+              title="Always first — identity is not a block and can't be moved or removed."
+            >
+              <span className="text-[15px] font-semibold">Your CRM</span>
+              <span className="text-[11.5px] text-ink-45">HubSpot · {connectedUser}</span>
+            </div>
+
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+              <SortableContext
+                items={config.blocks.map((b) => b.type)}
+                strategy={verticalListSortingStrategy}
+              >
+                {config.blocks.map((block) => (
+                  <BlockCard key={block.type} type={block.type}>
+                    {(grip) => (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-2">
+                            {grip}
+                            <span className="st-section-label">{BLOCK_META[block.type].label}</span>
+                          </span>
+                          <BlockToggle on onToggle={() => toggleBlock(block.type)} />
+                        </div>
+                        <p className="mt-1 text-[11.5px] text-ink-55">
+                          {BLOCK_META[block.type].explainer}
+                        </p>
+                        {block.type === "lists" && exposedViews.length === 0 && (
+                          <p className="mt-2 rounded-[8px] bg-draft px-2.5 py-1.5 text-[11.5px] text-draft-ink">
+                            Nothing is exposed yet, so this block renders empty for reps —
+                            expose views or create Cardstack lists on an object&apos;s{" "}
+                            <Link href="/objects/deals/lists" className="underline">
+                              Lists page
+                            </Link>
+                            .
+                          </p>
+                        )}
+                        {blockBody(block.type)}
+                      </>
+                    )}
+                  </BlockCard>
+                ))}
+              </SortableContext>
+            </DndContext>
+
+            <div className="mt-3 border-t border-line-soft pt-2 text-[10.5px] text-ink-45">
+              🔒 Writes require confirmation · HubSpot · via Cardstack
+            </div>
           </div>
 
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-            <SortableContext
-              items={config.blocks.map((b) => b.type)}
-              strategy={verticalListSortingStrategy}
-            >
-              {config.blocks.map((block) => (
-                <BlockCard key={block.type} type={block.type}>
-                  {(grip) => (
-                    <>
-                      <div className="flex items-center justify-between">
-                        <span className="flex items-center gap-2">
-                          {grip}
-                          <span className="st-section-label">{BLOCK_META[block.type].label}</span>
-                        </span>
-                        <BlockToggle on onToggle={() => toggleBlock(block.type)} />
-                      </div>
-                      <p className="mt-1 text-[11.5px] text-ink-55">
-                        {BLOCK_META[block.type].explainer}
-                      </p>
-                      {blockBody(block.type)}
-                    </>
-                  )}
-                </BlockCard>
+          <div className="mx-auto mt-3 max-w-[560px] space-y-2">
+            {(["lists", "recent", "followups"] as const)
+              .filter((type) => !blockOf(type))
+              .map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  className="flex w-full items-center justify-between rounded-[10px] border border-dashed border-line px-3 py-2 text-left hover:border-accent"
+                  onClick={() => toggleBlock(type)}
+                >
+                  <span>
+                    <span className="text-[12.5px] font-medium">+ {BLOCK_META[type].label}</span>
+                    <span className="mt-0.5 block text-[11.5px] text-ink-55">
+                      {BLOCK_META[type].explainer}
+                    </span>
+                  </span>
+                </button>
               ))}
-            </SortableContext>
-          </DndContext>
-
-          {(["lists", "recent", "followups"] as const)
-            .filter((type) => !blockOf(type))
-            .map((type) => (
-              <div key={type} className="st-card p-3 opacity-70">
-                <div className="flex items-center justify-between">
-                  <span className="st-section-label">{BLOCK_META[type].label}</span>
-                  <BlockToggle on={false} onToggle={() => toggleBlock(type)} />
-                </div>
-                <p className="mt-1 text-[11.5px] text-ink-55">{BLOCK_META[type].explainer}</p>
-              </div>
-            ))}
-
-          <div className="rounded-[10px] border border-dashed border-line p-3 text-[11.5px] text-ink-45">
-            No dashboard blocks on purpose — the home card is a launcher, not analytics.
-            Pinned records &amp; Actions blocks come later. Drag the ⠿ grips to reorder.
+            <div className="rounded-[10px] border border-dashed border-line p-3 text-[11.5px] text-ink-45">
+              No dashboard blocks on purpose — the home card is a launcher, not analytics.
+              Pinned records &amp; Actions blocks come later. Drag the ⠿ grips to reorder.
+            </div>
           </div>
         </section>
 
@@ -329,7 +356,7 @@ export function HomeCardBuilder() {
   );
 }
 
-/** Sortable block card; drag listeners live on the grip only. */
+/** Sortable template block (a section of the card frame); listeners live on the grip. */
 function BlockCard({
   type,
   children,
@@ -349,7 +376,7 @@ function BlockCard({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`st-card p-3 ${isDragging ? "opacity-60 shadow-md" : ""}`}
+      className={`mt-3 rounded-[10px] border border-line-soft bg-paper p-3 ${isDragging ? "opacity-60 shadow-md" : ""}`}
     >
       {children(grip)}
     </div>

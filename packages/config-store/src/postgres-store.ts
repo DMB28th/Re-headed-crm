@@ -16,7 +16,14 @@
  *   before this table behave unchanged. Custom lists ride inside the existing
  *   view_exposures jsonb (view-exposures schema v2) — no table change.
  */
-import type { CustomList, HomeCardConfig, LayoutConfig, ViewExposure, ViewExposuresConfig } from "@cardstack/core";
+import {
+  ViewExposuresConfig as ViewExposuresSchema,
+  type CustomList,
+  type HomeCardConfig,
+  type LayoutConfig,
+  type ViewExposure,
+  type ViewExposuresConfig,
+} from "@cardstack/core";
 import type { AdminConfigStore, ConnectionState, LayoutRecord, PublishEvent } from "./types.js";
 import { defaultConnection, demoDealsLayout, demoHomeCard, demoViewExposures } from "./seed.js";
 
@@ -280,7 +287,9 @@ export class PostgresConfigStore implements AdminConfigStore {
       "SELECT config FROM view_exposures WHERE tenant_id=$1 AND object=$2",
       [tenantId, object],
     );
-    return rows[0] ? this.parse<ViewExposuresConfig>(rows[0].config) : undefined;
+    // Normalize through the schema: rows written before customLists existed
+    // (v2 note) otherwise reach clients without the field and crash them.
+    return rows[0] ? ViewExposuresSchema.parse(this.parse(rows[0].config)) : undefined;
   }
 
   async setViewExposures(config: ViewExposuresConfig): Promise<void> {

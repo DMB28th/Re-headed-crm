@@ -28,8 +28,20 @@ export function NullValue() {
   );
 }
 
-/** ⓘ tooltip surfacing the CRM's own field description (design 1a). */
-export function FieldInfo({ description, crmLabel }: { description: string; crmLabel: string }) {
+/**
+ * ⓘ popover (design 1a): the CRM's own field description plus the field facts
+ * a rep asks about — type and whether it's editable from chat.
+ */
+export function FieldInfo({
+  description,
+  detail,
+  crmLabel,
+}: {
+  description?: string;
+  /** e.g. "currency · editable from chat" or "picklist · read-only in HubSpot". */
+  detail: string;
+  crmLabel: string;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <span
@@ -40,13 +52,16 @@ export function FieldInfo({ description, crmLabel }: { description: string; crmL
       onBlur={() => setOpen(false)}
       tabIndex={0}
       role="note"
-      aria-label={description}
+      aria-label={description ?? detail}
     >
       <i className="cs-info-icon">i</i>
       {open && (
         <span className="cs-tooltip" role="tooltip">
-          {description}
-          <span className="cs-tooltip-attribution">Field description from {crmLabel}</span>
+          {description && <span className="cs-tooltip-description">{description}</span>}
+          <span className="cs-tooltip-detail">{detail}</span>
+          {description && (
+            <span className="cs-tooltip-attribution">Field description from {crmLabel}</span>
+          )}
         </span>
       )}
     </span>

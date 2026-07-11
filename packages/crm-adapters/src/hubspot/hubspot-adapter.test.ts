@@ -203,3 +203,39 @@ describe("HubSpotAdapter", () => {
     });
   });
 });
+
+describe("HubSpotAdapter custom objects", () => {
+  const SCHEMAS = {
+    results: [
+      { objectTypeId: "2-12345", name: "project", labels: { singular: "Project", plural: "Projects" } },
+    ],
+  };
+
+  it("discovers custom objects and offers them as related lists on core objects", async () => {
+    const { impl } = fetchStub([
+      (url) => (url.endsWith("/crm/v3/schemas") ? { status: 200, json: SCHEMAS } : undefined),
+      (url) => (url.includes("/crm/v3/properties/deals") ? { status: 200, json: DEAL_PROPERTIES } : undefined),
+    ]);
+    const adapter = new HubSpotAdapter({ accessToken: "pat-test" }, impl);
+    const objects = await adapter.listObjects();
+    expect(objects.find((o) => o.api === "2-12345")).toMatchObject({
+      labelPlural: "Projects",
+      custom: true,
+    });
+    const describe = await adapter.describeObject("deals");
+    expect(describe.relationships.map((r) => r.api)).toEqual(
+      expect.arrayContaining(["deal_contacts", "deal_tickets", "deal_line_items", "deal_2-12345"]),
+    );
+  });
+
+  it("degrades to core objects when the schemas scope is missing", async () => {
+    const { impl } = fetchStub([
+      (url) => (url.endsWith("/crm/v3/schemas") ? { status: 403, json: {} } : undefined),
+      (url) => (url.includes("/crm/v3/properties/deals") ? { status: 200, json: DEAL_PROPERTIES } : undefined),
+    ]);
+    const adapter = new HubSpotAdapter({ accessToken: "pat-test" }, impl);
+    expect((await adapter.listObjects()).map((o) => o.api)).toEqual(["deals", "contacts", "companies"]);
+    const describe = await adapter.describeObject("deals");
+    expect(describe.relationships.some((r) => r.api.startsWith("deal_2-"))).toBe(false);
+  });
+});

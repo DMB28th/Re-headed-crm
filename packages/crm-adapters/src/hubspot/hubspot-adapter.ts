@@ -7,7 +7,10 @@
  * request paths. Scopes needed: crm.objects.{deals,contacts,companies}.read
  * (+ .write for edits), crm.schemas.*.read.
  *
- * Coverage notes (v1):
+ * Coverage notes:
+ * - Custom objects are discovered via /crm/v3/schemas: they appear in
+ *   listObjects (primary cards) and as related-list options on the core
+ *   objects. Tickets and line items are describable related-list targets.
  * - listSavedViews returns [] — HubSpot has no public saved-views API; admins
  *   get lists via Cardstack lists instead (same exposure model).
  * - getActivity / listRecentRecords return [] — the engagements timeline and
@@ -50,27 +53,46 @@ type FetchLike = typeof fetch;
 
 const BASE = "https://api.hubapi.com";
 
-/** The core objects exposed in v1; custom-object discovery comes later. */
+/** The primary objects offered for cards; custom objects join via /crm/v3/schemas. */
 const OBJECTS: ObjectSummary[] = [
   { api: "deals", label: "Deal", labelPlural: "Deals", custom: false },
   { api: "contacts", label: "Contact", labelPlural: "Contacts", custom: false },
   { api: "companies", label: "Company", labelPlural: "Companies", custom: false },
 ];
 
-/** Association-based related lists, mirroring the mock's relationship apis. */
+/** Describable-but-not-primary objects (related-list targets). */
+const SUPPORT_OBJECTS: ObjectSummary[] = [
+  { api: "tickets", label: "Ticket", labelPlural: "Tickets", custom: false },
+  { api: "line_items", label: "Line item", labelPlural: "Line items", custom: false },
+];
+
+/** Association-based related lists (standard objects; customs merge in at describe time). */
 const RELATIONSHIPS: Record<string, { api: string; label: string; relatedObject: string }[]> = {
   deals: [
     { api: "deal_contacts", label: "Contacts", relatedObject: "contacts" },
     { api: "deal_company", label: "Company", relatedObject: "companies" },
+    { api: "deal_tickets", label: "Tickets", relatedObject: "tickets" },
+    { api: "deal_line_items", label: "Line items", relatedObject: "line_items" },
   ],
-  contacts: [],
-  companies: [{ api: "company_deals", label: "Deals", relatedObject: "deals" }],
+  contacts: [
+    { api: "contact_deals", label: "Deals", relatedObject: "deals" },
+    { api: "contact_tickets", label: "Tickets", relatedObject: "tickets" },
+  ],
+  companies: [
+    { api: "company_deals", label: "Deals", relatedObject: "deals" },
+    { api: "company_contacts", label: "Contacts", relatedObject: "contacts" },
+  ],
 };
 
 const REL_TARGET: Record<string, { from: string; to: string }> = {
   deal_contacts: { from: "deals", to: "contacts" },
   deal_company: { from: "deals", to: "companies" },
+  deal_tickets: { from: "deals", to: "tickets" },
+  deal_line_items: { from: "deals", to: "line_items" },
+  contact_deals: { from: "contacts", to: "deals" },
+  contact_tickets: { from: "contacts", to: "tickets" },
   company_deals: { from: "companies", to: "deals" },
+  company_contacts: { from: "companies", to: "contacts" },
 };
 
 const SEARCH_OPS: Record<string, string> = {
@@ -124,11 +146,46 @@ function mapType(p: HsProperty): FieldType {
 
 export class HubSpotAdapter implements CrmAdapter {
   private describeCache = new Map<string, ObjectDescribe>();
+  private customObjects: ObjectSummary[] | null = null;
+  /** relationship api → association endpoints, incl. dynamic custom-object rels. */
+  private relTargets = new Map<string, { from: string; to: string }>(Object.entries(REL_TARGET));
+  /** Custom-object related lists per core object (instance state, not module state). */
+  private customRelationships = new Map<string, { api: string; label: string; relatedObject: string }[]>();
 
   constructor(
     private readonly credentials: HubSpotCredentials,
     private readonly fetchImpl: FetchLike = fetch,
   ) {}
+
+  /** Custom-object schemas, discovered once (portals without any → []). */
+  private async ensureCustomObjects(): Promise<ObjectSummary[]> {
+    if (this.customObjects) return this.customObjects;
+    try {
+      const { results } = await this.request<{
+        results: { objectTypeId: string; name: string; labels?: { singular?: string; plural?: string } }[];
+      }>("GET", "/crm/v3/schemas");
+      this.customObjects = results.map((schema) => ({
+        api: schema.objectTypeId,
+        label: schema.labels?.singular ?? schema.name,
+        labelPlural: schema.labels?.plural ?? schema.name,
+        custom: true,
+      }));
+      // Every custom object is offered as a related list on the core objects;
+      // HubSpot associations return empty when a pair was never associated.
+      for (const custom of this.customObjects) {
+        for (const from of ["deals", "contacts", "companies"]) {
+          const api = `${from.slice(0, -1)}_${custom.api}`;
+          this.relTargets.set(api, { from, to: custom.api });
+          const existing = this.customRelationships.get(from) ?? [];
+          existing.push({ api, label: custom.labelPlural, relatedObject: custom.api });
+          this.customRelationships.set(from, existing);
+        }
+      }
+    } catch {
+      this.customObjects = []; // missing schemas scope → core objects only
+    }
+    return this.customObjects;
+  }
 
   private async request<T>(
     method: string,
@@ -173,11 +230,14 @@ export class HubSpotAdapter implements CrmAdapter {
   }
 
   async listObjects(): Promise<ObjectSummary[]> {
-    return OBJECTS;
+    return [...OBJECTS, ...(await this.ensureCustomObjects())];
   }
 
   async describeObject(objectApi: string): Promise<ObjectDescribe> {
-    const summary = OBJECTS.find((o) => o.api === objectApi);
+    const summary =
+      OBJECTS.find((o) => o.api === objectApi) ??
+      SUPPORT_OBJECTS.find((o) => o.api === objectApi) ??
+      (await this.ensureCustomObjects()).find((o) => o.api === objectApi);
     if (!summary) throw new CrmObjectNotFoundError(objectApi);
     const cached = this.describeCache.get(objectApi);
     if (cached) return cached;
@@ -199,10 +259,14 @@ export class HubSpotAdapter implements CrmAdapter {
           : {}),
         ...(mapType(p) === "currency" ? { currencyCode: "USD" } : {}),
       }));
+    await this.ensureCustomObjects(); // custom-object related lists join here
     const describe: ObjectDescribe = {
       ...summary,
       fields,
-      relationships: RELATIONSHIPS[objectApi] ?? [],
+      relationships: [
+        ...(RELATIONSHIPS[objectApi] ?? []),
+        ...(this.customRelationships.get(objectApi) ?? []),
+      ],
     };
     this.describeCache.set(objectApi, describe);
     return describe;
@@ -285,12 +349,15 @@ export class HubSpotAdapter implements CrmAdapter {
   }
 
   async getRelated(parentId: string, rel: RelatedListConfig): Promise<RecordPage> {
-    const target = REL_TARGET[rel.relationship];
+    await this.ensureCustomObjects(); // dynamic rel targets register here
+    const target = this.relTargets.get(rel.relationship);
     if (!target) return { rows: [], hasMore: false, total: 0 };
+    // Pairs that were never associated in this portal come back empty, and an
+    // unknown pair must degrade the list, not error the card.
     const assoc = await this.request<{ results: { toObjectId: number | string }[] }>(
       "GET",
       `/crm/v4/objects/${target.from}/${parentId}/associations/${target.to}?limit=100`,
-    );
+    ).catch(() => ({ results: [] }));
     const ids = assoc.results.map((r) => String(r.toObjectId));
     if (ids.length === 0) return { rows: [], hasMore: false, total: 0 };
     await this.describeObject(target.to); // warm cache for typed values
