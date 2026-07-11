@@ -19,22 +19,41 @@ export default async function HomePage() {
     return <NoConnection />;
   }
 
-  const crmObjects = await adapter.listObjects();
+  // A CRM hiccup (missing scope, rate limit, timeout) degrades this page,
+  // never blanks it — configured objects still render from the store.
+  let crmError: string | null = null;
   const objects = [];
   const available = [];
-  for (const summary of crmObjects) {
-    const record = await store.getLayoutRecord(TENANT_ID, summary.api);
-    if (record.draft || record.published) {
-      const describe = await adapter.describeObject(summary.api);
-      objects.push({
-        api: summary.api,
-        labelPlural: summary.labelPlural,
-        record,
-        missingDescriptions: describe.fields.filter((f) => !f.description).length,
-        fieldCount: describe.fields.length,
-      });
-    } else {
-      available.push({ api: summary.api, labelPlural: summary.labelPlural });
+  try {
+    const crmObjects = await adapter.listObjects();
+    for (const summary of crmObjects) {
+      const record = await store.getLayoutRecord(TENANT_ID, summary.api);
+      if (record.draft || record.published) {
+        let missingDescriptions = 0;
+        let fieldCount = 0;
+        try {
+          const describe = await adapter.describeObject(summary.api);
+          missingDescriptions = describe.fields.filter((f) => !f.description).length;
+          fieldCount = describe.fields.length;
+        } catch (error) {
+          crmError ??= String(error);
+        }
+        objects.push({
+          api: summary.api,
+          labelPlural: summary.labelPlural,
+          record,
+          missingDescriptions,
+          fieldCount,
+        });
+      } else {
+        available.push({ api: summary.api, labelPlural: summary.labelPlural });
+      }
+    }
+  } catch (error) {
+    crmError = String(error);
+    for (const api of await store.listConfiguredObjects(TENANT_ID)) {
+      const record = await store.getLayoutRecord(TENANT_ID, api);
+      objects.push({ api, labelPlural: api, record, missingDescriptions: 0, fieldCount: 0 });
     }
   }
   const publishes = (await store.listPublishes(TENANT_ID)).slice(0, 6);
@@ -46,6 +65,13 @@ export default async function HomePage() {
       <p className="mt-1 text-[12.5px] text-ink-55">
         38 reps use these cards in chat. Everything here is scoped to one object at a time.
       </p>
+
+      {crmError && (
+        <div className="mt-5 rounded-[10px] border-l-[3px] border-drift-ink bg-drift px-4 py-3 text-[12.5px] text-drift-ink">
+          Couldn't reach the CRM: {crmError} — if this mentions 403/scopes, fix the
+          connection's app permissions and reconnect.
+        </div>
+      )}
 
       {drafted.map((object) => (
         <div

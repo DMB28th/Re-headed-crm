@@ -145,6 +145,7 @@ export class SalesforceAdapter implements CrmAdapter {
         client_id: this.credentials.clientId,
         client_secret: this.credentials.clientSecret,
       }).toString(),
+      signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) throw new CrmAuthError("Salesforce");
     const data = (await res.json()) as { access_token: string };
@@ -158,6 +159,8 @@ export class SalesforceAdapter implements CrmAdapter {
       method,
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      // A hung request must fail visibly, not spin a loading screen forever.
+      signal: AbortSignal.timeout(15_000),
     });
     if (res.status === 401 && !retried) {
       this.token = null;

@@ -7,18 +7,24 @@ type Params = { params: Promise<{ object: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
   const { object } = await params;
-  const store = await getStore();
-  const adapter = await getAdapter();
-  const record = await store.getLayoutRecord(TENANT_ID, object);
-  const describe = await adapter.describeObject(object);
-  // Related-object describes keyed by relationship api — the related-list
-  // picker (3b) needs the target's fields for column choices.
-  const relatedDescribes: Record<string, unknown> = {};
-  for (const rel of describe.relationships) {
-    relatedDescribes[rel.api] = await adapter.describeObject(rel.relatedObject);
+  try {
+    const store = await getStore();
+    const adapter = await getAdapter();
+    const record = await store.getLayoutRecord(TENANT_ID, object);
+    const describe = await adapter.describeObject(object);
+    // Related-object describes keyed by relationship api — the related-list
+    // picker (3b) needs the target's fields for column choices.
+    const relatedDescribes: Record<string, unknown> = {};
+    for (const rel of describe.relationships) {
+      relatedDescribes[rel.api] = await adapter.describeObject(rel.relatedObject);
+    }
+    const diff = record.draft ? diffLayouts(record.published, record.draft) : null;
+    return NextResponse.json({ record, describe, relatedDescribes, diff });
+  } catch (error) {
+    // Surface CRM failures as JSON — an HTML 500 leaves the builder stuck on
+    // "Loading…" forever (live-sandbox feedback 2026-07-11).
+    return NextResponse.json({ error: String(error) }, { status: 502 });
   }
-  const diff = record.draft ? diffLayouts(record.published, record.draft) : null;
-  return NextResponse.json({ record, describe, relatedDescribes, diff });
 }
 
 export async function PUT(req: Request, { params }: Params) {

@@ -166,12 +166,17 @@ export async function POST(req: Request) {
       }
       const recentBlock = config.blocks.find((b) => b.type === "recent");
       const followupsBlock = config.blocks.find((b) => b.type === "followups");
+      // A missing tasks/recents scope must not kill the whole preview.
       const payload: HomeCardPayload = {
         kind: "home-card",
         blocks: config.blocks,
         lists,
-        recent: recentBlock ? await adapter.listRecentRecords("me", recentBlock.limit) : [],
-        tasks: followupsBlock ? (await adapter.listTasks("me")).rows : [],
+        recent: recentBlock
+          ? await adapter.listRecentRecords("me", recentBlock.limit).catch(() => [])
+          : [],
+        tasks: followupsBlock
+          ? (await adapter.listTasks("me").catch(() => ({ rows: [], hasMore: false }))).rows
+          : [],
         capabilities: { writeEnabled: !live },
         provenance: {
           crm: connection.crm,

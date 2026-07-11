@@ -31,6 +31,7 @@ import type {
   ResultsTablePayload,
 } from "@cardstack/core";
 import { HomeCard, RecordCard, ResultsTable, type WidgetHost, type WidgetHostResult } from "@cardstack/widgets/react";
+import { LoadFailed } from "./load-failed";
 import "@cardstack/widgets/styles/theme.css";
 import "@cardstack/widgets/styles/home-card.css";
 import "@cardstack/widgets/styles/results-table.css";
@@ -86,24 +87,36 @@ export function HomeCardBuilder() {
   const [publishedRevision, setPublishedRevision] = useState<number>(1);
   const [publishing, setPublishing] = useState(false);
   const [publishedNote, setPublishedNote] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   useEffect(() => {
     (async () => {
-      const res = await fetch("/api/home-card");
-      const data = (await res.json()) as {
-        homeCard: HomeCardConfig | null;
-        exposedViews: ExposedViewInfo[];
-        connectedUser: string | null;
-      };
-      if (data.homeCard) {
-        setConfig(data.homeCard);
-        setPublishedRevision(data.homeCard.revision);
+      setLoadError(null);
+      try {
+        const res = await fetch("/api/home-card");
+        const data = (await res.json()) as {
+          homeCard: HomeCardConfig | null;
+          exposedViews: ExposedViewInfo[];
+          connectedUser: string | null;
+          error?: string;
+        };
+        if (!res.ok || data.error) {
+          setLoadError(data.error ?? `Request failed (${res.status}).`);
+          return;
+        }
+        if (data.homeCard) {
+          setConfig(data.homeCard);
+          setPublishedRevision(data.homeCard.revision);
+        }
+        setExposedViews(data.exposedViews);
+        if (data.connectedUser) setConnectedUser(data.connectedUser);
+      } catch (error) {
+        setLoadError(String(error));
       }
-      setExposedViews(data.exposedViews);
-      if (data.connectedUser) setConnectedUser(data.connectedUser);
     })();
-  }, []);
+  }, [reloadKey]);
 
   const publish = async () => {
     if (!config) return;
@@ -123,6 +136,9 @@ export function HomeCardBuilder() {
     setPublishing(false);
   };
 
+  if (loadError) {
+    return <LoadFailed error={loadError} onRetry={() => setReloadKey((k) => k + 1)} />;
+  }
   if (!config) return <div className="text-[12.5px] text-ink-45">Loading home card…</div>;
 
   const blockOf = <T extends HomeCardBlock["type"]>(type: T) =>

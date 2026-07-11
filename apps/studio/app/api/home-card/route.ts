@@ -12,19 +12,24 @@ export interface ExposedViewInfo {
 }
 
 export async function GET() {
+  try {
   const store = await getStore();
   const adapter = await getAdapter();
   const homeCard = await store.getHomeCard(TENANT_ID);
   const connection = await store.getConnection(TENANT_ID);
   const connectedUser =
-    connection.status === "connected" ? await adapter.getConnectedUser() : null;
+    connection.status === "connected"
+      ? await adapter.getConnectedUser().catch(() => null)
+      : null;
 
   // Exposed views across EVERY published object (the home card is not deals-only).
   const objects = await store.listConfiguredObjects(TENANT_ID);
   const exposedViews: ExposedViewInfo[] = [];
   for (const object of objects) {
     const exposures = await store.getViewExposures(TENANT_ID, object);
-    const savedViews = await adapter.listSavedViews(object);
+    // A CRM that can't list views (or is missing a scope) must not sink the
+    // whole builder — custom lists still resolve without it.
+    const savedViews = await adapter.listSavedViews(object).catch(() => []);
     const customs = new Map(
       (await store.getCustomLists(TENANT_ID, object)).map((c) => [c.id, c]),
     );
@@ -52,6 +57,9 @@ export async function GET() {
     }
   }
   return NextResponse.json({ homeCard, exposedViews, connection, connectedUser });
+  } catch (error) {
+    return NextResponse.json({ error: String(error) }, { status: 502 });
+  }
 }
 
 export async function POST(req: Request) {

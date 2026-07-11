@@ -15,6 +15,7 @@ import {
   type ViewExposure,
   type ViewExposuresConfig,
 } from "@cardstack/core";
+import { LoadFailed } from "./load-failed";
 
 const OPS: { value: CustomListFilter["op"]; label: string }[] = [
   { value: "eq", label: "is" },
@@ -32,20 +33,32 @@ export function ViewsEditor({ object }: { object: string }) {
   const [exposures, setExposures] = useState<ViewExposuresConfig | null>(null);
   const [saved, setSaved] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     (async () => {
-      const res = await fetch(`/api/views/${object}`);
-      const data = (await res.json()) as {
-        savedViews: SavedView[];
-        exposures: ViewExposuresConfig;
-        describe: ObjectDescribe;
-      };
-      setSavedViews(data.savedViews);
-      setExposures(data.exposures);
-      setDescribe(data.describe);
+      setLoadError(null);
+      try {
+        const res = await fetch(`/api/views/${object}`);
+        const data = (await res.json()) as {
+          savedViews: SavedView[];
+          exposures: ViewExposuresConfig;
+          describe: ObjectDescribe;
+          error?: string;
+        };
+        if (!res.ok || data.error) {
+          setLoadError(data.error ?? `Request failed (${res.status}).`);
+          return;
+        }
+        setSavedViews(data.savedViews);
+        setExposures(data.exposures);
+        setDescribe(data.describe);
+      } catch (error) {
+        setLoadError(String(error));
+      }
     })();
-  }, [object]);
+  }, [object, reloadKey]);
 
   const save = async (next: ViewExposuresConfig) => {
     setExposures(next);
@@ -58,6 +71,9 @@ export function ViewsEditor({ object }: { object: string }) {
     setTimeout(() => setSaved(false), 1600);
   };
 
+  if (loadError) {
+    return <LoadFailed error={loadError} onRetry={() => setReloadKey((k) => k + 1)} />;
+  }
   if (!exposures || !describe) return <div className="text-[12.5px] text-ink-45">Loading…</div>;
 
   const exposureFor = (viewId: string): ViewExposure =>
@@ -194,7 +210,8 @@ export function ViewsEditor({ object }: { object: string }) {
         </div>
         {savedViews.length === 0 && (
           <div className="px-4 py-3 text-[12.5px] text-ink-45">
-            No saved views synced for this object yet.
+            No saved views synced. HubSpot doesn't expose saved views through its public API —
+            define Cardstack lists below instead; they work the same way in chat.
           </div>
         )}
         {savedViews.map((view) => {

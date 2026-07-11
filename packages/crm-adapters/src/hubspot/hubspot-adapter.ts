@@ -142,9 +142,21 @@ export class HubSpotAdapter implements CrmAdapter {
         "Content-Type": "application/json",
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      // A hung request must fail visibly, not spin a loading screen forever.
+      signal: AbortSignal.timeout(15_000),
     });
-    if (res.status === 401 || res.status === 403) throw new CrmAuthError("HubSpot");
+    if (res.status === 401) throw new CrmAuthError("HubSpot");
+    if (res.status === 403) {
+      // Distinct from expiry: the token works but lacks a scope for THIS call.
+      throw new Error(
+        `HubSpot denied ${method} ${path} (403) — the private app is missing a scope. ` +
+          "Check crm.objects.{deals,contacts,companies}.read/write and crm.schemas.*.read.",
+      );
+    }
     if (res.status === 404) throw new CrmRecordNotFoundError("hubspot resource", path);
+    if (res.status === 429) {
+      throw new Error("HubSpot rate limit hit (429) — retry in a few seconds.");
+    }
     if (!res.ok) {
       const detail = (await res.json().catch(() => ({}))) as {
         message?: string;
@@ -258,10 +270,17 @@ export class HubSpotAdapter implements CrmAdapter {
 
   async getRecord(objectApi: string, id: string, fields: string[]): Promise<CrmRecord> {
     const properties = fields.length > 0 ? fields : await this.propertyNames(objectApi);
-    const raw = await this.request<{ id: string; properties: Record<string, string | null> }>(
-      "GET",
-      `/crm/v3/objects/${objectApi}/${id}?properties=${encodeURIComponent(properties.join(","))}`,
-    );
+    // batch/read, not GET: real portals have hundreds of properties and a
+    // ?properties= query string blows past URL limits (the "stuck loading
+    // screen" bug on live sandboxes). POST bodies have no such limit.
+    const batch = await this.request<{
+      results: { id: string; properties: Record<string, string | null> }[];
+    }>("POST", `/crm/v3/objects/${objectApi}/batch/read`, {
+      properties,
+      inputs: [{ id }],
+    });
+    const raw = batch.results[0];
+    if (!raw) throw new CrmRecordNotFoundError(objectApi, id);
     return this.toRecord(objectApi, raw);
   }
 
@@ -333,7 +352,7 @@ export class HubSpotAdapter implements CrmAdapter {
       rows: data.results.map((r) => ({
         id: r.id,
         subject: r.properties.hs_task_subject ?? "(no subject)",
-        dueDate: r.properties.hs_timestamp ? r.properties.hs_timestamp.slice(0, 10) : null,
+        dueDate: taskDate(r.properties.hs_timestamp),
         status: "open" as const,
       })),
       hasMore: false,
@@ -351,7 +370,7 @@ export class HubSpotAdapter implements CrmAdapter {
     return {
       id: raw.id,
       subject: raw.properties.hs_task_subject ?? "(no subject)",
-      dueDate: raw.properties.hs_timestamp ? raw.properties.hs_timestamp.slice(0, 10) : null,
+      dueDate: taskDate(raw.properties.hs_timestamp),
       status: "completed",
     };
   }
@@ -384,9 +403,24 @@ export class HubSpotAdapter implements CrmAdapter {
     }
   }
 
-  /** Connect-time validation: cheapest authenticated call that proves the token. */
+  /**
+   * Connect-time validation: prove the token can read records AND schemas —
+   * a missing crm.schemas scope otherwise passes connect and breaks every
+   * Studio page later (describe 403s).
+   */
   async validateConnection(): Promise<string> {
     await this.request("GET", "/crm/v3/objects/deals?limit=1");
+    await this.describeObject("deals");
     return this.getConnectedUser();
   }
+}
+
+/** hs_timestamp arrives as ISO 8601 or epoch millis depending on the API path. */
+function taskDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (/^\d+$/.test(value)) {
+    const parsed = new Date(Number(value));
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
+  }
+  return value.slice(0, 10);
 }

@@ -537,7 +537,8 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
               ? allExposedViews.filter((e) => listsBlock.viewIds.includes(e.view.id))
               : allExposedViews;
           for (const entry of wanted.slice(0, listsBlock.maxTiles)) {
-            const page = await rowsForView(entry);
+            // One broken view/list degrades its tile, not the whole card.
+            const page = await rowsForView(entry).catch(() => ({ rows: [], hasMore: false, total: 0 }));
             lists.push({
               viewId: entry.view.id,
               name: entry.view.name,
@@ -548,11 +549,14 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         }
 
         const recentBlock = homeCard.blocks.find((b) => b.type === "recent");
+        // Missing tasks/recents scopes degrade those blocks, not the whole card.
         const recent = recentBlock
-          ? await adapter.listRecentRecords("me", recentBlock.limit)
+          ? await adapter.listRecentRecords("me", recentBlock.limit).catch(() => [])
           : [];
         const followupsBlock = homeCard.blocks.find((b) => b.type === "followups");
-        const tasks = followupsBlock ? (await adapter.listTasks("me")).rows : [];
+        const tasks = followupsBlock
+          ? (await adapter.listTasks("me").catch(() => ({ rows: [], hasMore: false }))).rows
+          : [];
 
         // writeEnabled: task check-off is a write; mirror the deals-layout policy.
         const anyLayout = await configStore.getLayout(

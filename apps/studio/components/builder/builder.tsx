@@ -11,6 +11,7 @@ import { Palette } from "./palette";
 import { Canvas } from "./canvas";
 import { Preview } from "./preview";
 import { PublishModal } from "./publish-modal";
+import { LoadFailed } from "../load-failed";
 
 interface LayoutApiResponse {
   record: LayoutRecord;
@@ -28,21 +29,31 @@ export function Builder({ object }: { object: string }) {
   const [rollingBack, setRollingBack] = useState<number | null>(null);
   const [saveState, setSaveState] = useState<"clean" | "saving" | "saved">("clean");
   const [publishOpen, setPublishOpen] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const skipNextSave = useRef(true);
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/layout/${object}`);
-    const data = (await res.json()) as LayoutApiResponse;
-    skipNextSave.current = true;
-    setConfig(data.record.draft ?? data.record.published);
-    setDescribe(data.describe);
-    setRelatedDescribes(data.relatedDescribes ?? {});
-    setPublishedRevision(data.record.published?.revision ?? null);
-    setHistory(
-      data.record.history
-        .map((c) => ({ revision: c.revision, ...(c.name ? { name: c.name } : {}) }))
-        .reverse(),
-    );
+    setLoadError(null);
+    try {
+      const res = await fetch(`/api/layout/${object}`);
+      const data = (await res.json()) as LayoutApiResponse & { error?: string };
+      if (!res.ok || data.error) {
+        setLoadError(data.error ?? `Request failed (${res.status}).`);
+        return;
+      }
+      skipNextSave.current = true;
+      setConfig(data.record.draft ?? data.record.published);
+      setDescribe(data.describe);
+      setRelatedDescribes(data.relatedDescribes ?? {});
+      setPublishedRevision(data.record.published?.revision ?? null);
+      setHistory(
+        data.record.history
+          .map((c) => ({ revision: c.revision, ...(c.name ? { name: c.name } : {}) }))
+          .reverse(),
+      );
+    } catch (error) {
+      setLoadError(String(error));
+    }
   }, [object]);
 
   const rollback = async (revision: number) => {
@@ -82,6 +93,9 @@ export function Builder({ object }: { object: string }) {
     return () => clearTimeout(timer);
   }, [config, object]);
 
+  if (loadError) {
+    return <LoadFailed error={loadError} onRetry={() => void load()} />;
+  }
   if (!config || !describe) {
     return <div className="text-[12.5px] text-ink-45">Loading builder…</div>;
   }

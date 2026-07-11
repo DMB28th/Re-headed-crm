@@ -105,6 +105,35 @@ describe("HubSpotAdapter", () => {
     expect(page).toMatchObject({ total: 12, hasMore: true, cursor: "10" });
   });
 
+  it("getRecord uses batch/read (POST body) — property lists never hit URL limits", async () => {
+    const { impl, calls } = fetchStub([
+      (url) => (url.includes("/crm/v3/properties/deals") ? { status: 200, json: DEAL_PROPERTIES } : undefined),
+      (url, init) =>
+        url.includes("/crm/v3/objects/deals/batch/read") && init?.method === "POST"
+          ? {
+              status: 200,
+              json: { results: [{ id: "d1", properties: { dealname: "Acme", amount: "1200" } }] },
+            }
+          : undefined,
+    ]);
+    const adapter = new HubSpotAdapter({ accessToken: "pat-test" }, impl);
+    const record = await adapter.getRecord("deals", "d1", []);
+    expect(record).toMatchObject({ id: "d1", fields: { dealname: "Acme", amount: 1200 } });
+    const batch = calls.find((c) => c.url.includes("/batch/read"))!;
+    const body = JSON.parse(String(batch.init?.body)) as { properties: string[]; inputs: { id: string }[] };
+    expect(body.inputs).toEqual([{ id: "d1" }]);
+    expect(body.properties).toContain("dealname"); // all describe properties, in the BODY
+    expect(batch.url.length).toBeLessThan(200); // the URL stays tiny
+  });
+
+  it("maps 403 to a missing-scope error that names the fix", async () => {
+    const { impl } = fetchStub([
+      (url) => (url.includes("/crm/v3/properties/contacts") ? { status: 403, json: {} } : undefined),
+    ]);
+    const adapter = new HubSpotAdapter({ accessToken: "pat-test" }, impl);
+    await expect(adapter.describeObject("contacts")).rejects.toThrow(/missing a scope/);
+  });
+
   it("maps 400 responses to CrmValidationError and 401 to CrmAuthError", async () => {
     const { impl } = fetchStub([
       (url, init) =>
