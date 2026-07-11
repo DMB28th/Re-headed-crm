@@ -9,6 +9,14 @@ map to `design/README.md`).
 
 ## Current phase
 
+**M4 core — the home card — is complete.** `pnpm demo:m4` walks "open my CRM"
+→ home-card widget (7a: list tiles with live counts, picked-up-recently,
+follow-ups with overdue rows) → inline-confirmed task check-off via
+`crm_complete_task` → audit log → updateModelContext → re-render drops the
+completed task. Home config is the block-based `HomeCardConfig` (launcher
+blocks only — dashboard blocks don't exist, per the anti-goals); the 8a
+home-card BUILDER in Studio is still open.
+
 **M3 — Studio core — is complete.** `pnpm demo:m3` walks Golden Path 3
 (publish → live layout change, rollback) at the store level, and the same flow
 works through the real Studio UI: `pnpm --filter @cardstack/studio dev` (:3002)
@@ -56,6 +64,7 @@ AdminConfigStore is the interface a DB store implements.
 - `pnpm demo:m2` — Golden Path 2 demo (edit → confirm → receipt → audit)
 - `pnpm demo:m2.5` — saved views demo (alias routing → picker → remembered choice)
 - `pnpm demo:m3` — Golden Path 3 demo (publish → live layout change → rollback)
+- `pnpm demo:m4` — home card demo (lists/recents/follow-ups → confirmed task check-off)
 - `pnpm --filter @cardstack/studio dev` — Studio on :3002 (shares data/cardstack-config.json with the server)
 - `pnpm --filter @cardstack/mcp-server dev` — run the MCP server locally (streamable HTTP on :3001)
 - MCP Inspector: `npx @modelcontextprotocol/inspector` → connect to `http://localhost:3001/mcp`

@@ -1,4 +1,9 @@
-import type { LayoutConfig, ViewExposure, ViewExposuresConfig } from "@cardstack/core";
+import type {
+  HomeCardConfig,
+  LayoutConfig,
+  ViewExposure,
+  ViewExposuresConfig,
+} from "@cardstack/core";
 import {
   exposureKey,
   layoutKey,
@@ -6,11 +11,13 @@ import {
   type LayoutRecord,
   type PublishEvent,
 } from "./types.js";
-import { demoDealsLayout, demoViewExposures } from "./seed.js";
+import { demoDealsLayout, demoHomeCard, demoViewExposures } from "./seed.js";
 
 interface StoreState {
   layouts: Record<string, LayoutRecord>;
   viewExposures: Record<string, ViewExposuresConfig>;
+  /** Keyed tenant::audience. Published-only in M4 core; drafts come with the 8a builder. */
+  homeCards?: Record<string, HomeCardConfig>;
   publishes: PublishEvent[];
 }
 
@@ -25,6 +32,9 @@ export function seededState(): StoreState {
     },
     viewExposures: {
       [exposureKey(demoViewExposures.tenantId, demoViewExposures.object)]: demoViewExposures,
+    },
+    homeCards: {
+      [`${demoHomeCard.tenantId}::${demoHomeCard.audience}`]: demoHomeCard,
     },
     publishes: [],
   };
@@ -175,6 +185,21 @@ export abstract class BaseConfigStore implements AdminConfigStore {
   async listPublishes(tenantId: string): Promise<PublishEvent[]> {
     const state = await this.load();
     return state.publishes.filter((p) => p.tenantId === tenantId).reverse();
+  }
+
+  async getHomeCard(tenantId: string, audience = "default"): Promise<HomeCardConfig | undefined> {
+    const state = await this.load();
+    // ?? handles config files written before homeCards existed.
+    return (state.homeCards ?? {})[`${tenantId}::${audience}`];
+  }
+
+  async setHomeCard(config: HomeCardConfig): Promise<void> {
+    const state = await this.load();
+    state.homeCards = {
+      ...(state.homeCards ?? {}),
+      [`${config.tenantId}::${config.audience}`]: config,
+    };
+    await this.save(state);
   }
 }
 

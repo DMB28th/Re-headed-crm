@@ -15,7 +15,7 @@
     "./styles/record-card.css": "./src/record-card/record-card.css"
   },
   "scripts": {
-    "build": "INPUT=record-card.html vite build && INPUT=results-table.html vite build",
+    "build": "INPUT=record-card.html vite build && INPUT=results-table.html vite build && INPUT=home-card.html vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "echo 'widgets: covered by mcp-server integration tests'"
   },

@@ -53,6 +53,7 @@ export interface ServerDeps {
 
 const RECORD_CARD_URI = "ui://cardstack/record-card";
 const RESULTS_TABLE_URI = "ui://cardstack/results-table";
+const HOME_CARD_URI = "ui://cardstack/home-card";
 
 const OPEN_STAGE_EXCLUSIONS = ["Closed won", "Closed lost"];
 
@@ -102,6 +103,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
   for (const [uri, widget] of [
     [RECORD_CARD_URI, "record-card"],
     [RESULTS_TABLE_URI, "results-table"],
+    [HOME_CARD_URI, "home-card"],
   ] as [string, WidgetName][]) {
     registerAppResource(
       server,
@@ -453,6 +455,126 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     },
   );
 
+  // --- crm_home → home-card widget ("open my CRM", 7a) ---
+  registerAppTool(
+    server,
+    "crm_home",
+    {
+      title: "Open the CRM home card",
+      description:
+        "Render the rep's CRM launcher: their saved-view tiles, recently touched records, and " +
+        "open follow-up tasks. Use when the user asks to open/see their CRM, their day, their " +
+        "tasks or follow-ups — without naming a specific record or view.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+      _meta: { ui: { resourceUri: HOME_CARD_URI } },
+    },
+    async (): Promise<CallToolResult> => {
+      try {
+        const homeCard = await configStore.getHomeCard(tenantId);
+        if (!homeCard) throw new Error("No home card is configured for this workspace.");
+
+        const listsBlock = homeCard.blocks.find((b) => b.type === "lists");
+        const lists = [];
+        if (listsBlock) {
+          const wanted =
+            listsBlock.source === "curated"
+              ? allExposedViews.filter((e) => listsBlock.viewIds.includes(e.view.id))
+              : allExposedViews;
+          for (const entry of wanted.slice(0, listsBlock.maxTiles)) {
+            const page = await adapter.getViewRows(entry.view.id);
+            lists.push({
+              viewId: entry.view.id,
+              name: entry.view.name,
+              filterSummary: entry.view.filterSummary,
+              count: page.total ?? page.rows.length,
+            });
+          }
+        }
+
+        const recentBlock = homeCard.blocks.find((b) => b.type === "recent");
+        const recent = recentBlock
+          ? await adapter.listRecentRecords("me", recentBlock.limit)
+          : [];
+        const followupsBlock = homeCard.blocks.find((b) => b.type === "followups");
+        const tasks = followupsBlock ? (await adapter.listTasks("me")).rows : [];
+
+        // writeEnabled: task check-off is a write; mirror the deals-layout policy.
+        const anyLayout = await configStore.getLayout(
+          tenantId,
+          (await configStore.listConfiguredObjects(tenantId))[0] ?? "deals",
+        );
+        const payload = {
+          kind: "home-card",
+          blocks: homeCard.blocks,
+          lists,
+          recent,
+          tasks,
+          capabilities: { writeEnabled: anyLayout?.permissions.writeEnabled ?? false },
+          provenance: {
+            crm: anyLayout?.crm ?? "hubspot",
+            crmLabel: anyLayout?.crm === "salesforce" ? "Salesforce" : "HubSpot",
+            layoutRevision: homeCard.revision,
+            connectedUser: await adapter.getConnectedUser(),
+          },
+        };
+        const overdue = tasks.filter((t) => t.dueDate !== null && t.dueDate < today()).length;
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                `Rendered the CRM home card: ${lists.length} list tiles (${lists
+                  .map((l) => `${l.name}: ${l.count}`)
+                  .join(", ")}), ${recent.length} recent records, ${tasks.length} open follow-ups` +
+                (overdue > 0 ? ` (${overdue} overdue)` : "") +
+                ".",
+            },
+          ],
+          structuredContent: payload as unknown as Record<string, unknown>,
+        };
+      } catch (error) {
+        return asToolError(error);
+      }
+    },
+  );
+
+  // --- crm_complete_task (widget-invoked after inline confirm, or model-invoked) ---
+  server.registerTool(
+    "crm_complete_task",
+    {
+      title: "Complete a CRM task",
+      description: "Mark a CRM follow-up task as completed. This is a write and is logged.",
+      inputSchema: { id: z.string() },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    },
+    async (args): Promise<CallToolResult> => {
+      try {
+        const task = await adapter.completeTask(args.id);
+        const writtenAs = await adapter.getConnectedUser();
+        await auditLog.append({
+          tenantId,
+          user: writtenAs,
+          object: "tasks",
+          recordId: task.id,
+          changes: [{ field: "status", before: "open", after: "completed" }],
+          timestamp: new Date().toISOString(),
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Completed task "${task.subject}"${task.relatedRecordName ? ` (${task.relatedRecordName})` : ""}. Written as ${writtenAs}; logged.`,
+            },
+          ],
+          structuredContent: { task } as unknown as Record<string, unknown>,
+        };
+      } catch (error) {
+        return asToolError(error);
+      }
+    },
+  );
+
   // --- crm_update_record (widget-invoked after the confirmation diff, or model-invoked) ---
   server.registerTool(
     "crm_update_record",
@@ -650,6 +772,10 @@ function receiptText(payload: WriteReceiptPayload): string {
   }
   text += ` Written as ${payload.writtenAs}; logged in ${payload.provenance.crmLabel} history.`;
   return text;
+}
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function formatPlain(value: unknown): string {

@@ -4,6 +4,7 @@
  * time anymore (Golden Path 3).
  */
 import {
+  HomeCardConfig,
   parseLayoutConfig,
   ViewExposuresConfig,
   type LayoutConfig,
@@ -71,5 +72,18 @@ export const demoViewExposures: ViewExposuresConfig = ViewExposuresConfig.parse(
     { viewId: "v-02", exposed: true, aliases: ["deals closing this quarter", "closing soon"] },
     { viewId: "v-03", exposed: true, aliases: ["renewal deals", "renewals"] },
     { viewId: "v-04", exposed: false, aliases: [] },
+  ],
+});
+
+/** Default home card (7a): launcher blocks only — no dashboard blocks exist. */
+export const demoHomeCard: HomeCardConfig = HomeCardConfig.parse({
+  version: 1,
+  tenantId: DEMO_TENANT_ID,
+  audience: "default",
+  revision: 1,
+  blocks: [
+    { type: "lists", source: "all", maxTiles: 4, viewIds: [] },
+    { type: "recent", limit: 3 },
+    { type: "followups", limit: 5 },
   ],
 });

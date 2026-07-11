@@ -21,6 +21,7 @@ pnpm demo:m1    # search → results table → record card
 pnpm demo:m2    # edit → confirmation diff → receipt → audit log → model context
 pnpm demo:m2.5  # "my deals" → saved view · ambiguous ask → picker → remembered
 pnpm demo:m3    # Studio publish → live layout change (no deploy) → rollback
+pnpm demo:m4    # "open my CRM" → home card → confirmed task check-off
 
 pnpm --filter @cardstack/studio dev        # Studio on :3002
 pnpm --filter @cardstack/mcp-server dev    # MCP server on :3001 — same config file

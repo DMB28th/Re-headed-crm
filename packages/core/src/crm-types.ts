@@ -129,6 +129,16 @@ export interface FlowSummary {
   writesSummary: string;
 }
 
+/** "Picked up recently" entry on the home card (design 7a). */
+export interface RecentRecord {
+  id: string;
+  object: string;
+  name: string;
+  /** One-line activity note ("Contract emailed · 2d ago" without the timestamp). */
+  note: string;
+  timestamp: string;
+}
+
 export interface ActivityEntry {
   id: string;
   kind: "email" | "call" | "note" | "meeting";

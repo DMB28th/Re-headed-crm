@@ -308,6 +308,50 @@ describe("M2.5: saved views (crm_list_view)", () => {
   });
 });
 
+describe("M4: home card (crm_home + crm_complete_task)", () => {
+  it("renders the launcher: list tiles with counts, recents, follow-ups", async () => {
+    const result = await client.callTool({ name: "crm_home", arguments: {} });
+    expect(result.isError).toBeFalsy();
+    const payload = result.structuredContent as {
+      kind: string;
+      lists: { name: string; count: number }[];
+      recent: unknown[];
+      tasks: { id: string }[];
+      capabilities: { writeEnabled: boolean };
+    };
+    expect(payload.kind).toBe("home-card");
+    expect(payload.lists.length).toBeGreaterThanOrEqual(3);
+    expect(payload.lists.find((l) => l.name === "My open deals")?.count).toBe(13);
+    expect(payload.recent.length).toBe(3);
+    expect(payload.tasks.length).toBeGreaterThan(0);
+    expect(payload.capabilities.writeEnabled).toBe(true);
+    expect(textOf(result)).toContain("overdue");
+  });
+
+  it("linked to the home-card widget resource", async () => {
+    const { tools } = await client.listTools();
+    const home = tools.find((t) => t.name === "crm_home")!;
+    const ui = (home._meta as { ui?: { resourceUri?: string } })?.ui?.resourceUri;
+    expect(ui).toBe("ui://cardstack/home-card");
+    const { contents } = await client.readResource({ uri: "ui://cardstack/home-card" });
+    expect((contents[0] as { text: string }).text).toContain("<!DOCTYPE html>");
+  });
+
+  it("task check-off is a logged write and drops off the open list", async () => {
+    const done = await client.callTool({ name: "crm_complete_task", arguments: { id: "t-01" } });
+    expect(done.isError).toBeFalsy();
+    expect(textOf(done)).toContain("Countersign Meridian renewal");
+    expect(textOf(done)).toContain("Written as Dan K.");
+
+    const entries = await auditLog.list(DEMO_TENANT_ID);
+    expect(entries[0]).toMatchObject({ object: "tasks", recordId: "t-01" });
+
+    const home = await client.callTool({ name: "crm_home", arguments: {} });
+    const payload = home.structuredContent as { tasks: { id: string }[] };
+    expect(payload.tasks.find((t) => t.id === "t-01")).toBeUndefined();
+  });
+});
+
 describe("server-side security enforcement", () => {
   it("the denylisted field never appears in any payload, meta, or config", async () => {
     for (const call of [

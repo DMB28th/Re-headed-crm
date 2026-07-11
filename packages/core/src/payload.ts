@@ -11,9 +11,12 @@ import type {
   ActivityEntry,
   CrmFieldValue,
   CrmRecord,
+  CrmTask,
   FieldDescribe,
+  RecentRecord,
   RecordPage,
 } from "./crm-types.js";
+import type { HomeCardBlock } from "./home-card.js";
 
 /** Merged live describe metadata, exposed fields only. Keyed by field API name. */
 export type DescribeMetaMap = Record<string, FieldDescribe>;
@@ -108,8 +111,27 @@ export interface WriteReceiptPayload {
   provenance: WidgetProvenance;
 }
 
+/** structuredContent for crm_home → the home-card widget (design 7a). */
+export interface HomeListTile {
+  viewId: string;
+  name: string;
+  filterSummary: string;
+  count: number;
+}
+
+export interface HomeCardPayload {
+  kind: "home-card";
+  blocks: HomeCardBlock[];
+  lists: HomeListTile[];
+  recent: RecentRecord[];
+  tasks: CrmTask[];
+  capabilities: { writeEnabled: boolean };
+  provenance: WidgetProvenance;
+}
+
 export type WidgetPayload =
   | RecordCardPayload
   | ResultsTablePayload
   | WriteReceiptPayload
-  | ViewPickerPayload;
+  | ViewPickerPayload
+  | HomeCardPayload;

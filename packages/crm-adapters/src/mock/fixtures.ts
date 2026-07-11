@@ -10,6 +10,7 @@ import type {
   FieldDescribe,
   FlowSummary,
   ObjectDescribe,
+  RecentRecord,
   RuleSummary,
   SavedView,
 } from "@cardstack/core";
@@ -188,6 +189,14 @@ export const TASKS: CrmTask[] = [
   { id: "t-04", subject: "Send Summit Ridge security questionnaire", dueDate: "2026-07-08", status: "open", relatedRecordId: "d-007", relatedRecordName: "Summit Ridge Insurance — claims suite" },
   { id: "t-05", subject: "Book Cobalt site visit", dueDate: "2026-07-15", status: "open", relatedRecordId: "d-005", relatedRecordName: "Cobalt Manufacturing — pilot to production" },
   { id: "t-06", subject: "Log Pinebrook kickoff notes", dueDate: "2026-07-01", status: "completed", relatedRecordId: "d-012", relatedRecordName: "Pinebrook Schools — district license" },
+];
+
+export const RECENT_RECORDS: RecentRecord[] = [
+  { id: "d-001", object: "deals", name: "Meridian Health — annual renewal", note: "Contract emailed to Rachel Sato", timestamp: "2026-07-08T15:12:00Z" },
+  { id: "d-002", object: "deals", name: "Ardent Logistics — expansion", note: "MSA redlines sent to legal", timestamp: "2026-07-07T11:02:00Z" },
+  { id: "c-001", object: "contacts", name: "Rachel Sato", note: "Opened the proposal twice yesterday", timestamp: "2026-07-06T19:40:00Z" },
+  { id: "d-004", object: "deals", name: "Nordwind Travel — renewal", note: "Procurement portal registration pending", timestamp: "2026-07-06T08:15:00Z" },
+  { id: "co-01", object: "companies", name: "Meridian Health Systems", note: "New security contact added", timestamp: "2026-07-05T10:05:00Z" },
 ];
 
 export const VALIDATION_RULES: RuleSummary[] = [

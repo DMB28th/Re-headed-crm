@@ -13,6 +13,7 @@ import type {
   FlowSummary,
   ObjectDescribe,
   ObjectSummary,
+  RecentRecord,
   RecordPage,
   RelatedListConfig,
   RuleSummary,
@@ -183,6 +184,10 @@ export class MockCrmAdapter implements CrmAdapter {
 
   async listTasks(_userScope: string): Promise<TaskPage> {
     return { rows: clone(this.tasks.filter((t) => t.status === "open")), hasMore: false };
+  }
+
+  async listRecentRecords(_userScope: string, limit: number): Promise<RecentRecord[]> {
+    return clone(fixtures.RECENT_RECORDS).slice(0, limit);
   }
 
   async completeTask(id: string): Promise<CrmTask> {

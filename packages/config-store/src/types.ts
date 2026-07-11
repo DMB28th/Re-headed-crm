@@ -1,4 +1,9 @@
-import type { LayoutConfig, ViewExposure, ViewExposuresConfig } from "@cardstack/core";
+import type {
+  HomeCardConfig,
+  LayoutConfig,
+  ViewExposure,
+  ViewExposuresConfig,
+} from "@cardstack/core";
 
 /**
  * Read side — what the MCP server needs at render time. Reps only ever see
@@ -13,6 +18,8 @@ export interface ConfigStore {
   listConfiguredObjects(tenantId: string): Promise<string[]>;
   /** Exposed saved-view config only (unexposed views stay invisible to chat). */
   getViewExposures(tenantId: string, object: string): Promise<ViewExposure[]>;
+  /** Published home-card config for "open my CRM" (design 7a). */
+  getHomeCard(tenantId: string, audience?: string): Promise<HomeCardConfig | undefined>;
 }
 
 /** One (tenant, object, audience) slot: draft vs published + rollback history. */
@@ -51,6 +58,7 @@ export interface AdminConfigStore extends ConfigStore {
     object: string,
   ): Promise<ViewExposuresConfig | undefined>;
   setViewExposures(config: ViewExposuresConfig): Promise<void>;
+  setHomeCard(config: HomeCardConfig): Promise<void>;
   listPublishes(tenantId: string): Promise<PublishEvent[]>;
 }
 

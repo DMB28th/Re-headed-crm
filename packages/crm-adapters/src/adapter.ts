@@ -10,6 +10,7 @@ import type {
   FlowSummary,
   ObjectDescribe,
   ObjectSummary,
+  RecentRecord,
   RecordPage,
   RelatedListConfig,
   RuleSummary,
@@ -35,9 +36,10 @@ export interface CrmAdapter {
   listSavedViews(objectApi: string): Promise<SavedView[]>;
   getViewRows(viewId: string, cursor?: string): Promise<RecordPage>;
 
-  // Tasks / follow-ups (home card, 7a)
+  // Tasks / follow-ups + recents (home card, 7a)
   listTasks(userScope: string): Promise<TaskPage>;
   completeTask(id: string): Promise<CrmTask>;
+  listRecentRecords(userScope: string, limit: number): Promise<RecentRecord[]>;
 
   // Governance metadata (3d, 10c)
   getValidationRules(objectApi: string): Promise<RuleSummary[]>;
