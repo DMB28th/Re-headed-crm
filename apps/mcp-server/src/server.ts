@@ -201,7 +201,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
 
         const page = await adapter.search(config.object, query);
         const title = searchTitle(args, page.total ?? page.rows.length, config.object);
-        const payload = await buildResultsTablePayload({ adapter, config, page, title });
+        const payload = await buildResultsTablePayload({ source: adapter, config, page, title });
 
         const top = page.rows[0];
         const topLine = top
@@ -262,7 +262,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         }
 
         const record = await adapter.getRecord(config.object, id, []);
-        const payload = await buildRecordCardPayload({ adapter, config, record });
+        const payload = await buildRecordCardPayload({ source: adapter, config, record });
 
         return {
           content: [
@@ -426,7 +426,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         if (!match) throw new Error("Could not resolve a saved view.");
         const page = await adapter.getViewRows(match.view.id, args.cursor);
         const payload = await buildResultsTablePayload({
-          adapter,
+          source: adapter,
           config,
           page,
           title: match.view.name,

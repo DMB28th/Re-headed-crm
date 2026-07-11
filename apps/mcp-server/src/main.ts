@@ -7,18 +7,20 @@ import cors from "cors";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { MockCrmAdapter } from "@cardstack/crm-adapters";
 import { createCardstackServer } from "./server.js";
-import { DEMO_TENANT_ID, InMemoryConfigStore } from "./config/store.js";
+import { defaultConfigPath, DEMO_TENANT_ID, FileConfigStore } from "./config/store.js";
 import { InMemoryAuditLog } from "./audit.js";
 import { InMemoryPreferenceStore } from "./config/preferences.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
 
-// Durable-ish state shared across stateless requests (Postgres in M3+; the
-// mock adapter is also shared so demo writes survive between tool calls).
+// Durable-ish state shared across stateless requests (the mock adapter is
+// shared so demo writes survive between tool calls). Config comes from the
+// file store Studio writes to — published layouts are read at render time,
+// so a Studio publish changes the next render with no restart (GP3).
 const auditLog = new InMemoryAuditLog();
 const preferences = new InMemoryPreferenceStore();
 const adapter = new MockCrmAdapter();
-const configStore = new InMemoryConfigStore();
+const configStore = new FileConfigStore(defaultConfigPath());
 
 const app = express();
 app.use(cors());

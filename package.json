@@ -16,7 +16,8 @@
     "dev": "turbo run dev",
     "demo:m1": "pnpm --filter @cardstack/mcp-server demo",
     "demo:m2": "pnpm --filter @cardstack/mcp-server demo:m2",
-    "demo:m2.5": "pnpm --filter @cardstack/mcp-server demo:m25"
+    "demo:m2.5": "pnpm --filter @cardstack/mcp-server demo:m25",
+    "demo:m3": "pnpm --filter @cardstack/mcp-server demo:m3"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild"]

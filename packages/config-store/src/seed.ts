@@ -1,7 +1,7 @@
 /**
- * M1: one hardcoded demo tenant (Studio replaces this in M3 — the server
- * already reads through the ConfigStore interface, so swapping to Postgres
- * is a store implementation, not a server change).
+ * Demo tenant seed — the M1/M2 hardcoded config, now the initial state of any
+ * fresh config store. Studio edits from here; nothing is hardcoded at render
+ * time anymore (Golden Path 3).
  */
 import {
   parseLayoutConfig,
@@ -51,7 +51,6 @@ export const demoDealsLayout: LayoutConfig = parseLayoutConfig({
     actions: [{ type: "update_record", label: "Save changes" }],
   },
   permissions: {
-    // M2: writes on — edit mode, confirmation diff, receipt, partial failure.
     writeEnabled: true,
     fieldDenylist: ["commission"],
     requireConfirmation: true,
@@ -59,9 +58,9 @@ export const demoDealsLayout: LayoutConfig = parseLayoutConfig({
 });
 
 /**
- * M2.5 demo view exposures. The overlapping "…deals…" aliases are deliberate:
- * a bare "deals" ask matches three views and exercises the ambiguous-ask
- * picker (design 5b). v-04 stays unexposed (private view, toggle off).
+ * Demo view exposures. The overlapping "…deals…" aliases are deliberate: a
+ * bare "deals" ask matches three views and exercises the ambiguous-ask picker
+ * (design 5b). v-04 stays unexposed (private view, toggle off).
  */
 export const demoViewExposures: ViewExposuresConfig = ViewExposuresConfig.parse({
   version: 1,

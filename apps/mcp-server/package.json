@@ -11,10 +11,12 @@
     "start": "node dist/main.js",
     "demo": "tsx scripts/demo.ts",
     "demo:m2": "tsx scripts/demo-m2.ts",
-    "demo:m25": "tsx scripts/demo-m25.ts"
+    "demo:m25": "tsx scripts/demo-m25.ts",
+    "demo:m3": "tsx scripts/demo-m3.ts"
   },
   "dependencies": {
     "@cardstack/core": "workspace:*",
+    "@cardstack/config-store": "workspace:*",
     "@cardstack/crm-adapters": "workspace:*",
     "@cardstack/widgets": "workspace:*",
     "@modelcontextprotocol/ext-apps": "^1.7.4",

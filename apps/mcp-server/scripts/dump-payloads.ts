@@ -17,7 +17,7 @@ const store = new InMemoryConfigStore();
 const config = (await store.getLayout(DEMO_TENANT_ID, "deals"))!;
 
 const record = await adapter.getRecord("deals", "d-001", []);
-const card = await buildRecordCardPayload({ adapter, config, record });
+const card = await buildRecordCardPayload({ source: adapter, config, record });
 
 const page = await adapter.search("deals", {
   filters: [
@@ -29,7 +29,7 @@ const page = await adapter.search("deals", {
   limit: 10,
 });
 const table = await buildResultsTablePayload({
-  adapter,
+  source: adapter,
   config,
   page,
   title: "7 open deals over $50,000",
