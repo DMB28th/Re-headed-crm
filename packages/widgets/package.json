@@ -9,7 +9,10 @@
     ".": {
       "types": "./node/index.d.ts",
       "default": "./node/index.js"
-    }
+    },
+    "./react": "./src/react.ts",
+    "./styles/theme.css": "./src/shared/theme.css",
+    "./styles/record-card.css": "./src/record-card/record-card.css"
   },
   "scripts": {
     "build": "INPUT=record-card.html vite build && INPUT=results-table.html vite build",

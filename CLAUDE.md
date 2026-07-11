@@ -9,17 +9,23 @@ map to `design/README.md`).
 
 ## Current phase
 
-**M2.5 — saved views — is complete.** `pnpm demo:m2.5` shows: exposed views +
-"Ask Claude with" aliases baked into `crm_list_view`'s tool description for
-model routing; unique asks resolve straight to view rows; ambiguous asks render
-the picker (5b) and the pick is remembered per phrasing. M1 (`pnpm demo:m1`)
-and M2 (`pnpm demo:m2`) golden paths also pass.
+**M3 — Studio core — is complete.** `pnpm demo:m3` walks Golden Path 3
+(publish → live layout change, rollback) at the store level, and the same flow
+works through the real Studio UI: `pnpm --filter @cardstack/studio dev` (:3002)
+→ builder (2a: palette / canvas with dnd / live REAL-widget preview) → publish
+diff modal (2b) → the MCP server serves the new revision on its next render
+via the shared file-backed config store (`data/cardstack-config.json`).
+Also shipped: nav shell (12b), home (6b), permissions (2e, confirmation locked
+ON), lists/exposures (5a), assignment teaching state, connections (2c, mock).
+All golden paths M1/M2/M2.5/M3 pass.
 
-**Next: M3 — Studio** (connect/onboarding, layout builder with live REAL widget
-preview, permissions, assignment, publish/rollback; design refs 2a–2i, 3a–3e,
-6a, 6b, 12b). Studio theme = design tokens in design/README.md → Tailwind
-config in apps/studio. Still open from M2's design refs: stale-card strip and
-re-auth state (need host/staleness signals).
+**Still open from M3's design refs** (next session, before M4): assignment
+matrix + View-as (2f–2i beyond the teaching state), onboarding auto-generation
+(2c), rollback button in the UI (API + store support exist; home lists publish
+history), actions editor (3a), related-list picker (3b), object picker (3c),
+requirements pass-through (3d), audience picker (3e). Stale-card strip and
+re-auth widget states also still open. Postgres deliberately deferred —
+AdminConfigStore is the interface a DB store implements.
 
 ## Hard rules
 
@@ -49,14 +55,17 @@ re-auth state (need host/staleness signals).
 - `pnpm demo:m1` — Golden Path 1 demo (search → results table → record card)
 - `pnpm demo:m2` — Golden Path 2 demo (edit → confirm → receipt → audit)
 - `pnpm demo:m2.5` — saved views demo (alias routing → picker → remembered choice)
+- `pnpm demo:m3` — Golden Path 3 demo (publish → live layout change → rollback)
+- `pnpm --filter @cardstack/studio dev` — Studio on :3002 (shares data/cardstack-config.json with the server)
 - `pnpm --filter @cardstack/mcp-server dev` — run the MCP server locally (streamable HTTP on :3001)
 - MCP Inspector: `npx @modelcontextprotocol/inspector` → connect to `http://localhost:3001/mcp`
 
 ## Layout
 
 - `apps/mcp-server` — MCP server, streamable HTTP, stateless JSON
-- `apps/studio` — Next.js admin UI (M3; not started)
-- `packages/core` — layout config zod schema, payload contract, shared types
+- `apps/studio` — Next.js admin UI (builder imports the REAL widget for preview)
+- `packages/core` — layout config zod schema, payload contract, payload assembly, shared types
+- `packages/config-store` — draft/publish/rollback config storage (file-backed; Postgres later)
 - `packages/crm-adapters` — `CrmAdapter` interface, `mock/` (M1), `hubspot/` (M1.5), `salesforce/` (M2)
 - `packages/widgets` — widget source → Vite single-file HTML bundles
 - `design/` — design canvas + README (source of truth for UI)

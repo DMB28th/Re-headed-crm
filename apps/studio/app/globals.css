@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+/*
+ * Studio design tokens (design/README.md "Design Tokens" — Studio ONLY;
+ * the widget inherits host tokens and must never use these).
+ */
+@theme {
+  --color-paper: #f6f6f4;
+  --color-surface: #ffffff;
+  --color-ink: #191c24;
+  --color-ink-55: rgba(25, 28, 36, 0.55);
+  --color-ink-45: rgba(25, 28, 36, 0.45);
+  --color-accent: #2f3550;
+  --color-accent-hover: #252a40;
+  --color-line: rgba(20, 24, 40, 0.1);
+  --color-line-soft: rgba(20, 24, 40, 0.08);
+  --color-draft: #faf3dd;
+  --color-draft-ink: #8a5a10;
+  --color-published: #eefaf2;
+  --color-published-ink: #1c6b46;
+  --color-drift: #fbeae7;
+  --color-drift-ink: #9a3b30;
+  --color-crmmeta: #f0edf7;
+  --color-crmmeta-ink: #5a4a8a;
+  --color-success-dot: #1c9d5f;
+  --color-warn-dot: #c47d1e;
+
+  --font-sans: "Instrument Sans Variable", "Instrument Sans", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --radius-control: 7px;
+  --radius-input: 9px;
+  --radius-row: 10px;
+  --radius-card: 13px;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-size: 12.5px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Shared Studio primitives */
+.st-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-card);
+}
+
+.st-section-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-55);
+}
+
+.st-chip-mono {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.st-btn {
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 6px 13px;
+  border-radius: var(--radius-input);
+  border: 1px solid var(--color-line);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.st-btn:hover {
+  background: var(--color-paper);
+}
+.st-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(47, 53, 80, 0.14);
+}
+.st-btn--primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+.st-btn--primary:hover {
+  background: var(--color-accent-hover);
+}
+.st-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.st-input {
+  font-size: 12.5px;
+  padding: 5px 9px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-input);
+  background: var(--color-surface);
+}
+.st-input:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(47, 53, 80, 0.14);
+}

@@ -9,10 +9,10 @@ standard (SEP-1865).
 - **design/** — high-fidelity design reference (open `design/Cardstack Designs.dc.html` in a browser; ids `1a`–`12b` map to `design/README.md`)
 - **CLAUDE.md** — working rules + current milestone
 
-## Status: M2.5
+## Status: M3 (Studio core)
 
-Record card + results table with the full write path and saved-view resolution,
-all against the mock adapter:
+Record card + results table with the full write path, saved-view resolution,
+and the Studio admin app — all against the mock adapter:
 
 ```bash
 pnpm install
@@ -20,7 +20,16 @@ pnpm build
 pnpm demo:m1    # search → results table → record card
 pnpm demo:m2    # edit → confirmation diff → receipt → audit log → model context
 pnpm demo:m2.5  # "my deals" → saved view · ambiguous ask → picker → remembered
+pnpm demo:m3    # Studio publish → live layout change (no deploy) → rollback
+
+pnpm --filter @cardstack/studio dev        # Studio on :3002
+pnpm --filter @cardstack/mcp-server dev    # MCP server on :3001 — same config file
 ```
+
+Studio's layout builder renders the **real widget component** in its preview
+rail (one render codepath — the plan's most important Studio decision), and
+publishing writes to the shared config store the MCP server reads at render
+time: change a layout, publish, and the next card in chat is the new version.
 
 Writes follow the design's spine: every write shows a FIELD/BEFORE/AFTER
 confirmation diff, collapses to a receipt on success, salvages partial failures
