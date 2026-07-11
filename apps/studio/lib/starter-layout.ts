@@ -8,6 +8,7 @@ import { parseLayoutConfig, type LayoutConfig, type ObjectDescribe } from "@card
 export function generateStarterLayout(
   tenantId: string,
   describe: ObjectDescribe,
+  crm: "hubspot" | "salesforce" = "hubspot",
 ): LayoutConfig {
   const fields = describe.fields;
   const title =
@@ -22,7 +23,7 @@ export function generateStarterLayout(
   return parseLayoutConfig({
     version: 1,
     tenantId,
-    crm: "hubspot",
+    crm,
     object: describe.api,
     audience: "default",
     name: `${describe.labelPlural} card`,

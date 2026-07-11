@@ -22,21 +22,15 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import {
-  buildRecordCardPayload,
-  buildResultsTablePayload,
-  parseLayoutConfig,
-  type CustomList,
-  type HomeCardBlock,
-  type HomeCardConfig,
-  type HomeCardPayload,
-  type LayoutConfig,
-  type RecordCardPayload,
-  type ResultsTablePayload,
+import type {
+  CustomList,
+  HomeCardBlock,
+  HomeCardConfig,
+  HomeCardPayload,
+  RecordCardPayload,
+  ResultsTablePayload,
 } from "@cardstack/core";
-import { MockCrmAdapter } from "@cardstack/crm-adapters";
-import { HomeCard, RecordCard, ResultsTable, type WidgetHost } from "@cardstack/widgets/react";
-import { createPreviewHost } from "../lib/preview-host";
+import { HomeCard, RecordCard, ResultsTable, type WidgetHost, type WidgetHostResult } from "@cardstack/widgets/react";
 import "@cardstack/widgets/styles/theme.css";
 import "@cardstack/widgets/styles/home-card.css";
 import "@cardstack/widgets/styles/results-table.css";
@@ -48,6 +42,20 @@ interface ExposedViewInfo {
   name: string;
   filterSummary: string;
   custom?: CustomList;
+}
+
+async function previewCall(body: Record<string, unknown>): Promise<{
+  payload?: unknown;
+  text?: string;
+  error?: string;
+  live?: boolean;
+}> {
+  const res = await fetch("/api/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return (await res.json()) as { payload?: unknown; text?: string; error?: string; live?: boolean };
 }
 
 const BLOCK_META: Record<
@@ -350,7 +358,7 @@ function BlockToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
 
 type Drill =
   | { kind: "view"; payload: ResultsTablePayload }
-  | { kind: "record"; payload: RecordCardPayload; configJson: string }
+  | { kind: "record"; payload: RecordCardPayload; object: string }
   | null;
 
 function HomeCardPreview({
@@ -362,122 +370,58 @@ function HomeCardPreview({
   exposedViews: ExposedViewInfo[];
   connectedUser: string;
 }) {
-  const adapter = useMemo(() => new MockCrmAdapter(), []);
   const [payload, setPayload] = useState<HomeCardPayload | null>(null);
+  const [live, setLive] = useState(false);
   const [drill, setDrill] = useState<Drill>(null);
   const [drillError, setDrillError] = useState<string | null>(null);
-  const [layoutCache] = useState<Map<string, LayoutConfig>>(() => new Map());
   const configJson = JSON.stringify(config);
   const exposedJson = JSON.stringify(exposedViews);
 
-  const rowsFor = useMemo(
-    () => async (view: ExposedViewInfo) => {
-      if (view.custom) {
-        return adapter.search(view.object, {
-          ...(view.custom.filters.length > 0 ? { filters: view.custom.filters } : {}),
-          ...(view.custom.sort ? { sort: view.custom.sort } : {}),
-        });
-      }
-      return adapter.getViewRows(view.viewId);
-    },
-    [adapter],
-  );
-
+  // Server-assembled payload — the exact codepath crm_home runs, against the
+  // tenant's actual connection (mock or live CRM).
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      const parsed = JSON.parse(configJson) as HomeCardConfig;
-      const exposed = JSON.parse(exposedJson) as ExposedViewInfo[];
-      const listsBlock = parsed.blocks.find((b) => b.type === "lists");
-      const lists = [];
-      if (listsBlock) {
-        const wanted =
-          listsBlock.source === "curated"
-            ? exposed.filter((v) => listsBlock.viewIds.includes(v.viewId))
-            : exposed;
-        for (const view of wanted.slice(0, listsBlock.maxTiles)) {
-          const page = await rowsFor(view);
-          lists.push({
-            viewId: view.viewId,
-            name: view.name,
-            filterSummary: view.filterSummary,
-            count: page.total ?? page.rows.length,
-          });
-        }
+    const timer = setTimeout(async () => {
+      const result = await previewCall({ kind: "home", config: JSON.parse(configJson) });
+      if (cancelled) return;
+      if (result.error) {
+        setDrillError(result.error);
+        return;
       }
-      const recentBlock = parsed.blocks.find((b) => b.type === "recent");
-      const followupsBlock = parsed.blocks.find((b) => b.type === "followups");
-      const built: HomeCardPayload = {
-        kind: "home-card",
-        blocks: parsed.blocks,
-        lists,
-        recent: recentBlock ? await adapter.listRecentRecords("me", recentBlock.limit) : [],
-        tasks: followupsBlock ? (await adapter.listTasks("me")).rows : [],
-        capabilities: { writeEnabled: true },
-        provenance: {
-          crm: "hubspot",
-          crmLabel: "HubSpot",
-          layoutRevision: parsed.revision,
-          connectedUser,
-        },
-      };
-      if (!cancelled) setPayload(built);
-    })();
+      setPayload(result.payload as HomeCardPayload);
+      setLive(!!result.live);
+      setDrillError(null);
+    }, 350);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
-  }, [configJson, exposedJson, adapter, connectedUser, rowsFor]);
-
-  const layoutFor = async (object: string): Promise<LayoutConfig> => {
-    const cached = layoutCache.get(object);
-    if (cached) return cached;
-    const res = await fetch(`/api/layout/${object}`);
-    const data = (await res.json()) as {
-      record: { published: LayoutConfig | null; draft: LayoutConfig | null };
-    };
-    const config = data.record.published ?? data.record.draft;
-    if (!config) throw new Error(`No layout configured for ${object}.`);
-    const parsed = parseLayoutConfig(config);
-    layoutCache.set(object, parsed);
-    return parsed;
-  };
+  }, [configJson]);
 
   const drillIntoView = async (name: string) => {
-    try {
-      const view = exposedViews.find((v) => v.name === name);
-      if (!view) return;
-      const layout = await layoutFor(view.object);
-      const page = await rowsFor(view);
-      const built = await buildResultsTablePayload({
-        source: adapter,
-        config: layout,
-        page,
-        title: view.name,
-        savedViewName: view.name,
-        savedViewId: view.viewId,
-        savedViewFilterSummary: view.filterSummary,
-      });
-      setDrillError(null);
-      setDrill({ kind: "view", payload: built });
-    } catch (error) {
-      setDrillError(String(error));
+    const view = (JSON.parse(exposedJson) as ExposedViewInfo[]).find((v) => v.name === name);
+    if (!view) return;
+    const result = await previewCall({ kind: "view", object: view.object, viewId: view.viewId });
+    if (result.error) {
+      setDrillError(result.error);
+      return;
     }
+    setDrillError(null);
+    setDrill({ kind: "view", payload: result.payload as ResultsTablePayload });
   };
 
   const drillIntoRecord = async (object: string, id: string) => {
-    try {
-      const layout = await layoutFor(object);
-      const record = await adapter.getRecord(object, id, []);
-      const built = await buildRecordCardPayload({ source: adapter, config: layout, record });
-      setDrillError(null);
-      setDrill({ kind: "record", payload: built, configJson: JSON.stringify(layout) });
-    } catch (error) {
-      setDrillError(String(error));
+    const result = await previewCall({ kind: "record", object, recordId: id });
+    if (result.error) {
+      setDrillError(result.error);
+      return;
     }
+    setDrillError(null);
+    setDrill({ kind: "record", payload: result.payload as RecordCardPayload, object });
   };
 
-  // Preview host: followups route the SAME strings the real widgets send in
-  // chat into drill-in renders of the real widgets.
+  // Followups route the SAME strings the real widgets send in chat into
+  // drill-in renders of the real widgets.
   const parseFollowup = (text: string) => {
     const view = /saved view "([^"]+)"/i.exec(text);
     if (view?.[1]) {
@@ -492,14 +436,11 @@ function HomeCardPreview({
 
   const homeHost: WidgetHost = useMemo(
     () => ({
-      callTool: async (name, args) => {
+      callTool: async (name, args): Promise<WidgetHostResult> => {
         if (name === "crm_complete_task") {
-          const task = await adapter.completeTask(args.id as string);
-          return {
-            content: [
-              { type: "text", text: `Preview: completed "${task.subject}" (simulated — mock portal only).` },
-            ],
-          };
+          const result = await previewCall({ kind: "complete-task", id: args.id });
+          if (result.error) return { isError: true, content: [{ type: "text", text: result.error }] };
+          return { content: result.text ? [{ type: "text", text: result.text }] : [] };
         }
         return { isError: true, content: [{ type: "text", text: `unknown tool ${name}` }] };
       },
@@ -507,22 +448,52 @@ function HomeCardPreview({
       sendFollowup: parseFollowup,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [adapter, exposedJson],
+    [exposedJson],
   );
 
-  const recordHost = (drilled: Extract<NonNullable<Drill>, { kind: "record" }>): WidgetHost =>
-    createPreviewHost({
-      adapter,
-      getConfigJson: () => drilled.configJson,
-      getProvenance: () => drilled.payload.provenance,
-      onFollowup: parseFollowup,
-    });
+  const recordHost = (drilled: Extract<NonNullable<Drill>, { kind: "record" }>): WidgetHost => ({
+    updateModelContext: () => {},
+    sendFollowup: parseFollowup,
+    callTool: async (name, args): Promise<WidgetHostResult> => {
+      if (name === "crm_get_related") {
+        const result = await previewCall({
+          kind: "related",
+          object: drilled.object,
+          recordId: args.recordId,
+          relationship: args.relationship,
+          limit: args.limit,
+        });
+        if (result.error) return { isError: true, content: [{ type: "text", text: result.error }] };
+        return { structuredContent: result.payload as Record<string, unknown> };
+      }
+      if (name === "crm_get_record") {
+        const result = await previewCall({ kind: "record", object: drilled.object, recordId: args.id });
+        if (result.error) return { isError: true, content: [{ type: "text", text: result.error }] };
+        return { structuredContent: result.payload as Record<string, unknown> };
+      }
+      if (name === "crm_update_record") {
+        const result = await previewCall({
+          kind: "write",
+          object: drilled.object,
+          recordId: args.id,
+          patch: args.patch,
+        });
+        if (result.error) return { isError: true, content: [{ type: "text", text: result.error }] };
+        return {
+          content: result.text ? [{ type: "text", text: result.text }] : [],
+          structuredContent: result.payload as Record<string, unknown>,
+        };
+      }
+      return { isError: true, content: [{ type: "text", text: `unknown tool ${name}` }] };
+    },
+  });
 
   return (
     <aside className="w-[396px] shrink-0 overflow-y-auto">
       <div className="mb-2 flex items-center justify-between">
         <span className="st-section-label">
           {drill ? "Preview · drilled in" : `Preview · as ${connectedUser}`}
+          {live ? " · live data" : ""}
         </span>
         {drill ? (
           <button type="button" className="cs-link-btn !p-0 text-[11px]" onClick={() => setDrill(null)}>
@@ -551,8 +522,9 @@ function HomeCardPreview({
         )}
       </div>
       <p className="mt-2 text-[11px] text-ink-45">
-        Rep data fills at render. Clicks behave like chat: tiles open the results table,
-        rows open the record card — same widgets, simulated data.
+        {live
+          ? "Previewing against your LIVE portal (read-only — writes are disabled here; test them from chat)."
+          : "Rep data fills at render. Clicks behave like chat: tiles open the results table, rows open the record card — same widgets, simulated data."}
       </p>
     </aside>
   );

@@ -8,7 +8,7 @@ type Params = { params: Promise<{ object: string }> };
 export async function GET(_req: Request, { params }: Params) {
   const { object } = await params;
   const store = await getStore();
-  const adapter = getAdapter();
+  const adapter = await getAdapter();
   const record = await store.getLayoutRecord(TENANT_ID, object);
   const describe = await adapter.describeObject(object);
   // Related-object describes keyed by relationship api — the related-list

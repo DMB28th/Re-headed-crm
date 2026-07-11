@@ -5,7 +5,7 @@ import { generateStarterLayout } from "../../../lib/starter-layout";
 /** Objects panel data: what's configured (draft or published) vs addable. */
 export async function GET() {
   const store = await getStore();
-  const adapter = getAdapter();
+  const adapter = await getAdapter();
   const connection = await store.getConnection(TENANT_ID);
   if (connection.status !== "connected") {
     return NextResponse.json({ connection, objects: [], available: [] });
@@ -39,8 +39,9 @@ export async function POST(req: Request) {
     if (record.draft || record.published) {
       return NextResponse.json({ error: `${object} is already configured` }, { status: 409 });
     }
-    const describe = await getAdapter().describeObject(object);
-    await store.saveDraft(generateStarterLayout(TENANT_ID, describe));
+    const connection = await store.getConnection(TENANT_ID);
+    const describe = await (await getAdapter()).describeObject(object);
+    await store.saveDraft(generateStarterLayout(TENANT_ID, describe, connection.crm));
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 400 });

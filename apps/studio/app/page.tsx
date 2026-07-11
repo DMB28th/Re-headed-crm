@@ -13,7 +13,7 @@ function greeting(): string {
 
 export default async function HomePage() {
   const store = await getStore();
-  const adapter = getAdapter();
+  const adapter = await getAdapter();
   const connection = await store.getConnection(TENANT_ID);
   if (connection.status !== "connected") {
     return <NoConnection />;

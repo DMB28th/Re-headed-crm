@@ -3,6 +3,10 @@
  * store — a publish here changes the server's next render (GP3). With
  * DATABASE_URL set both talk to Postgres (Railway/Neon); otherwise they share
  * the file-backed store (single box / local dev).
+ *
+ * The adapter is resolved from the tenant's CONNECTION: no credentials =
+ * mock portal; live HubSpot/Salesforce credentials build the real adapter
+ * (cached per credential set by the factory).
  */
 import path from "node:path";
 import {
@@ -11,7 +15,7 @@ import {
   DEMO_TENANT_ID,
   type AdminConfigStore,
 } from "@cardstack/config-store";
-import { MockCrmAdapter } from "@cardstack/crm-adapters";
+import { createAdapterForConnection, type CrmAdapter } from "@cardstack/crm-adapters";
 
 export const TENANT_ID = DEMO_TENANT_ID;
 
@@ -27,8 +31,11 @@ export function getStore(): Promise<AdminConfigStore> {
   return storePromise;
 }
 
-let adapter: MockCrmAdapter | undefined;
-export function getAdapter(): MockCrmAdapter {
-  adapter ??= new MockCrmAdapter();
-  return adapter;
+/** The tenant's adapter per its CURRENT connection (read fresh each call). */
+export async function getAdapter(): Promise<CrmAdapter> {
+  const connection = await (await getStore()).getConnection(TENANT_ID);
+  return createAdapterForConnection({
+    crm: connection.crm,
+    ...(connection.credentials ? { credentials: connection.credentials } : {}),
+  });
 }

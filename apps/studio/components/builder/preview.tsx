@@ -1,34 +1,36 @@
 "use client";
 /**
- * Live preview (2a right rail): renders the REAL RecordCard component from
- * packages/widgets against the in-browser mock adapter — the exact assembly
- * codepath the MCP server uses (core/assemble.ts). Writes are simulated
- * against the mock portal, including real validation-rule behavior.
+ * Live preview (2a right rail): renders the REAL RecordCard component against
+ * SERVER-assembled payloads (/api/preview) — the exact codepath the MCP
+ * server uses, against the tenant's actual connection. Mock portal: writes
+ * are simulated server-side. Live CRM: the preview is read-only (writes are
+ * disabled at the payload level; a builder must never mutate production).
  * Collapsible so the canvas can take the full width.
  */
 import { useEffect, useMemo, useState } from "react";
-import {
-  buildRecordCardPayload,
-  parseLayoutConfig,
-  type LayoutConfig,
-  type RecordCardPayload,
-} from "@cardstack/core";
-import { MockCrmAdapter } from "@cardstack/crm-adapters";
-import { RecordCard, type WidgetHost } from "@cardstack/widgets/react";
-import { createPreviewHost } from "../../lib/preview-host";
+import type { LayoutConfig, RecordCardPayload } from "@cardstack/core";
+import { RecordCard, type WidgetHost, type WidgetHostResult } from "@cardstack/widgets/react";
 import "@cardstack/widgets/styles/theme.css";
 import "@cardstack/widgets/styles/record-card.css";
 
-const PREVIEW_RECORD_ID_BY_OBJECT: Record<string, string> = {
-  deals: "d-001",
-  contacts: "c-001",
-  companies: "co-01",
-};
+async function previewCall(body: Record<string, unknown>): Promise<{
+  payload?: unknown;
+  text?: string;
+  error?: string;
+  live?: boolean;
+}> {
+  const res = await fetch("/api/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return (await res.json()) as { payload?: unknown; text?: string; error?: string; live?: boolean };
+}
 
 export function Preview({ config }: { config: LayoutConfig }) {
-  const adapter = useMemo(() => new MockCrmAdapter(), []);
   const [payload, setPayload] = useState<RecordCardPayload | null>(null);
   const [payloadKey, setPayloadKey] = useState(0);
+  const [live, setLive] = useState(false);
   const [width, setWidth] = useState<680 | 380>(680);
   const [dark, setDark] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -39,38 +41,74 @@ export function Preview({ config }: { config: LayoutConfig }) {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const parsed = parseLayoutConfig(JSON.parse(configJson));
-        const previewId =
-          PREVIEW_RECORD_ID_BY_OBJECT[parsed.object] ??
-          (await adapter.search(parsed.object, { limit: 1 })).rows[0]?.id;
-        if (!previewId) throw new Error(`No ${parsed.object} records in the mock portal.`);
-        const record = await adapter.getRecord(parsed.object, previewId, []);
-        const built = await buildRecordCardPayload({ source: adapter, config: parsed, record });
-        if (!cancelled) {
-          setPayload(built);
-          setPayloadKey((k) => k + 1);
-          setBuildError(null);
-        }
-      } catch (error) {
-        if (!cancelled) setBuildError(String(error));
+    const timer = setTimeout(async () => {
+      const result = await previewCall({
+        kind: "record",
+        object: config.object,
+        config: JSON.parse(configJson),
+      });
+      if (cancelled) return;
+      if (result.error) {
+        setBuildError(result.error);
+        return;
       }
-    })();
+      setPayload(result.payload as RecordCardPayload);
+      setLive(!!result.live);
+      setPayloadKey((k) => k + 1);
+      setBuildError(null);
+    }, 350);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
-  }, [configJson, adapter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configJson]);
 
   const host: WidgetHost = useMemo(
-    () =>
-      createPreviewHost({
-        adapter,
-        getConfigJson: () => configJson,
-        getProvenance: () => payload?.provenance,
-        onModelContext: (text) => setModelContext(text),
-      }),
-    [configJson, adapter, payload?.provenance],
+    () => ({
+      updateModelContext: (text) => setModelContext(text),
+      callTool: async (name, args): Promise<WidgetHostResult> => {
+        if (name === "crm_get_related") {
+          const result = await previewCall({
+            kind: "related",
+            object: config.object,
+            config: JSON.parse(configJson),
+            recordId: args.recordId,
+            relationship: args.relationship,
+            limit: args.limit,
+          });
+          if (result.error) return { isError: true, content: [{ type: "text", text: result.error }] };
+          return { structuredContent: result.payload as Record<string, unknown> };
+        }
+        if (name === "crm_get_record") {
+          const result = await previewCall({
+            kind: "record",
+            object: config.object,
+            config: JSON.parse(configJson),
+            recordId: args.id,
+          });
+          if (result.error) return { isError: true, content: [{ type: "text", text: result.error }] };
+          return { structuredContent: result.payload as Record<string, unknown> };
+        }
+        if (name === "crm_update_record") {
+          const result = await previewCall({
+            kind: "write",
+            object: config.object,
+            config: JSON.parse(configJson),
+            recordId: args.id,
+            patch: args.patch,
+          });
+          if (result.error) return { isError: true, content: [{ type: "text", text: result.error }] };
+          return {
+            content: result.text ? [{ type: "text", text: result.text }] : [],
+            structuredContent: result.payload as Record<string, unknown>,
+          };
+        }
+        return { isError: true, content: [{ type: "text", text: `unknown tool ${name}` }] };
+      },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [configJson],
   );
 
   if (collapsed) {
@@ -94,7 +132,9 @@ export function Preview({ config }: { config: LayoutConfig }) {
   return (
     <aside className="w-[396px] shrink-0 overflow-y-auto">
       <div className="mb-2 flex items-center justify-between">
-        <span className="st-section-label">Live preview · real widget</span>
+        <span className="st-section-label">
+          Live preview · real widget{live ? " · live data" : ""}
+        </span>
         <span className="flex gap-1">
           {([680, 380] as const).map((w) => (
             <button
@@ -155,8 +195,9 @@ export function Preview({ config }: { config: LayoutConfig }) {
 
       <div className="mt-2 space-y-1 text-[11px] text-ink-45">
         <div>
-          Drafts preview here against sample data; reps keep seeing the published version until
-          you publish. Preview writes are simulated.
+          {live
+            ? "Previewing against your LIVE portal (read-only — preview writes are disabled; test writes from chat)."
+            : "Drafts preview here against sample data; reps keep seeing the published version until you publish. Preview writes are simulated."}
         </div>
         {modelContext && (
           <div className="rounded-[8px] bg-crmmeta p-2 text-crmmeta-ink">

@@ -13,7 +13,7 @@ export interface ExposedViewInfo {
 
 export async function GET() {
   const store = await getStore();
-  const adapter = getAdapter();
+  const adapter = await getAdapter();
   const homeCard = await store.getHomeCard(TENANT_ID);
   const connection = await store.getConnection(TENANT_ID);
   const connectedUser =

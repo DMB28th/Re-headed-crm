@@ -5,7 +5,7 @@
 import express from "express";
 import cors from "cors";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { MockCrmAdapter } from "@cardstack/crm-adapters";
+import { createAdapterForConnection } from "@cardstack/crm-adapters";
 import { createPostgresConfigStore, type ConfigStore } from "@cardstack/config-store";
 import { createCardstackServer } from "./server.js";
 import { defaultConfigPath, FileConfigStore, DEMO_TENANT_ID } from "./config/store.js";
@@ -14,14 +14,15 @@ import { InMemoryPreferenceStore } from "./config/preferences.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
 
-// Durable-ish state shared across stateless requests (the mock adapter is
-// shared so demo writes survive between tool calls). Config comes from the
+// Durable-ish state shared across stateless requests. Config comes from the
 // store Studio writes to — published layouts are read at render time, so a
 // Studio publish changes the next render with no restart (GP3).
 // DATABASE_URL → Postgres (Railway/Neon); otherwise the file-backed store.
+// The adapter is resolved PER REQUEST from the tenant's connection: mock
+// portal (a shared singleton so demo writes persist) or a live HubSpot /
+// Salesforce adapter (cached per credential set by the factory).
 const auditLog = new InMemoryAuditLog();
 const preferences = new InMemoryPreferenceStore();
-const adapter = new MockCrmAdapter();
 const configStore: ConfigStore = process.env.DATABASE_URL
   ? await createPostgresConfigStore(process.env.DATABASE_URL)
   : new FileConfigStore(defaultConfigPath());
@@ -36,6 +37,11 @@ app.get("/healthz", (_req, res) => {
 });
 
 app.all("/mcp", async (req, res) => {
+  const connection = await configStore.getConnection(DEMO_TENANT_ID);
+  const adapter = createAdapterForConnection({
+    crm: connection.crm,
+    ...(connection.credentials ? { credentials: connection.credentials } : {}),
+  });
   const server = await createCardstackServer({
     adapter,
     configStore,

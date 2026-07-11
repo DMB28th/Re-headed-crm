@@ -11,14 +11,21 @@ import type {
  * Studio shows empty states and every MCP tool refuses with a "connect one in
  * Studio" message. Stores without a stored state default to CONNECTED (mock)
  * so pre-existing config files/databases keep working.
+ *
+ * Migration note (2026-07-11): added optional `credentials` — live-CRM
+ * secrets (HubSpot private-app token / Salesforce client credentials).
+ * Additive; absent = the mock portal. SERVER-SIDE ONLY: Studio's API redacts
+ * it and nothing ever reaches a widget payload (hard rule 3). At-rest
+ * encryption (KMS) is the M7 hardening item.
  */
 export interface ConnectionState {
   tenantId: string;
   status: "connected" | "disconnected";
   crm: "hubspot" | "salesforce";
-  /** Human label for the portal, e.g. "mock portal". */
+  /** Human label for the portal: "mock portal" | "private app" | "client credentials". */
   label: string;
   changedAt: string;
+  credentials?: Record<string, string>;
 }
 
 /**
