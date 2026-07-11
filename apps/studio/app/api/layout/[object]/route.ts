@@ -7,7 +7,7 @@ type Params = { params: Promise<{ object: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
   const { object } = await params;
-  const store = getStore();
+  const store = await getStore();
   const record = await store.getLayoutRecord(TENANT_ID, object);
   const describe = await getAdapter().describeObject(object);
   const diff = record.draft ? diffLayouts(record.published, record.draft) : null;
@@ -21,7 +21,7 @@ export async function PUT(req: Request, { params }: Params) {
     if (draft.object !== object || draft.tenantId !== TENANT_ID) {
       return NextResponse.json({ error: "tenant/object mismatch" }, { status: 400 });
     }
-    await getStore().saveDraft(draft);
+    await (await getStore()).saveDraft(draft);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 400 });

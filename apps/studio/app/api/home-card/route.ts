@@ -3,7 +3,7 @@ import { HomeCardConfig } from "@cardstack/core";
 import { getAdapter, getStore, TENANT_ID } from "../../../lib/backend";
 
 export async function GET() {
-  const store = getStore();
+  const store = await getStore();
   const homeCard = await store.getHomeCard(TENANT_ID);
   const exposures = await store.getViewExposures(TENANT_ID, "deals");
   const savedViews = await getAdapter().listSavedViews("deals");
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     if (config.tenantId !== TENANT_ID) {
       return NextResponse.json({ error: "tenant mismatch" }, { status: 400 });
     }
-    const published = await getStore().publishHomeCard(config);
+    const published = await (await getStore()).publishHomeCard(config);
     return NextResponse.json({ published });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 400 });

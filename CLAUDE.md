@@ -35,8 +35,9 @@ matrix + View-as (2f–2i beyond the teaching state), onboarding auto-generation
 (2c), rollback button in the UI (API + store support exist; home lists publish
 history), actions editor (3a), related-list picker (3b), object picker (3c),
 requirements pass-through (3d), audience picker (3e). Stale-card strip and
-re-auth widget states also still open. Postgres deliberately deferred —
-AdminConfigStore is the interface a DB store implements.
+re-auth widget states also still open. PostgresConfigStore ships behind
+DATABASE_URL (Railway two-service deploys); audit log + preferences are
+still in-memory — move them to Postgres alongside multi-tenant auth (M7).
 
 ## Hard rules
 
@@ -77,7 +78,7 @@ AdminConfigStore is the interface a DB store implements.
 - `apps/mcp-server` — MCP server, streamable HTTP, stateless JSON
 - `apps/studio` — Next.js admin UI (builder imports the REAL widget for preview)
 - `packages/core` — layout config zod schema, payload contract, payload assembly, shared types
-- `packages/config-store` — draft/publish/rollback config storage (file-backed; Postgres later)
+- `packages/config-store` — draft/publish/rollback config storage (Postgres via DATABASE_URL, file-backed otherwise)
 - `packages/crm-adapters` — `CrmAdapter` interface, `mock/` (M1), `hubspot/` (M1.5), `salesforce/` (M2)
 - `packages/widgets` — widget source → Vite single-file HTML bundles
 - `design/` — design canvas + README (source of truth for UI)

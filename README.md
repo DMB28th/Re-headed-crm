@@ -61,20 +61,22 @@ Ask: *"pull up our open deals over $50k"* → results table widget → click a r
 
 Both apps are plain Node containers — config via env vars, no platform APIs.
 
-**Railway** (MCP server — the piece Claude.ai connects to):
-1. New service from this repo · set **Dockerfile path** to `apps/mcp-server/Dockerfile`.
-2. Attach a **volume at `/data`** (published layouts survive restarts; the store
-   seeds the demo tenant on first boot).
-3. Railway injects `PORT` automatically. Health check: `GET /healthz`.
-4. Point Claude.ai (Settings → Connectors) at `https://<service>.up.railway.app/mcp`.
+**Railway** (two services + Postgres):
+1. Add a **Postgres** database to the project; Railway exposes `DATABASE_URL`.
+2. **mcp-server** service from this repo · Dockerfile path
+   `apps/mcp-server/Dockerfile` · reference `DATABASE_URL` from the database.
+   Health check `GET /healthz`. This is the URL Claude.ai connects to:
+   `https://<service>.up.railway.app/mcp` (Settings → Connectors).
+3. **studio** service · Dockerfile path `apps/studio/Dockerfile` · same
+   `DATABASE_URL`. Publish a layout in Studio → the server's next render
+   serves it (both read/write the same `layout_configs` tables).
 
-Studio on Railway needs the Postgres-backed config store (Railway volumes
-attach to one service only, and Studio + server share the store) — until that
-lands, run Studio locally against the same file, or use single-box
-`docker compose up` where both containers share `./data`.
-
-Env vars: `PORT` (injected), `CARDSTACK_CONFIG_PATH` (defaults to
-`/data/cardstack-config.json` in containers).
+The store picks its backend from the environment: `DATABASE_URL` → Postgres
+(schema auto-created, demo tenant seeded on first boot); otherwise the
+file-backed store at `CARDSTACK_CONFIG_PATH` (defaults to
+`/data/cardstack-config.json` in containers — attach a volume if you deploy
+without Postgres; single-box `docker compose up` shares `./data`).
+`PORT` is injected by Railway.
 
 ## Architecture in one paragraph
 

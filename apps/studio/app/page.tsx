@@ -5,7 +5,7 @@ import { getAdapter, getStore, TENANT_ID } from "../lib/backend";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const store = getStore();
+  const store = await getStore();
   const adapter = getAdapter();
   const record = await store.getLayoutRecord(TENANT_ID, "deals");
   const describe = await adapter.describeObject("deals");

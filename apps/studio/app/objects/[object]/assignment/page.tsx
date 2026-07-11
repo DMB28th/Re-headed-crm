@@ -9,7 +9,7 @@ export default async function AssignmentPage({
   params: Promise<{ object: string }>;
 }) {
   const { object } = await params;
-  const record = await getStore().getLayoutRecord(TENANT_ID, object);
+  const record = await (await getStore()).getLayoutRecord(TENANT_ID, object);
   const layoutName = record.published?.name ?? "default layout";
 
   return (

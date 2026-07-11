@@ -6,8 +6,9 @@ import express from "express";
 import cors from "cors";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { MockCrmAdapter } from "@cardstack/crm-adapters";
+import { createPostgresConfigStore, type ConfigStore } from "@cardstack/config-store";
 import { createCardstackServer } from "./server.js";
-import { defaultConfigPath, DEMO_TENANT_ID, FileConfigStore } from "./config/store.js";
+import { defaultConfigPath, FileConfigStore, DEMO_TENANT_ID } from "./config/store.js";
 import { InMemoryAuditLog } from "./audit.js";
 import { InMemoryPreferenceStore } from "./config/preferences.js";
 
@@ -15,12 +16,16 @@ const PORT = Number(process.env.PORT ?? 3001);
 
 // Durable-ish state shared across stateless requests (the mock adapter is
 // shared so demo writes survive between tool calls). Config comes from the
-// file store Studio writes to — published layouts are read at render time,
-// so a Studio publish changes the next render with no restart (GP3).
+// store Studio writes to — published layouts are read at render time, so a
+// Studio publish changes the next render with no restart (GP3).
+// DATABASE_URL → Postgres (Railway/Neon); otherwise the file-backed store.
 const auditLog = new InMemoryAuditLog();
 const preferences = new InMemoryPreferenceStore();
 const adapter = new MockCrmAdapter();
-const configStore = new FileConfigStore(defaultConfigPath());
+const configStore: ConfigStore = process.env.DATABASE_URL
+  ? await createPostgresConfigStore(process.env.DATABASE_URL)
+  : new FileConfigStore(defaultConfigPath());
+console.log(`config store: ${process.env.DATABASE_URL ? "postgres" : "file"}`);
 
 const app = express();
 app.use(cors());

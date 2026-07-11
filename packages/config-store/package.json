@@ -17,9 +17,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@cardstack/core": "workspace:*"
+    "@cardstack/core": "workspace:*",
+    "pg": "^8.13.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.2.15",
+    "@types/pg": "^8.11.10",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
   }
