@@ -1,6 +1,27 @@
 services:
+  # Single-box deploy: both apps share ./data (the file-backed config store).
+  mcp-server:
+    build:
+      context: .
+      dockerfile: apps/mcp-server/Dockerfile
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./data:/data
+
+  studio:
+    build:
+      context: .
+      dockerfile: apps/studio/Dockerfile
+    ports:
+      - "3002:3002"
+    volumes:
+      - ./data:/data
+
+  # For the Postgres-backed AdminConfigStore (planned — not wired up yet).
   postgres:
     image: postgres:16-alpine
+    profiles: ["db"]
     environment:
       POSTGRES_USER: cardstack
       POSTGRES_PASSWORD: cardstack

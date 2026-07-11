@@ -57,6 +57,25 @@ Ask: *"pull up our open deals over $50k"* → results table widget → click a r
 | `packages/crm-adapters` | `CrmAdapter` interface + `MockCrmAdapter` (fixtures); `hubspot/`, `salesforce/` next |
 | `packages/widgets` | React widgets → Vite single-file HTML bundles served as `ui://` resources |
 
+## Deploy
+
+Both apps are plain Node containers — config via env vars, no platform APIs.
+
+**Railway** (MCP server — the piece Claude.ai connects to):
+1. New service from this repo · set **Dockerfile path** to `apps/mcp-server/Dockerfile`.
+2. Attach a **volume at `/data`** (published layouts survive restarts; the store
+   seeds the demo tenant on first boot).
+3. Railway injects `PORT` automatically. Health check: `GET /healthz`.
+4. Point Claude.ai (Settings → Connectors) at `https://<service>.up.railway.app/mcp`.
+
+Studio on Railway needs the Postgres-backed config store (Railway volumes
+attach to one service only, and Studio + server share the store) — until that
+lands, run Studio locally against the same file, or use single-box
+`docker compose up` where both containers share `./data`.
+
+Env vars: `PORT` (injected), `CARDSTACK_CONFIG_PATH` (defaults to
+`/data/cardstack-config.json` in containers).
+
 ## Architecture in one paragraph
 
 The widget HTML is generic and shipped once. All customization lives in a
