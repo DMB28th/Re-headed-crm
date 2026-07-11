@@ -1,6 +1,7 @@
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { CrmRecord, ResultsTablePayload } from "@cardstack/core";
+import type { CrmRecord, ResultsTablePayload, ViewPickerPayload } from "@cardstack/core";
+import type { App } from "@modelcontextprotocol/ext-apps";
 import { useWidget } from "../shared/use-widget.js";
 import {
   LayoutChip,
@@ -14,9 +15,11 @@ import { formatValue, stageTone } from "../shared/format.ts";
 import "../shared/theme.css";
 import "./results-table.css";
 
+type TablePayload = ResultsTablePayload | ViewPickerPayload;
+
 function ResultsTableApp() {
-  const { app, payload, toolError, connectionError, locale } =
-    useWidget<ResultsTablePayload>("Results Table");
+  const { app, payload, setPayload, toolError, connectionError, locale } =
+    useWidget<TablePayload>("Results Table");
 
   if (connectionError) {
     return <MessageCard title="Couldn't connect to the chat host" body={connectionError.message} />;
@@ -27,7 +30,78 @@ function ResultsTableApp() {
   if (!payload) {
     return <LoadingCard label="Loading results…" />;
   }
+  if (payload.kind === "view-picker") {
+    return <ViewPicker payload={payload} app={app} onResolved={setPayload} />;
+  }
   return <ResultsTable payload={payload} locale={locale} app={app} />;
+}
+
+/** Ambiguous-ask picker (design 5b): pick a view; the choice is remembered. */
+function ViewPicker({
+  payload,
+  app,
+  onResolved,
+}: {
+  payload: ViewPickerPayload;
+  app: App | null;
+  onResolved: (payload: TablePayload) => void;
+}) {
+  const [picking, setPicking] = useState<string | null>(null);
+
+  const pick = async (viewId: string) => {
+    if (!app) return;
+    setPicking(viewId);
+    try {
+      // Passing the original query back makes the server remember this choice.
+      const result = await app.callServerTool({
+        name: "crm_list_view",
+        arguments: { object: payload.object, view: viewId, query: payload.query },
+      });
+      if (!result.isError && result.structuredContent) {
+        onResolved(result.structuredContent as unknown as TablePayload);
+      }
+    } finally {
+      setPicking(null);
+    }
+  };
+
+  return (
+    <div className="cs-card">
+      <header className="rt-header">
+        <div className="rt-title-group">
+          <h1 className="rt-title">
+            “{payload.query}” matches {payload.options.length} saved views
+          </h1>
+          <span className="cs-muted rt-view-note">
+            Pick one — Cardstack remembers your choice for next time.
+          </span>
+        </div>
+      </header>
+      <div className="rt-picker">
+        {payload.options.map((option) => (
+          <button
+            key={option.viewId}
+            type="button"
+            className="rt-picker-option"
+            onClick={() => pick(option.viewId)}
+            disabled={picking !== null}
+          >
+            <span className="rt-picker-name">
+              {picking === option.viewId ? "Opening…" : option.name}
+            </span>
+            <span className="cs-muted rt-picker-filters">{option.filterSummary}</span>
+          </button>
+        ))}
+      </div>
+      <footer className="rt-footer">
+        <span className="cs-muted rt-count">
+          Saved {payload.provenance.crmLabel} views · filters managed in{" "}
+          {payload.provenance.crmLabel}
+        </span>
+        <MakerChip provenance={payload.provenance} />
+      </footer>
+    </div>
+  );
 }
 
 function ResultsTable({
@@ -75,10 +149,15 @@ function ResultsTable({
     if (!app || !cursor) return;
     setLoadingMore(true);
     try {
-      const result = await app.callServerTool({
-        name: "crm_search",
-        arguments: { object: payload.object, cursor },
-      });
+      // Saved views paginate through crm_list_view; ad-hoc results through crm_search.
+      const result = await app.callServerTool(
+        payload.savedViewId
+          ? {
+              name: "crm_list_view",
+              arguments: { object: payload.object, view: payload.savedViewId, cursor },
+            }
+          : { name: "crm_search", arguments: { object: payload.object, cursor } },
+      );
       const data = result.structuredContent as ResultsTablePayload | undefined;
       if (!result.isError && data?.page) {
         setRows((prev) => [...prev, ...data.page.rows]);
@@ -159,6 +238,13 @@ function ResultsTable({
         <span className="rt-footer-left">
           <span className="cs-muted rt-count">
             Showing {rows.length} of {total} · click a row to open its card
+            {payload.savedViewFilterSummary && (
+              <>
+                {" "}
+                · filters: {payload.savedViewFilterSummary}{" "}
+                <span className="rt-crm-managed">(managed in {payload.provenance.crmLabel})</span>
+              </>
+            )}
           </span>
           {hasMore && (
             <button type="button" className="cs-link-btn" onClick={showMore} disabled={loadingMore}>

@@ -26,7 +26,13 @@ import {
 import { CrmValidationError, type CrmAdapter } from "@cardstack/crm-adapters";
 import { getWidgetHtml, type WidgetName } from "@cardstack/widgets";
 import { DEMO_TENANT_ID, InMemoryConfigStore, type ConfigStore } from "./config/store.js";
+import type { PreferenceStore } from "./config/preferences.js";
 import type { AuditLog } from "./audit.js";
+import {
+  describeExposedViews,
+  resolveViewAsk,
+  type ExposedView,
+} from "./views.js";
 import {
   buildRecordCardPayload,
   buildResultsTablePayload,
@@ -39,6 +45,8 @@ export interface ServerDeps {
   configStore: ConfigStore;
   /** Shared across requests (durable state); the MCP server itself stays stateless. */
   auditLog: AuditLog;
+  /** Remembered ambiguous-ask choices (design 5b). Shared like the audit log. */
+  preferences: PreferenceStore;
   /** M1: single-tenant. OAuth 2.1 token → tenant resolution lands in M7. */
   tenantId: string;
 }
@@ -48,9 +56,31 @@ const RESULTS_TABLE_URI = "ui://cardstack/results-table";
 
 const OPEN_STAGE_EXCLUSIONS = ["Closed won", "Closed lost"];
 
-export function createCardstackServer(deps: ServerDeps): McpServer {
+/**
+ * Async because tool descriptions are tenant-specific: the exposed views'
+ * names + aliases are baked into crm_list_view's description so model routing
+ * works ("show me my deals" → the view, not ad-hoc search).
+ */
+export async function createCardstackServer(deps: ServerDeps): Promise<McpServer> {
   const server = new McpServer({ name: "Cardstack CRM", version: "0.0.1" });
-  const { adapter, configStore, auditLog, tenantId } = deps;
+  const { adapter, configStore, auditLog, preferences, tenantId } = deps;
+
+  const exposedViewsFor = async (object: string): Promise<ExposedView[]> => {
+    const exposures = await configStore.getViewExposures(tenantId, object);
+    const savedViews = await adapter.listSavedViews(object);
+    const byId = new Map(savedViews.map((v) => [v.id, v]));
+    return exposures.flatMap((exposure) => {
+      const view = byId.get(exposure.viewId);
+      // Drift (view deleted CRM-side) falls out here; Studio surfaces it in M3.
+      return view ? [{ exposure, view }] : [];
+    });
+  };
+
+  const allExposedViews: ExposedView[] = (
+    await Promise.all(
+      (await configStore.listConfiguredObjects(tenantId)).map((o) => exposedViewsFor(o)),
+    )
+  ).flat();
 
   const requireLayout = async (object: string): Promise<LayoutConfig> => {
     const config = await configStore.getLayout(tenantId, object);
@@ -129,8 +159,9 @@ export function createCardstackServer(deps: ServerDeps): McpServer {
     {
       title: "Search CRM records",
       description:
-        "Search CRM records and render an interactive results table. " +
-        "Use openOnly to exclude closed/won/lost records; minAmount/maxAmount filter on the amount field.",
+        "Search CRM records with ad-hoc filters and render an interactive results table. " +
+        "Use openOnly to exclude closed/won/lost records; minAmount/maxAmount filter on the amount field. " +
+        "When the ask names a saved view (or is a broad ask like \"my deals\"), prefer crm_list_view.",
       inputSchema: {
         object: z.string().default("deals").describe("Object API name, e.g. \"deals\""),
         query: z.string().optional().describe("Free-text search on record names"),
@@ -296,6 +327,125 @@ export function createCardstackServer(deps: ServerDeps): McpServer {
             },
           ],
           structuredContent: { page: filtered },
+        };
+      } catch (error) {
+        return asToolError(error);
+      }
+    },
+  );
+
+  // --- crm_list_view → results-table widget (or ambiguous-ask picker, 5b) ---
+  registerAppTool(
+    server,
+    "crm_list_view",
+    {
+      title: "Open a saved CRM view",
+      description:
+        "Render a saved CRM view as an interactive table. PREFER this over crm_search when the ask " +
+        "names a saved view or is a broad possessive ask like \"my deals\"; use crm_search only for " +
+        "ad-hoc filters. Pass the user's phrasing as `query` — if it matches several views the widget " +
+        "shows a picker and the choice is remembered. Exposed views: " +
+        describeExposedViews(allExposedViews),
+      inputSchema: {
+        object: z.string().default("deals"),
+        view: z.string().optional().describe("Saved view id or exact name, when known"),
+        query: z.string().optional().describe("The user's phrasing, for resolution + remembering"),
+        cursor: z.string().optional().describe("Opaque cursor from a previous page"),
+      },
+      annotations: { readOnlyHint: true },
+      _meta: { ui: { resourceUri: RESULTS_TABLE_URI } },
+    },
+    async (args): Promise<CallToolResult> => {
+      try {
+        const config = await requireLayout(args.object);
+        const exposed = await exposedViewsFor(config.object);
+        if (exposed.length === 0) {
+          throw new Error(`No saved views are exposed for ${config.object}. Use crm_search instead.`);
+        }
+
+        let match: ExposedView | undefined;
+        if (args.view) {
+          const needle = args.view.toLowerCase();
+          match = exposed.find(
+            (e) => e.view.id === args.view || e.view.name.toLowerCase() === needle,
+          );
+          if (!match) {
+            throw new Error(
+              `No exposed view "${args.view}". Exposed: ${describeExposedViews(exposed)}`,
+            );
+          }
+          // An explicit pick after an ambiguous ask sticks for that phrasing.
+          if (args.query) {
+            await preferences.rememberViewChoice(tenantId, args.query, match.view.id);
+          }
+        } else if (args.query) {
+          const rememberedId = await preferences.recallViewChoice(tenantId, args.query);
+          match = exposed.find((e) => e.view.id === rememberedId);
+          if (!match) {
+            const resolution = resolveViewAsk(args.query, exposed);
+            if (resolution.kind === "hit") {
+              match = resolution.match;
+            } else if (resolution.kind === "ambiguous") {
+              const payload = {
+                kind: "view-picker",
+                object: config.object,
+                query: args.query,
+                options: resolution.candidates.map((c) => ({
+                  viewId: c.view.id,
+                  name: c.view.name,
+                  filterSummary: c.view.filterSummary,
+                })),
+                provenance: {
+                  ...provenanceFor(applyDenylist(config)),
+                  connectedUser: await adapter.getConnectedUser(),
+                },
+              };
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text:
+                      `"${args.query}" matches ${resolution.candidates.length} saved views (` +
+                      resolution.candidates.map((c) => c.view.name).join(", ") +
+                      "). Rendered a picker; the user's choice will be remembered.",
+                  },
+                ],
+                structuredContent: payload as unknown as Record<string, unknown>,
+              };
+            } else {
+              throw new Error(
+                `No exposed view matches "${args.query}". Exposed: ${describeExposedViews(exposed)}. ` +
+                  "Use crm_search for ad-hoc filters.",
+              );
+            }
+          }
+        } else {
+          match = exposed.find((e) => e.exposure.isDefault) ?? exposed[0];
+        }
+
+        if (!match) throw new Error("Could not resolve a saved view.");
+        const page = await adapter.getViewRows(match.view.id, args.cursor);
+        const payload = await buildResultsTablePayload({
+          adapter,
+          config,
+          page,
+          title: match.view.name,
+          savedViewName: match.view.name,
+          savedViewId: match.view.id,
+          savedViewFilterSummary: match.view.filterSummary,
+        });
+        const top = page.rows[0];
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                `Rendered saved view "${match.view.name}" (${page.total ?? page.rows.length} ${config.object}; ` +
+                `filters from ${payload.provenance.crmLabel}: ${match.view.filterSummary}).` +
+                (top ? ` First: ${describeRow(top.fields)}.` : ""),
+            },
+          ],
+          structuredContent: payload as unknown as Record<string, unknown>,
         };
       } catch (error) {
         return asToolError(error);

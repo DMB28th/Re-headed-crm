@@ -10,7 +10,8 @@
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
     "demo": "tsx scripts/demo.ts",
-    "demo:m2": "tsx scripts/demo-m2.ts"
+    "demo:m2": "tsx scripts/demo-m2.ts",
+    "demo:m25": "tsx scripts/demo-m25.ts"
   },
   "dependencies": {
     "@cardstack/core": "workspace:*",

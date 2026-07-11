@@ -59,6 +59,25 @@ export interface ResultsTablePayload {
   page: RecordPage;
   /** Set when the table renders a saved CRM view (5b). */
   savedViewName?: string;
+  savedViewId?: string;
+  /** Human-readable filter summary, read-only from the CRM ("managed in HubSpot"). */
+  savedViewFilterSummary?: string;
+  provenance: WidgetProvenance;
+}
+
+/** Ambiguous saved-view ask → the results-table widget renders a picker (5b). */
+export interface ViewPickerOption {
+  viewId: string;
+  name: string;
+  filterSummary: string;
+}
+
+export interface ViewPickerPayload {
+  kind: "view-picker";
+  object: string;
+  /** The user's original ask — sent back with the pick so the choice is remembered. */
+  query: string;
+  options: ViewPickerOption[];
   provenance: WidgetProvenance;
 }
 
@@ -89,4 +108,8 @@ export interface WriteReceiptPayload {
   provenance: WidgetProvenance;
 }
 
-export type WidgetPayload = RecordCardPayload | ResultsTablePayload | WriteReceiptPayload;
+export type WidgetPayload =
+  | RecordCardPayload
+  | ResultsTablePayload
+  | WriteReceiptPayload
+  | ViewPickerPayload;

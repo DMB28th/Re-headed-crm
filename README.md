@@ -9,16 +9,17 @@ standard (SEP-1865).
 - **design/** — high-fidelity design reference (open `design/Cardstack Designs.dc.html` in a browser; ids `1a`–`12b` map to `design/README.md`)
 - **CLAUDE.md** — working rules + current milestone
 
-## Status: M2
+## Status: M2.5
 
-Record card + results table with the full write path against the mock adapter.
-Both golden paths run end-to-end:
+Record card + results table with the full write path and saved-view resolution,
+all against the mock adapter:
 
 ```bash
 pnpm install
 pnpm build
-pnpm demo:m1   # search → results table → record card
-pnpm demo:m2   # edit → confirmation diff → receipt → audit log → model context
+pnpm demo:m1    # search → results table → record card
+pnpm demo:m2    # edit → confirmation diff → receipt → audit log → model context
+pnpm demo:m2.5  # "my deals" → saved view · ambiguous ask → picker → remembered
 ```
 
 Writes follow the design's spine: every write shows a FIELD/BEFORE/AFTER

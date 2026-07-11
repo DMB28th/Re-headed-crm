@@ -9,12 +9,14 @@ import { MockCrmAdapter } from "@cardstack/crm-adapters";
 import { createCardstackServer } from "./server.js";
 import { DEMO_TENANT_ID, InMemoryConfigStore } from "./config/store.js";
 import { InMemoryAuditLog } from "./audit.js";
+import { InMemoryPreferenceStore } from "./config/preferences.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
 
 // Durable-ish state shared across stateless requests (Postgres in M3+; the
 // mock adapter is also shared so demo writes survive between tool calls).
 const auditLog = new InMemoryAuditLog();
+const preferences = new InMemoryPreferenceStore();
 const adapter = new MockCrmAdapter();
 const configStore = new InMemoryConfigStore();
 
@@ -27,10 +29,11 @@ app.get("/healthz", (_req, res) => {
 });
 
 app.all("/mcp", async (req, res) => {
-  const server = createCardstackServer({
+  const server = await createCardstackServer({
     adapter,
     configStore,
     auditLog,
+    preferences,
     tenantId: DEMO_TENANT_ID,
   });
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });

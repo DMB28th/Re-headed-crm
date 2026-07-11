@@ -9,15 +9,17 @@ map to `design/README.md`).
 
 ## Current phase
 
-**M2 — writes — is complete.** `pnpm demo:m2` walks Golden Path 2 (edit →
-confirmation diff → confirmed write → receipt → audit log → updateModelContext)
-against `MockCrmAdapter`; partial failure (1e) surfaces the CRM's verbatim
-validation message per field. M1 (`pnpm demo:m1`, Golden Path 1) also passes.
+**M2.5 — saved views — is complete.** `pnpm demo:m2.5` shows: exposed views +
+"Ask Claude with" aliases baked into `crm_list_view`'s tool description for
+model routing; unique asks resolve straight to view rows; ambiguous asks render
+the picker (5b) and the pick is remembered per phrasing. M1 (`pnpm demo:m1`)
+and M2 (`pnpm demo:m2`) golden paths also pass.
 
-**Next: M2.5 — saved views** (sync, exposure config, `crm_list_view`,
-ambiguous-ask picker; design refs 5a, 5b). Adapter + fixtures already carry
-saved views. Still open from M2's design refs: stale-card strip and re-auth
-state (need host/staleness signals — revisit alongside M2.5).
+**Next: M3 — Studio** (connect/onboarding, layout builder with live REAL widget
+preview, permissions, assignment, publish/rollback; design refs 2a–2i, 3a–3e,
+6a, 6b, 12b). Studio theme = design tokens in design/README.md → Tailwind
+config in apps/studio. Still open from M2's design refs: stale-card strip and
+re-auth state (need host/staleness signals).
 
 ## Hard rules
 
@@ -46,6 +48,7 @@ state (need host/staleness signals — revisit alongside M2.5).
 - `pnpm typecheck` / `pnpm test` / `pnpm lint`
 - `pnpm demo:m1` — Golden Path 1 demo (search → results table → record card)
 - `pnpm demo:m2` — Golden Path 2 demo (edit → confirm → receipt → audit)
+- `pnpm demo:m2.5` — saved views demo (alias routing → picker → remembered choice)
 - `pnpm --filter @cardstack/mcp-server dev` — run the MCP server locally (streamable HTTP on :3001)
 - MCP Inspector: `npx @modelcontextprotocol/inspector` → connect to `http://localhost:3001/mcp`
 

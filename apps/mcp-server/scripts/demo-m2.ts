@@ -11,6 +11,7 @@ import type { RecordCardPayload, WriteReceiptPayload } from "@cardstack/core";
 import { createCardstackServer } from "../src/server.js";
 import { DEMO_TENANT_ID, InMemoryConfigStore } from "../src/config/store.js";
 import { InMemoryAuditLog } from "../src/audit.js";
+import { InMemoryPreferenceStore } from "../src/config/preferences.js";
 
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
@@ -24,10 +25,11 @@ const textOf = (result: { content?: unknown }): string => {
 
 async function main() {
   const auditLog = new InMemoryAuditLog();
-  const server = createCardstackServer({
+  const server = await createCardstackServer({
     adapter: new MockCrmAdapter(),
     configStore: new InMemoryConfigStore(),
     auditLog,
+    preferences: new InMemoryPreferenceStore(),
     tenantId: DEMO_TENANT_ID,
   });
   const client = new Client({ name: "demo-host", version: "0.0.1" });

@@ -1,5 +1,5 @@
-import type { LayoutConfig } from "@cardstack/core";
-import { DEMO_TENANT_ID, demoDealsLayout } from "./demo-tenant.js";
+import type { LayoutConfig, ViewExposure, ViewExposuresConfig } from "@cardstack/core";
+import { DEMO_TENANT_ID, demoDealsLayout, demoViewExposures } from "./demo-tenant.js";
 
 /**
  * Layout config resolution. Keyed on (tenant, object, audience) from day one —
@@ -13,13 +13,27 @@ export interface ConfigStore {
     audience?: string,
   ): Promise<LayoutConfig | undefined>;
   listConfiguredObjects(tenantId: string): Promise<string[]>;
+  /** Exposed saved-view config for an object (design 5a). Unexposed views are omitted. */
+  getViewExposures(tenantId: string, object: string): Promise<ViewExposure[]>;
 }
 
 export class InMemoryConfigStore implements ConfigStore {
   private configs = new Map<string, LayoutConfig>();
+  private exposures = new Map<string, ViewExposuresConfig>();
 
-  constructor(configs: LayoutConfig[] = [demoDealsLayout]) {
+  constructor(
+    configs: LayoutConfig[] = [demoDealsLayout],
+    exposures: ViewExposuresConfig[] = [demoViewExposures],
+  ) {
     for (const config of configs) this.set(config);
+    for (const exposure of exposures) {
+      this.exposures.set(`${exposure.tenantId}::${exposure.object}`, exposure);
+    }
+  }
+
+  async getViewExposures(tenantId: string, object: string): Promise<ViewExposure[]> {
+    const config = this.exposures.get(`${tenantId}::${object}`);
+    return (config?.views ?? []).filter((v) => v.exposed);
   }
 
   set(config: LayoutConfig): void {

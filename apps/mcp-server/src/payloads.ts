@@ -44,6 +44,8 @@ export async function buildResultsTablePayload(args: {
   page: RecordPage;
   title: string;
   savedViewName?: string;
+  savedViewId?: string;
+  savedViewFilterSummary?: string;
 }): Promise<ResultsTablePayload> {
   const config = applyDenylist(args.config);
   const describe = await args.adapter.describeObject(config.object);
@@ -56,6 +58,10 @@ export async function buildResultsTablePayload(args: {
     meta: buildMeta(describe.fields, allowed),
     page: filterPage(args.page, allowed),
     ...(args.savedViewName ? { savedViewName: args.savedViewName } : {}),
+    ...(args.savedViewId ? { savedViewId: args.savedViewId } : {}),
+    ...(args.savedViewFilterSummary
+      ? { savedViewFilterSummary: args.savedViewFilterSummary }
+      : {}),
     provenance: {
       ...provenanceFor(config),
       connectedUser: await args.adapter.getConnectedUser(),

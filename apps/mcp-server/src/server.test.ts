@@ -14,16 +14,18 @@ import type {
 import { createCardstackServer } from "./server.js";
 import { DEMO_TENANT_ID, InMemoryConfigStore } from "./config/store.js";
 import { InMemoryAuditLog } from "./audit.js";
+import { InMemoryPreferenceStore } from "./config/preferences.js";
 
 let client: Client;
 let auditLog: InMemoryAuditLog;
 
 beforeEach(async () => {
   auditLog = new InMemoryAuditLog();
-  const server = createCardstackServer({
+  const server = await createCardstackServer({
     adapter: new MockCrmAdapter(),
     configStore: new InMemoryConfigStore(),
     auditLog,
+    preferences: new InMemoryPreferenceStore(),
     tenantId: DEMO_TENANT_ID,
   });
   client = new Client({ name: "test-host", version: "0.0.1" });
@@ -220,6 +222,89 @@ describe("golden path 2: confirmed write → receipt → audit", () => {
     expect(result.isError).toBeFalsy();
     expect(textOf(result)).toContain("Nimbus Cloudworks");
     expect(await auditLog.list(DEMO_TENANT_ID)).toHaveLength(1);
+  });
+});
+
+describe("M2.5: saved views (crm_list_view)", () => {
+  it("bakes exposed views + aliases into the tool description for model routing", async () => {
+    const { tools } = await client.listTools();
+    const listView = tools.find((t) => t.name === "crm_list_view")!;
+    expect(listView.description).toContain('"My open deals"');
+    expect(listView.description).toContain("my deals");
+    expect(listView.description).toContain("[default]");
+    expect(listView.description).not.toContain("Big deals"); // unexposed stays invisible
+  });
+
+  it("resolves a unique alias directly to the view's rows", async () => {
+    const result = await client.callTool({
+      name: "crm_list_view",
+      arguments: { object: "deals", query: "renewals" },
+    });
+    expect(result.isError).toBeFalsy();
+    const payload = result.structuredContent as unknown as ResultsTablePayload;
+    expect(payload.kind).toBe("results-table");
+    expect(payload.savedViewName).toBe("Renewals — next 90 days");
+    expect(payload.savedViewFilterSummary).toContain("90 days");
+  });
+
+  it("falls back to the default view when no query is given", async () => {
+    const result = await client.callTool({
+      name: "crm_list_view",
+      arguments: { object: "deals" },
+    });
+    const payload = result.structuredContent as unknown as ResultsTablePayload;
+    expect(payload.savedViewName).toBe("My open deals");
+  });
+
+  it("ambiguous ask → picker payload; explicit pick is remembered (5b)", async () => {
+    const ambiguous = await client.callTool({
+      name: "crm_list_view",
+      arguments: { object: "deals", query: "deals" },
+    });
+    expect(ambiguous.isError).toBeFalsy();
+    const picker = ambiguous.structuredContent as {
+      kind: string;
+      options: { viewId: string; name: string }[];
+    };
+    expect(picker.kind).toBe("view-picker");
+    expect(picker.options).toHaveLength(3);
+    expect(textOf(ambiguous)).toContain("matches 3 saved views");
+
+    // The widget sends the pick back with the original query…
+    const picked = await client.callTool({
+      name: "crm_list_view",
+      arguments: { object: "deals", view: "v-02", query: "deals" },
+    });
+    expect(
+      (picked.structuredContent as unknown as ResultsTablePayload).savedViewName,
+    ).toBe("Closing this quarter");
+
+    // …and the same phrasing now resolves directly, no picker.
+    const again = await client.callTool({
+      name: "crm_list_view",
+      arguments: { object: "deals", query: "Deals" },
+    });
+    const resolved = again.structuredContent as unknown as ResultsTablePayload;
+    expect(resolved.kind).toBe("results-table");
+    expect(resolved.savedViewName).toBe("Closing this quarter");
+  });
+
+  it("unknown asks error with the exposed-view list and point to crm_search", async () => {
+    const result = await client.callTool({
+      name: "crm_list_view",
+      arguments: { object: "deals", query: "flibbertigibbet" },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("crm_search");
+    expect(textOf(result)).toContain("My open deals");
+  });
+
+  it("saved-view rows honor the denylist like any other payload", async () => {
+    const result = await client.callTool({
+      name: "crm_list_view",
+      arguments: { object: "deals", query: "my deals" },
+    });
+    expect(JSON.stringify(result.structuredContent)).not.toContain("commission");
   });
 });
 
