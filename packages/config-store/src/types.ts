@@ -59,6 +59,7 @@ export interface AdminConfigStore extends ConfigStore {
   ): Promise<ViewExposuresConfig | undefined>;
   setViewExposures(config: ViewExposuresConfig): Promise<void>;
   setHomeCard(config: HomeCardConfig): Promise<void>;
+  publishHomeCard(config: HomeCardConfig): Promise<HomeCardConfig>;
   listPublishes(tenantId: string): Promise<PublishEvent[]>;
 }
 

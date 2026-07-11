@@ -201,6 +201,27 @@ export abstract class BaseConfigStore implements AdminConfigStore {
     };
     await this.save(state);
   }
+
+  /** Publish ceremony for home cards: revision bumps from current, event logged. */
+  async publishHomeCard(config: HomeCardConfig): Promise<HomeCardConfig> {
+    const current = await this.getHomeCard(config.tenantId, config.audience);
+    const published: HomeCardConfig = {
+      ...config,
+      revision: (current?.revision ?? 0) + 1,
+    };
+    await this.setHomeCard(published);
+    const state = await this.load();
+    state.publishes.push({
+      tenantId: config.tenantId,
+      object: "home card",
+      audience: config.audience,
+      revision: published.revision,
+      kind: "publish",
+      timestamp: new Date().toISOString(),
+    });
+    await this.save(state);
+    return published;
+  }
 }
 
 export class InMemoryConfigStore extends BaseConfigStore {

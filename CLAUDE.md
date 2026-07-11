@@ -9,13 +9,16 @@ map to `design/README.md`).
 
 ## Current phase
 
-**M4 core — the home card — is complete.** `pnpm demo:m4` walks "open my CRM"
+**M4 — the home card — is complete.** `pnpm demo:m4` walks "open my CRM"
 → home-card widget (7a: list tiles with live counts, picked-up-recently,
 follow-ups with overdue rows) → inline-confirmed task check-off via
 `crm_complete_task` → audit log → updateModelContext → re-render drops the
 completed task. Home config is the block-based `HomeCardConfig` (launcher
-blocks only — dashboard blocks don't exist, per the anti-goals); the 8a
-home-card BUILDER in Studio is still open.
+blocks only — dashboard blocks don't exist, per the anti-goals). Studio's
+home-card builder (8a) at `/home-card` toggles/configures blocks with the
+REAL HomeCard component previewing "as the rep"; publish bumps the revision
+and logs the event. Layout rollback now has UI too (Versions dropdown in the
+layout builder).
 
 **M3 — Studio core — is complete.** `pnpm demo:m3` walks Golden Path 3
 (publish → live layout change, rollback) at the store level, and the same flow

@@ -41,6 +41,8 @@ export interface WidgetHostResult {
 export interface WidgetHost {
   callTool(name: string, args: Record<string, unknown>): Promise<WidgetHostResult>;
   updateModelContext(text: string): void;
+  /** Post a user-turn followup into the chat (host sendMessage). No-op in previews. */
+  sendFollowup?(text: string): void;
 }
 
 export function RecordCard({

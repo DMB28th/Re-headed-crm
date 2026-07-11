@@ -22,6 +22,8 @@ export function Builder({ object }: { object: string }) {
   const [config, setConfig] = useState<LayoutConfig | null>(null);
   const [describe, setDescribe] = useState<ObjectDescribe | null>(null);
   const [publishedRevision, setPublishedRevision] = useState<number | null>(null);
+  const [history, setHistory] = useState<{ revision: number; name?: string }[]>([]);
+  const [rollingBack, setRollingBack] = useState<number | null>(null);
   const [saveState, setSaveState] = useState<"clean" | "saving" | "saved">("clean");
   const [publishOpen, setPublishOpen] = useState(false);
   const skipNextSave = useRef(true);
@@ -33,7 +35,26 @@ export function Builder({ object }: { object: string }) {
     setConfig(data.record.draft ?? data.record.published);
     setDescribe(data.describe);
     setPublishedRevision(data.record.published?.revision ?? null);
+    setHistory(
+      data.record.history
+        .map((c) => ({ revision: c.revision, ...(c.name ? { name: c.name } : {}) }))
+        .reverse(),
+    );
   }, [object]);
+
+  const rollback = async (revision: number) => {
+    setRollingBack(revision);
+    try {
+      await fetch(`/api/layout/${object}/rollback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ revision }),
+      });
+      await load();
+    } finally {
+      setRollingBack(null);
+    }
+  };
 
   useEffect(() => {
     void load();
@@ -79,6 +100,37 @@ export function Builder({ object }: { object: string }) {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {history.length > 0 && (
+            <details className="relative">
+              <summary className="st-btn cursor-pointer list-none">
+                Versions ({history.length})
+              </summary>
+              <div className="absolute right-0 z-20 mt-2 w-[280px] rounded-[10px] border border-line bg-surface p-1.5 shadow-lg">
+                <div className="px-2 py-1 text-[11px] text-ink-45">
+                  Previous versions are kept — rolling back republishes under a new revision.
+                </div>
+                {history.map((entry) => (
+                  <div
+                    key={entry.revision}
+                    className="flex items-center justify-between rounded-[8px] px-2 py-1.5 hover:bg-paper"
+                  >
+                    <span className="text-[12px]">
+                      <span className="st-chip-mono bg-paper text-ink-55">v{entry.revision}</span>{" "}
+                      {entry.name ?? ""}
+                    </span>
+                    <button
+                      type="button"
+                      className="cs-link-btn st-btn !py-0.5 text-[11px]"
+                      disabled={rollingBack !== null}
+                      onClick={() => rollback(entry.revision)}
+                    >
+                      {rollingBack === entry.revision ? "Rolling back…" : "Roll back"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
           <details className="relative">
             <summary className="st-btn cursor-pointer list-none font-mono text-[11px]">{"{ }"}</summary>
             <pre className="absolute right-0 z-20 mt-2 max-h-[420px] w-[440px] overflow-auto rounded-[10px] border border-line bg-surface p-3 text-[10.5px] leading-relaxed shadow-lg">

@@ -11,7 +11,6 @@ const objectTabs = [
 ];
 
 const sharedItems = [
-  { label: "Home card", hint: "M4" },
   { label: "Custom screens", hint: "M6" },
   { label: "Flows", hint: "M5" },
 ];
@@ -82,6 +81,9 @@ export function NavRail() {
 
       <div>
         <div className="st-section-label px-2.5 pb-1.5">Shared</div>
+        <RailLink href="/home-card" active={pathname === "/home-card"}>
+          Home card
+        </RailLink>
         {sharedItems.map((item) => (
           <div
             key={item.label}

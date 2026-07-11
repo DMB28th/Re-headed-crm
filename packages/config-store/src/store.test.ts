@@ -69,6 +69,24 @@ describe("publish lifecycle", () => {
   });
 });
 
+describe("home card publish", () => {
+  it("bumps revision from current and logs the event", async () => {
+    const store = new InMemoryConfigStore();
+    const current = (await store.getHomeCard(DEMO_TENANT_ID))!;
+    expect(current.revision).toBe(1);
+    const published = await store.publishHomeCard({
+      ...current,
+      blocks: current.blocks.filter((b) => b.type !== "recent"),
+    });
+    expect(published.revision).toBe(2);
+    expect((await store.getHomeCard(DEMO_TENANT_ID))!.blocks).toHaveLength(2);
+    expect((await store.listPublishes(DEMO_TENANT_ID))[0]).toMatchObject({
+      object: "home card",
+      revision: 2,
+    });
+  });
+});
+
 describe("diffLayouts (publish modal, 2b)", () => {
   it("reports removed/changed entries vs the published layout", () => {
     const diff = diffLayouts(demoDealsLayout, editedDraft());
