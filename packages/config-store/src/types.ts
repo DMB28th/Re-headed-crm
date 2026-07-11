@@ -1,9 +1,25 @@
 import type {
+  CustomList,
   HomeCardConfig,
   LayoutConfig,
   ViewExposure,
   ViewExposuresConfig,
 } from "@cardstack/core";
+
+/**
+ * Whether a CRM is wired up for the tenant. Disconnected = empty canvas:
+ * Studio shows empty states and every MCP tool refuses with a "connect one in
+ * Studio" message. Stores without a stored state default to CONNECTED (mock)
+ * so pre-existing config files/databases keep working.
+ */
+export interface ConnectionState {
+  tenantId: string;
+  status: "connected" | "disconnected";
+  crm: "hubspot" | "salesforce";
+  /** Human label for the portal, e.g. "mock portal". */
+  label: string;
+  changedAt: string;
+}
 
 /**
  * Read side — what the MCP server needs at render time. Reps only ever see
@@ -18,8 +34,11 @@ export interface ConfigStore {
   listConfiguredObjects(tenantId: string): Promise<string[]>;
   /** Exposed saved-view config only (unexposed views stay invisible to chat). */
   getViewExposures(tenantId: string, object: string): Promise<ViewExposure[]>;
+  /** Admin-defined custom lists (filters live in Cardstack, not the CRM). */
+  getCustomLists(tenantId: string, object: string): Promise<CustomList[]>;
   /** Published home-card config for "open my CRM" (design 7a). */
   getHomeCard(tenantId: string, audience?: string): Promise<HomeCardConfig | undefined>;
+  getConnection(tenantId: string): Promise<ConnectionState>;
 }
 
 /** One (tenant, object, audience) slot: draft vs published + rollback history. */
@@ -61,6 +80,7 @@ export interface AdminConfigStore extends ConfigStore {
   setHomeCard(config: HomeCardConfig): Promise<void>;
   publishHomeCard(config: HomeCardConfig): Promise<HomeCardConfig>;
   listPublishes(tenantId: string): Promise<PublishEvent[]>;
+  setConnection(state: ConnectionState): Promise<void>;
 }
 
 export const layoutKey = (tenantId: string, object: string, audience = "default"): string =>

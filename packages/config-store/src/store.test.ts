@@ -87,6 +87,47 @@ describe("home card publish", () => {
   });
 });
 
+describe("connections (empty canvas)", () => {
+  it("defaults to a connected mock portal when nothing is stored", async () => {
+    const store = new InMemoryConfigStore();
+    const connection = await store.getConnection(DEMO_TENANT_ID);
+    expect(connection).toMatchObject({ status: "connected", crm: "hubspot" });
+  });
+
+  it("disconnect persists and survives a second file-store instance", async () => {
+    const file = path.join(mkdtempSync(path.join(tmpdir(), "cardstack-")), "config.json");
+    const studio = new FileConfigStore(file);
+    const server = new FileConfigStore(file);
+    await studio.setConnection({
+      tenantId: DEMO_TENANT_ID,
+      status: "disconnected",
+      crm: "hubspot",
+      label: "mock portal",
+      changedAt: new Date().toISOString(),
+    });
+    expect((await server.getConnection(DEMO_TENANT_ID)).status).toBe("disconnected");
+  });
+});
+
+describe("custom lists (view-exposures v2)", () => {
+  it("stores custom lists alongside exposures and reads them back", async () => {
+    const store = new InMemoryConfigStore();
+    const config = (await store.getViewExposuresConfig(DEMO_TENANT_ID, "deals"))!;
+    await store.setViewExposures({
+      ...config,
+      customLists: [
+        { id: "cl-1", name: "Big renewals", filters: [{ field: "amount", op: "gt", value: 100000 }] },
+      ],
+      views: [...config.views, { viewId: "cl-1", exposed: true, aliases: ["big renewals"], isDefault: false }],
+    });
+    const lists = await store.getCustomLists(DEMO_TENANT_ID, "deals");
+    expect(lists).toHaveLength(1);
+    expect(lists[0]!.name).toBe("Big renewals");
+    const exposed = await store.getViewExposures(DEMO_TENANT_ID, "deals");
+    expect(exposed.map((v) => v.viewId)).toContain("cl-1");
+  });
+});
+
 describe("diffLayouts (publish modal, 2b)", () => {
   it("reports removed/changed entries vs the published layout", () => {
     const diff = diffLayouts(demoDealsLayout, editedDraft());

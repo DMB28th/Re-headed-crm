@@ -77,6 +77,13 @@ body {
   max-width: 680px;
   margin: 0 auto;
   overflow: hidden;
+  /* Own the text styles, not just the background: inside Studio's preview the
+   * card is NOT the body, so without these the host page's (light) text color
+   * leaks in and dark mode renders dark-on-dark. */
+  color: var(--cs-text);
+  font-family: var(--cs-font);
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .cs-muted {

@@ -15,12 +15,14 @@ import { PublishModal } from "./publish-modal";
 interface LayoutApiResponse {
   record: LayoutRecord;
   describe: ObjectDescribe;
+  relatedDescribes: Record<string, ObjectDescribe>;
   diff: LayoutDiff | null;
 }
 
 export function Builder({ object }: { object: string }) {
   const [config, setConfig] = useState<LayoutConfig | null>(null);
   const [describe, setDescribe] = useState<ObjectDescribe | null>(null);
+  const [relatedDescribes, setRelatedDescribes] = useState<Record<string, ObjectDescribe>>({});
   const [publishedRevision, setPublishedRevision] = useState<number | null>(null);
   const [history, setHistory] = useState<{ revision: number; name?: string }[]>([]);
   const [rollingBack, setRollingBack] = useState<number | null>(null);
@@ -34,6 +36,7 @@ export function Builder({ object }: { object: string }) {
     skipNextSave.current = true;
     setConfig(data.record.draft ?? data.record.published);
     setDescribe(data.describe);
+    setRelatedDescribes(data.relatedDescribes ?? {});
     setPublishedRevision(data.record.published?.revision ?? null);
     setHistory(
       data.record.history
@@ -157,7 +160,12 @@ export function Builder({ object }: { object: string }) {
             });
           }}
         />
-        <Canvas config={config} describe={describe} onChange={setConfig} />
+        <Canvas
+          config={config}
+          describe={describe}
+          relatedDescribes={relatedDescribes}
+          onChange={setConfig}
+        />
         <Preview config={config} />
       </div>
 

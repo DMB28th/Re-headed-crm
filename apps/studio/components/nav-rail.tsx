@@ -1,7 +1,13 @@
 "use client";
-/** Studio navigation shell (design 12b): 224px left rail, object-scoped tabs. */
+/**
+ * Studio navigation shell (design 12b): 224px left rail, object-scoped tabs.
+ * Objects are dynamic (object picker 3c); the roadmap placeholders ("Custom
+ * screens", "Flows") were removed per feedback 2026-07-11 — dead rows read as
+ * half-done. PR note: deviation from 12b's static rail.
+ */
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 
 const objectTabs = [
   { slug: "layouts", label: "Layouts" },
@@ -10,10 +16,11 @@ const objectTabs = [
   { slug: "assignment", label: "Assignment" },
 ];
 
-const sharedItems = [
-  { label: "Custom screens", hint: "M6" },
-  { label: "Flows", hint: "M5" },
-];
+interface ObjectsData {
+  connection: { status: "connected" | "disconnected" } | null;
+  objects: { api: string; labelPlural: string; draft: boolean; publishedRevision: number | null }[];
+  available: { api: string; labelPlural: string }[];
+}
 
 function RailLink({
   href,
@@ -40,6 +47,42 @@ function RailLink({
 
 export function NavRail() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [data, setData] = useState<ObjectsData | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [adding, setAdding] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const res = await fetch("/api/objects");
+    setData((await res.json()) as ObjectsData);
+  }, []);
+
+  // Refetch on navigation: connect/disconnect and publishes change the rail.
+  useEffect(() => {
+    void load();
+  }, [load, pathname]);
+
+  const addObject = async (api: string) => {
+    setAdding(api);
+    try {
+      const res = await fetch("/api/objects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ object: api }),
+      });
+      if (res.ok) {
+        setPickerOpen(false);
+        await load();
+        router.push(`/objects/${api}/layouts`);
+      }
+    } finally {
+      setAdding(null);
+    }
+  };
+
+  const connected = data?.connection?.status === "connected";
+  const activeObject = pathname.startsWith("/objects/") ? pathname.split("/")[2] : null;
+
   return (
     <nav className="w-[224px] shrink-0 border-r border-line-soft bg-surface px-3 py-5 flex flex-col gap-5">
       <div className="flex items-center gap-2 px-2">
@@ -56,27 +99,70 @@ export function NavRail() {
 
       <div>
         <div className="st-section-label px-2.5 pb-1.5">Objects</div>
-        <RailLink href="/objects/deals/layouts" active={false}>
-          <span className="font-medium text-ink">Deals</span>
-        </RailLink>
-        {objectTabs.map((tab) => (
-          <RailLink
-            key={tab.slug}
-            href={`/objects/deals/${tab.slug}`}
-            active={pathname === `/objects/deals/${tab.slug}`}
-            indent
-          >
-            {tab.label}
-          </RailLink>
-        ))}
-        <button
-          type="button"
-          className="mt-2 ml-2.5 w-[calc(100%-20px)] rounded-[8px] border border-dashed border-line px-2.5 py-1.5 text-left text-[12px] text-ink-45"
-          disabled
-          title="One object in the demo portal — more come with the object picker (3c)"
-        >
-          + Add object
-        </button>
+        {data && !connected && (
+          <div className="px-2.5 py-1.5 text-[12px] text-ink-45">
+            No CRM connected —{" "}
+            <Link href="/connections" className="underline">
+              connect one
+            </Link>
+          </div>
+        )}
+        {connected &&
+          data?.objects.map((object) => {
+            const expanded = activeObject === object.api || (activeObject === null && data.objects[0] === object);
+            return (
+              <div key={object.api}>
+                <RailLink
+                  href={`/objects/${object.api}/layouts`}
+                  active={false}
+                >
+                  <span className="flex items-center justify-between">
+                    <span className="font-medium capitalize text-ink">{object.labelPlural}</span>
+                    {object.draft && (
+                      <span className="st-chip-mono bg-draft text-draft-ink">draft</span>
+                    )}
+                  </span>
+                </RailLink>
+                {expanded &&
+                  objectTabs.map((tab) => (
+                    <RailLink
+                      key={tab.slug}
+                      href={`/objects/${object.api}/${tab.slug}`}
+                      active={pathname === `/objects/${object.api}/${tab.slug}`}
+                      indent
+                    >
+                      {tab.label}
+                    </RailLink>
+                  ))}
+              </div>
+            );
+          })}
+        {connected && (data?.available.length ?? 0) > 0 && (
+          <div className="relative">
+            <button
+              type="button"
+              className="mt-2 ml-2.5 w-[calc(100%-20px)] rounded-[8px] border border-dashed border-line px-2.5 py-1.5 text-left text-[12px] text-ink-45 hover:text-ink"
+              onClick={() => setPickerOpen((o) => !o)}
+            >
+              + Add object
+            </button>
+            {pickerOpen && (
+              <div className="absolute left-2.5 z-30 mt-1 w-[calc(100%-20px)] rounded-[10px] border border-line bg-surface p-1 shadow-lg">
+                {data?.available.map((object) => (
+                  <button
+                    key={object.api}
+                    type="button"
+                    className="block w-full rounded-[8px] px-2.5 py-1.5 text-left text-[12.5px] capitalize hover:bg-paper"
+                    disabled={adding !== null}
+                    onClick={() => addObject(object.api)}
+                  >
+                    {adding === object.api ? "Adding…" : object.labelPlural}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div>
@@ -84,21 +170,14 @@ export function NavRail() {
         <RailLink href="/home-card" active={pathname === "/home-card"}>
           Home card
         </RailLink>
-        {sharedItems.map((item) => (
-          <div
-            key={item.label}
-            className="flex items-center justify-between px-2.5 py-1.5 text-[12.5px] text-ink-45"
-          >
-            <span>{item.label}</span>
-            <span className="st-chip-mono bg-paper text-ink-45">{item.hint}</span>
-          </div>
-        ))}
       </div>
 
       <div className="mt-auto">
         <RailLink href="/connections" active={pathname === "/connections"}>
           <span className="flex items-center gap-2">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-success-dot" />
+            <span
+              className={`inline-block h-1.5 w-1.5 rounded-full ${connected ? "bg-success-dot" : "bg-line"}`}
+            />
             Connections
           </span>
         </RailLink>

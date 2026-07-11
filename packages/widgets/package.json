@@ -13,6 +13,7 @@
     "./react": "./src/react.ts",
     "./styles/theme.css": "./src/shared/theme.css",
     "./styles/record-card.css": "./src/record-card/record-card.css",
+    "./styles/results-table.css": "./src/results-table/results-table.css",
     "./styles/home-card.css": "./src/home-card/home-card.css"
   },
   "scripts": {

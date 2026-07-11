@@ -210,7 +210,8 @@ export class MockCrmAdapter implements CrmAdapter {
   }
 
   async getConnectedUser(): Promise<string> {
-    return "Dan K.";
+    // Self-describing demo persona (feedback 2026-07-11: no unexplained names).
+    return "Demo rep";
   }
 
   // --- internals ---

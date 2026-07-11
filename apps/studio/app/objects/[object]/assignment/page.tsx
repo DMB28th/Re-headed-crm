@@ -1,5 +1,6 @@
 /** Assignment (2f–2i): v1 teaching state — one default layout, audiences later. */
 import { getStore, TENANT_ID } from "../../../../lib/backend";
+import { NoConnection } from "../../../../components/no-connection";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,10 @@ export default async function AssignmentPage({
   params: Promise<{ object: string }>;
 }) {
   const { object } = await params;
-  const record = await (await getStore()).getLayoutRecord(TENANT_ID, object);
+  const store = await getStore();
+  const connection = await store.getConnection(TENANT_ID);
+  if (connection.status !== "connected") return <NoConnection />;
+  const record = await store.getLayoutRecord(TENANT_ID, object);
   const layoutName = record.published?.name ?? "default layout";
 
   return (

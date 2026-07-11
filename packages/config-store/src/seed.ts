@@ -9,8 +9,24 @@ import {
   ViewExposuresConfig,
   type LayoutConfig,
 } from "@cardstack/core";
+import type { ConnectionState } from "./types.js";
 
 export const DEMO_TENANT_ID = "t_demo";
+
+/**
+ * Default connection for stores with no stored state: the mock portal,
+ * connected. Pre-dates the connections feature, so absence = connected keeps
+ * existing config files and databases working unchanged.
+ */
+export function defaultConnection(tenantId: string): ConnectionState {
+  return {
+    tenantId,
+    status: "connected",
+    crm: "hubspot",
+    label: "mock portal",
+    changedAt: "2026-07-11T00:00:00.000Z",
+  };
+}
 
 export const demoDealsLayout: LayoutConfig = parseLayoutConfig({
   version: 1,

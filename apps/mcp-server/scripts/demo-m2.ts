@@ -51,7 +51,7 @@ async function main() {
     FIELD    BEFORE          AFTER
     Stage    ${red("C̶o̶n̶t̶r̶a̶c̶t̶ ̶s̶e̶n̶t̶")}   ${green("Negotiation")}
     Amount   ${red("1̶2̶8̶4̶0̶0̶")}          ${green("135000")}
-    ${dim("Written as Dan K. · logged in HubSpot history")}
+    ${dim("Written as Demo rep · logged in HubSpot history")}
 `);
   console.log(bold("User clicks [✎ Confirm & write to HubSpot] → widget calls crm_update_record via the HOST\n"));
 

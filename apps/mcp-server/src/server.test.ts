@@ -111,7 +111,7 @@ describe("golden path 1: search → record card", () => {
       "renewal_date",
       "next_step",
     ]);
-    expect(payload.provenance.connectedUser).toBe("Dan K.");
+    expect(payload.provenance.connectedUser).toBe("Demo rep");
   });
 
   it("resolves a record by name query when id is unknown", async () => {
@@ -150,7 +150,7 @@ describe("golden path 2: confirmed write → receipt → audit", () => {
     expect(result.isError).toBeFalsy();
     expect(textOf(result)).toContain("Stage Contract sent→Negotiation");
     expect(textOf(result)).toContain("Amount 128400→135000");
-    expect(textOf(result)).toContain("Written as Dan K.");
+    expect(textOf(result)).toContain("Written as Demo rep");
 
     const receipt = result.structuredContent as unknown as WriteReceiptPayload;
     expect(receipt.kind).toBe("write-receipt");
@@ -161,7 +161,7 @@ describe("golden path 2: confirmed write → receipt → audit", () => {
     const entries = await auditLog.list(DEMO_TENANT_ID);
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
-      user: "Dan K.",
+      user: "Demo rep",
       object: "deals",
       recordId: "d-001",
     });
@@ -341,7 +341,7 @@ describe("M4: home card (crm_home + crm_complete_task)", () => {
     const done = await client.callTool({ name: "crm_complete_task", arguments: { id: "t-01" } });
     expect(done.isError).toBeFalsy();
     expect(textOf(done)).toContain("Countersign Meridian renewal");
-    expect(textOf(done)).toContain("Written as Dan K.");
+    expect(textOf(done)).toContain("Written as Demo rep");
 
     const entries = await auditLog.list(DEMO_TENANT_ID);
     expect(entries[0]).toMatchObject({ object: "tasks", recordId: "t-01" });
@@ -371,5 +371,87 @@ describe("server-side security enforcement", () => {
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain("No layout is configured");
     expect(textOf(result)).toContain("deals");
+  });
+});
+
+describe("connection gate (empty canvas)", () => {
+  it("every tool refuses when the tenant's CRM is disconnected", async () => {
+    const configStore = new InMemoryConfigStore();
+    await configStore.setConnection({
+      tenantId: DEMO_TENANT_ID,
+      status: "disconnected",
+      crm: "hubspot",
+      label: "mock portal",
+      changedAt: new Date().toISOString(),
+    });
+    const server = await createCardstackServer({
+      adapter: new MockCrmAdapter(),
+      configStore,
+      auditLog: new InMemoryAuditLog(),
+      preferences: new InMemoryPreferenceStore(),
+      tenantId: DEMO_TENANT_ID,
+    });
+    const offline = new Client({ name: "test-host", version: "0.0.1" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverTransport), offline.connect(clientTransport)]);
+
+    for (const call of [
+      { name: "crm_home", arguments: {} },
+      { name: "crm_search", arguments: { object: "deals" } },
+      { name: "crm_update_record", arguments: { object: "deals", id: "d-001", patch: { amount: 1 } } },
+    ]) {
+      const result = await offline.callTool(call);
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain("No CRM is connected");
+    }
+  });
+});
+
+describe("custom lists (Cardstack-native filters)", () => {
+  it("an exposed custom list resolves in crm_list_view and runs via search", async () => {
+    const configStore = new InMemoryConfigStore();
+    const exposures = (await configStore.getViewExposuresConfig(DEMO_TENANT_ID, "deals"))!;
+    await configStore.setViewExposures({
+      ...exposures,
+      customLists: [
+        {
+          id: "cl-big",
+          name: "Big open deals",
+          filters: [
+            { field: "amount", op: "gt", value: 100000 },
+            { field: "dealstage", op: "neq", value: "Closed won" },
+            { field: "dealstage", op: "neq", value: "Closed lost" },
+          ],
+          filterSummary: "Amount > $100k · open",
+        },
+      ],
+      views: [
+        ...exposures.views,
+        { viewId: "cl-big", exposed: true, aliases: ["big deals list"], isDefault: false },
+      ],
+    });
+    const server = await createCardstackServer({
+      adapter: new MockCrmAdapter(),
+      configStore,
+      auditLog: new InMemoryAuditLog(),
+      preferences: new InMemoryPreferenceStore(),
+      tenantId: DEMO_TENANT_ID,
+    });
+    const custom = new Client({ name: "test-host", version: "0.0.1" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverTransport), custom.connect(clientTransport)]);
+
+    const result = await custom.callTool({
+      name: "crm_list_view",
+      arguments: { object: "deals", query: "big deals list" },
+    });
+    expect(result.isError).toBeFalsy();
+    expect(textOf(result)).toContain("Big open deals");
+    const payload = result.structuredContent as ResultsTablePayload;
+    expect(payload.savedViewId).toBe("cl-big");
+    expect(payload.page.rows.length).toBeGreaterThan(0);
+    for (const row of payload.page.rows) {
+      expect(Number(row.fields.amount)).toBeGreaterThan(100000);
+    }
   });
 });

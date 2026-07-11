@@ -2,12 +2,14 @@
  * Saved-view ask resolution ("show me my deals" → the user's exposed views
  * first; free-form filters stay with crm_search). Pure logic, unit-testable.
  */
-import type { SavedView, ViewExposure } from "@cardstack/core";
+import type { CustomList, SavedView, ViewExposure } from "@cardstack/core";
 import { normalizeAsk } from "./config/preferences.js";
 
 export interface ExposedView {
   exposure: ViewExposure;
   view: SavedView;
+  /** Set when the view is a Cardstack custom list (filters run via search). */
+  custom?: CustomList;
 }
 
 export type ViewResolution =

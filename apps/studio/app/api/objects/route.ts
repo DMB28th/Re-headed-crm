@@ -1,0 +1,48 @@
+import { NextResponse } from "next/server";
+import { getAdapter, getStore, TENANT_ID } from "../../../lib/backend";
+import { generateStarterLayout } from "../../../lib/starter-layout";
+
+/** Objects panel data: what's configured (draft or published) vs addable. */
+export async function GET() {
+  const store = await getStore();
+  const adapter = getAdapter();
+  const connection = await store.getConnection(TENANT_ID);
+  if (connection.status !== "connected") {
+    return NextResponse.json({ connection, objects: [], available: [] });
+  }
+  const crmObjects = await adapter.listObjects();
+  const objects: { api: string; labelPlural: string; draft: boolean; publishedRevision: number | null }[] = [];
+  const available: { api: string; labelPlural: string }[] = [];
+  for (const summary of crmObjects) {
+    const record = await store.getLayoutRecord(TENANT_ID, summary.api);
+    if (record.draft || record.published) {
+      objects.push({
+        api: summary.api,
+        labelPlural: summary.labelPlural,
+        draft: !!record.draft,
+        publishedRevision: record.published?.revision ?? null,
+      });
+    } else {
+      available.push({ api: summary.api, labelPlural: summary.labelPlural });
+    }
+  }
+  return NextResponse.json({ connection, objects, available });
+}
+
+/** Add an object: generate a starter DRAFT layout from describe (3c). */
+export async function POST(req: Request) {
+  try {
+    const { object } = (await req.json()) as { object?: string };
+    if (!object) return NextResponse.json({ error: "object required" }, { status: 400 });
+    const store = await getStore();
+    const record = await store.getLayoutRecord(TENANT_ID, object);
+    if (record.draft || record.published) {
+      return NextResponse.json({ error: `${object} is already configured` }, { status: 409 });
+    }
+    const describe = await getAdapter().describeObject(object);
+    await store.saveDraft(generateStarterLayout(TENANT_ID, describe));
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json({ error: String(error) }, { status: 400 });
+  }
+}

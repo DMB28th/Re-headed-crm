@@ -4,23 +4,26 @@
  * packages/widgets against the in-browser mock adapter — the exact assembly
  * codepath the MCP server uses (core/assemble.ts). Writes are simulated
  * against the mock portal, including real validation-rule behavior.
+ * Collapsible so the canvas can take the full width.
  */
 import { useEffect, useMemo, useState } from "react";
 import {
   buildRecordCardPayload,
   parseLayoutConfig,
-  type CrmFieldValue,
-  type FieldWriteResult,
   type LayoutConfig,
   type RecordCardPayload,
-  type WriteReceiptPayload,
 } from "@cardstack/core";
-import { CrmValidationError, MockCrmAdapter } from "@cardstack/crm-adapters";
+import { MockCrmAdapter } from "@cardstack/crm-adapters";
 import { RecordCard, type WidgetHost } from "@cardstack/widgets/react";
+import { createPreviewHost } from "../../lib/preview-host";
 import "@cardstack/widgets/styles/theme.css";
 import "@cardstack/widgets/styles/record-card.css";
 
-const PREVIEW_RECORD_ID = "d-001";
+const PREVIEW_RECORD_ID_BY_OBJECT: Record<string, string> = {
+  deals: "d-001",
+  contacts: "c-001",
+  companies: "co-01",
+};
 
 export function Preview({ config }: { config: LayoutConfig }) {
   const adapter = useMemo(() => new MockCrmAdapter(), []);
@@ -28,6 +31,7 @@ export function Preview({ config }: { config: LayoutConfig }) {
   const [payloadKey, setPayloadKey] = useState(0);
   const [width, setWidth] = useState<680 | 380>(680);
   const [dark, setDark] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [modelContext, setModelContext] = useState<string | null>(null);
   const [buildError, setBuildError] = useState<string | null>(null);
 
@@ -38,7 +42,11 @@ export function Preview({ config }: { config: LayoutConfig }) {
     (async () => {
       try {
         const parsed = parseLayoutConfig(JSON.parse(configJson));
-        const record = await adapter.getRecord(parsed.object, PREVIEW_RECORD_ID, []);
+        const previewId =
+          PREVIEW_RECORD_ID_BY_OBJECT[parsed.object] ??
+          (await adapter.search(parsed.object, { limit: 1 })).rows[0]?.id;
+        if (!previewId) throw new Error(`No ${parsed.object} records in the mock portal.`);
+        const record = await adapter.getRecord(parsed.object, previewId, []);
         const built = await buildRecordCardPayload({ source: adapter, config: parsed, record });
         if (!cancelled) {
           setPayload(built);
@@ -55,84 +63,33 @@ export function Preview({ config }: { config: LayoutConfig }) {
   }, [configJson, adapter]);
 
   const host: WidgetHost = useMemo(
-    () => ({
-      callTool: async (name, args) => {
-        const parsed = parseLayoutConfig(JSON.parse(configJson));
-        if (name === "crm_get_related") {
-          const rel = parsed.recordCard.relatedLists.find(
-            (r) => r.relationship === (args.relationship as string),
-          );
-          if (!rel) return { isError: true, content: [{ type: "text", text: "not configured" }] };
-          const page = await adapter.getRelated(args.recordId as string, {
-            ...rel,
-            limit: (args.limit as number) ?? rel.limit,
-          });
-          return { structuredContent: { page } };
-        }
-        if (name === "crm_get_record") {
-          const record = await adapter.getRecord(parsed.object, args.id as string, []);
-          const built = await buildRecordCardPayload({ source: adapter, config: parsed, record });
-          return { structuredContent: built };
-        }
-        if (name === "crm_update_record") {
-          // Simulated write against the in-browser mock portal — real per-field
-          // validation, nothing leaves the page.
-          const patch = args.patch as Record<string, CrmFieldValue>;
-          const id = args.id as string;
-          const before = await adapter.getRecord(parsed.object, id, Object.keys(patch));
-          const describe = await adapter.describeObject(parsed.object);
-          const results: FieldWriteResult[] = [];
-          for (const [field, value] of Object.entries(patch)) {
-            const label = describe.fields.find((f) => f.api === field)?.label ?? field;
-            try {
-              await adapter.updateRecord(parsed.object, id, { [field]: value });
-              results.push({ field, label, before: before.fields[field] ?? null, after: value, ok: true });
-            } catch (error) {
-              results.push({
-                field,
-                label,
-                before: before.fields[field] ?? null,
-                after: before.fields[field] ?? null,
-                ok: false,
-                ...(error instanceof CrmValidationError ? { error: error.message } : { error: String(error) }),
-              });
-            }
-          }
-          const saved = results.filter((r) => r.ok);
-          const fresh = await adapter.getRecord(parsed.object, id, []);
-          const receipt: WriteReceiptPayload = {
-            kind: "write-receipt",
-            object: parsed.object,
-            recordId: id,
-            recordName: String(fresh.fields[parsed.recordCard.header.title] ?? id),
-            results,
-            savedCount: saved.length,
-            failedCount: results.length - saved.length,
-            writtenAs: "Dan K. (preview)",
-            timestamp: new Date().toISOString(),
-            record: fresh,
-            provenance: payload?.provenance ?? {
-              crm: parsed.crm,
-              crmLabel: parsed.crm === "hubspot" ? "HubSpot" : "Salesforce",
-              layoutRevision: parsed.revision,
-            },
-          };
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Preview write: ${saved.length}/${results.length} fields saved (simulated — mock portal only).`,
-              },
-            ],
-            structuredContent: receipt,
-          };
-        }
-        return { isError: true, content: [{ type: "text", text: `unknown tool ${name}` }] };
-      },
-      updateModelContext: (text) => setModelContext(text),
-    }),
+    () =>
+      createPreviewHost({
+        adapter,
+        getConfigJson: () => configJson,
+        getProvenance: () => payload?.provenance,
+        onModelContext: (text) => setModelContext(text),
+      }),
     [configJson, adapter, payload?.provenance],
   );
+
+  if (collapsed) {
+    return (
+      <aside className="w-[36px] shrink-0">
+        <button
+          type="button"
+          className="st-btn w-full !px-1 py-2"
+          title="Expand the live preview"
+          onClick={() => setCollapsed(false)}
+        >
+          ◂
+        </button>
+        <div className="mt-2 rotate-180 text-center text-[10.5px] tracking-[0.06em] text-ink-45 [writing-mode:vertical-rl]">
+          PREVIEW
+        </div>
+      </aside>
+    );
+  }
 
   return (
     <aside className="w-[396px] shrink-0 overflow-y-auto">
@@ -159,6 +116,14 @@ export function Preview({ config }: { config: LayoutConfig }) {
             }`}
           >
             {dark ? "Dark" : "Light"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCollapsed(true)}
+            className="rounded-[7px] border border-line px-2 py-0.5 text-[11px] text-ink-55"
+            title="Collapse the preview"
+          >
+            ▸
           </button>
         </span>
       </div>

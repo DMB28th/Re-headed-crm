@@ -7,10 +7,12 @@ type Params = { params: Promise<{ object: string }> };
 export async function GET(_req: Request, { params }: Params) {
   const { object } = await params;
   const savedViews = await getAdapter().listSavedViews(object);
+  // describe feeds the custom-list filter builder (field/op/value rows).
+  const describe = await getAdapter().describeObject(object);
   const exposures =
     (await (await getStore()).getViewExposuresConfig(TENANT_ID, object)) ??
     ViewExposuresConfig.parse({ version: 1, tenantId: TENANT_ID, object, views: [] });
-  return NextResponse.json({ savedViews, exposures });
+  return NextResponse.json({ savedViews, exposures, describe });
 }
 
 export async function PUT(req: Request, { params }: Params) {

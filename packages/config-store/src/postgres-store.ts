@@ -8,10 +8,17 @@
  *   view_exposures(tenant_id, object, config jsonb)
  *   home_cards(tenant_id, audience, config jsonb)
  *   publish_events(tenant_id, object, audience, revision, kind, created_at)
+ *   connections(tenant_id, config jsonb)
+ *
+ * Migration notes:
+ * - 2026-07-11: added `connections` (CREATE TABLE IF NOT EXISTS — safe on live
+ *   databases). A missing row means "connected mock" so databases initialized
+ *   before this table behave unchanged. Custom lists ride inside the existing
+ *   view_exposures jsonb (view-exposures schema v2) — no table change.
  */
-import type { HomeCardConfig, LayoutConfig, ViewExposure, ViewExposuresConfig } from "@cardstack/core";
-import type { AdminConfigStore, LayoutRecord, PublishEvent } from "./types.js";
-import { demoDealsLayout, demoHomeCard, demoViewExposures } from "./seed.js";
+import type { CustomList, HomeCardConfig, LayoutConfig, ViewExposure, ViewExposuresConfig } from "@cardstack/core";
+import type { AdminConfigStore, ConnectionState, LayoutRecord, PublishEvent } from "./types.js";
+import { defaultConnection, demoDealsLayout, demoHomeCard, demoViewExposures } from "./seed.js";
 
 /**
  * Single logical SQL session (so BEGIN/COMMIT are safe). Satisfied by a pg
@@ -59,6 +66,11 @@ CREATE TABLE IF NOT EXISTS publish_events (
   revision   int  NOT NULL,
   kind       text NOT NULL CHECK (kind IN ('publish','rollback')),
   created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS connections (
+  tenant_id text PRIMARY KEY,
+  config    jsonb NOT NULL
 );
 `;
 
@@ -140,6 +152,32 @@ export class PostgresConfigStore implements AdminConfigStore {
   async getViewExposures(tenantId: string, object: string): Promise<ViewExposure[]> {
     const config = await this.getViewExposuresConfig(tenantId, object);
     return (config?.views ?? []).filter((v) => v.exposed);
+  }
+
+  async getCustomLists(tenantId: string, object: string): Promise<CustomList[]> {
+    const config = await this.getViewExposuresConfig(tenantId, object);
+    // ?? handles rows written before customLists existed (view-exposures v2).
+    return config?.customLists ?? [];
+  }
+
+  async getConnection(tenantId: string): Promise<ConnectionState> {
+    await this.ready;
+    const { rows } = await this.sql.query(
+      "SELECT config FROM connections WHERE tenant_id=$1",
+      [tenantId],
+    );
+    // Missing row = connected mock: keeps databases initialized before the
+    // connections table behaving unchanged (see header migration note).
+    return rows[0] ? this.parse<ConnectionState>(rows[0].config) : defaultConnection(tenantId);
+  }
+
+  async setConnection(connection: ConnectionState): Promise<void> {
+    await this.ready;
+    await this.sql.query(
+      `INSERT INTO connections (tenant_id, config) VALUES ($1,$2)
+       ON CONFLICT (tenant_id) DO UPDATE SET config = EXCLUDED.config`,
+      [connection.tenantId, JSON.stringify(connection)],
+    );
   }
 
   async getLayoutRecord(tenantId: string, object: string, audience = "default"): Promise<LayoutRecord> {

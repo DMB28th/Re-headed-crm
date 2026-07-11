@@ -5,4 +5,5 @@
  */
 export { RecordCard, type WidgetHost, type WidgetHostResult } from "./record-card/card.tsx";
 export { HomeCard } from "./home-card/card.tsx";
+export { ResultsTable } from "./results-table/table.tsx";
 export { LoadingCard, MessageCard } from "./shared/components.tsx";

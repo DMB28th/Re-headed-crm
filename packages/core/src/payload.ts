@@ -33,7 +33,7 @@ export interface WidgetProvenance {
   crmLabel: string;
   layoutName?: string;
   layoutRevision: number;
-  /** CRM user writes are attributed to ("Written as Dan K." in the diff footer). */
+  /** CRM user writes are attributed to ("Written as Demo rep" in the diff footer). */
   connectedUser?: string;
 }
 

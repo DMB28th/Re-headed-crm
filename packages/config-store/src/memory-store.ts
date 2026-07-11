@@ -1,4 +1,5 @@
 import type {
+  CustomList,
   HomeCardConfig,
   LayoutConfig,
   ViewExposure,
@@ -8,16 +9,19 @@ import {
   exposureKey,
   layoutKey,
   type AdminConfigStore,
+  type ConnectionState,
   type LayoutRecord,
   type PublishEvent,
 } from "./types.js";
-import { demoDealsLayout, demoHomeCard, demoViewExposures } from "./seed.js";
+import { defaultConnection, demoDealsLayout, demoHomeCard, demoViewExposures } from "./seed.js";
 
 interface StoreState {
   layouts: Record<string, LayoutRecord>;
   viewExposures: Record<string, ViewExposuresConfig>;
   /** Keyed tenant::audience. Published-only in M4 core; drafts come with the 8a builder. */
   homeCards?: Record<string, HomeCardConfig>;
+  /** Keyed by tenant. Absent (pre-connections config files) = connected mock. */
+  connections?: Record<string, ConnectionState>;
   publishes: PublishEvent[];
 }
 
@@ -76,6 +80,23 @@ export abstract class BaseConfigStore implements AdminConfigStore {
     const state = await this.load();
     const config = state.viewExposures[exposureKey(tenantId, object)];
     return (config?.views ?? []).filter((v) => v.exposed);
+  }
+
+  async getCustomLists(tenantId: string, object: string): Promise<CustomList[]> {
+    const state = await this.load();
+    // ?? handles config files written before customLists existed (v2 note).
+    return state.viewExposures[exposureKey(tenantId, object)]?.customLists ?? [];
+  }
+
+  async getConnection(tenantId: string): Promise<ConnectionState> {
+    const state = await this.load();
+    return state.connections?.[tenantId] ?? defaultConnection(tenantId);
+  }
+
+  async setConnection(connection: ConnectionState): Promise<void> {
+    const state = await this.load();
+    state.connections = { ...(state.connections ?? {}), [connection.tenantId]: connection };
+    await this.save(state);
   }
 
   async getLayoutRecord(

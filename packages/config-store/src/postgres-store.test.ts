@@ -85,4 +85,27 @@ describe("PostgresConfigStore", () => {
       revision: 2,
     });
   });
+
+  it("connection defaults to connected mock; disconnect round-trips", async () => {
+    // No row (databases initialized before the connections table) = connected.
+    expect((await store.getConnection(DEMO_TENANT_ID)).status).toBe("connected");
+    await store.setConnection({
+      tenantId: DEMO_TENANT_ID,
+      status: "disconnected",
+      crm: "hubspot",
+      label: "mock portal",
+      changedAt: new Date().toISOString(),
+    });
+    expect((await store.getConnection(DEMO_TENANT_ID)).status).toBe("disconnected");
+  });
+
+  it("custom lists ride inside the view_exposures jsonb", async () => {
+    const config = (await store.getViewExposuresConfig(DEMO_TENANT_ID, "deals"))!;
+    await store.setViewExposures({
+      ...config,
+      customLists: [{ id: "cl-pg", name: "PG list", filters: [] }],
+      views: [...config.views, { viewId: "cl-pg", exposed: true, aliases: [], isDefault: false }],
+    });
+    expect((await store.getCustomLists(DEMO_TENANT_ID, "deals"))[0]?.name).toBe("PG list");
+  });
 });

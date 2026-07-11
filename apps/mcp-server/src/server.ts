@@ -16,10 +16,12 @@ import {
   buildCapabilities,
   recordCardFieldPaths,
   filterRecord,
+  summarizeCustomFilters,
   type CrmFieldValue,
   type FieldFilter,
   type FieldWriteResult,
   type LayoutConfig,
+  type RecordPage,
   type SearchQuery,
   type WriteReceiptPayload,
 } from "@cardstack/core";
@@ -66,15 +68,58 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
   const server = new McpServer({ name: "Cardstack CRM", version: "0.0.1" });
   const { adapter, configStore, auditLog, preferences, tenantId } = deps;
 
+  // Connection gate: a disconnected tenant is an empty canvas — every tool
+  // refuses until an admin reconnects in Studio (feedback 2026-07-11).
+  const requireConnection = async (): Promise<void> => {
+    const connection = await configStore.getConnection(tenantId);
+    if (connection.status !== "connected") {
+      throw new Error(
+        "No CRM is connected for this workspace. An admin can connect one in Cardstack Studio → Connections.",
+      );
+    }
+  };
+
   const exposedViewsFor = async (object: string): Promise<ExposedView[]> => {
     const exposures = await configStore.getViewExposures(tenantId, object);
     const savedViews = await adapter.listSavedViews(object);
     const byId = new Map(savedViews.map((v) => [v.id, v]));
+    const customs = new Map(
+      (await configStore.getCustomLists(tenantId, object)).map((c) => [c.id, c]),
+    );
     return exposures.flatMap((exposure) => {
+      const custom = customs.get(exposure.viewId);
+      if (custom) {
+        // Cardstack custom list: filters live in the config, not the CRM.
+        return [
+          {
+            exposure,
+            custom,
+            view: {
+              id: custom.id,
+              object,
+              name: custom.name,
+              filterSummary: summarizeCustomFilters(custom),
+              visibility: "shared" as const,
+            },
+          },
+        ];
+      }
       const view = byId.get(exposure.viewId);
       // Drift (view deleted CRM-side) falls out here; Studio surfaces it in M3.
       return view ? [{ exposure, view }] : [];
     });
+  };
+
+  /** Rows for an exposed view — CRM views via the adapter's saved-view API, custom lists via search. */
+  const rowsForView = async (entry: ExposedView, cursor?: string): Promise<RecordPage> => {
+    if (entry.custom) {
+      return adapter.search(entry.view.object, {
+        ...(entry.custom.filters.length > 0 ? { filters: entry.custom.filters } : {}),
+        ...(entry.custom.sort ? { sort: entry.custom.sort } : {}),
+        ...(cursor ? { cursor } : {}),
+      });
+    }
+    return adapter.getViewRows(entry.view.id, cursor);
   };
 
   const allExposedViews: ExposedView[] = (
@@ -127,30 +172,35 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       annotations: { readOnlyHint: true },
     },
     async () => {
-      const objects = await configStore.listConfiguredObjects(tenantId);
-      const summaries = await Promise.all(
-        objects.map(async (object) => {
-          const config = await requireLayout(object);
-          const describe = await adapter.describeObject(object);
-          return {
-            object,
-            label: describe.labelPlural,
-            layout: config.name ?? "default",
-            searchableColumns: config.listView.columns,
-          };
-        }),
-      );
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Configured objects: ${summaries
-              .map((s) => `${s.object} (${s.label}, layout "${s.layout}")`)
-              .join("; ")}`,
-          },
-        ],
-        structuredContent: { objects: summaries },
-      };
+      try {
+        await requireConnection();
+        const objects = await configStore.listConfiguredObjects(tenantId);
+        const summaries = await Promise.all(
+          objects.map(async (object) => {
+            const config = await requireLayout(object);
+            const describe = await adapter.describeObject(object);
+            return {
+              object,
+              label: describe.labelPlural,
+              layout: config.name ?? "default",
+              searchableColumns: config.listView.columns,
+            };
+          }),
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Configured objects: ${summaries
+                .map((s) => `${s.object} (${s.label}, layout "${s.layout}")`)
+                .join("; ")}`,
+            },
+          ],
+          structuredContent: { objects: summaries },
+        };
+      } catch (error) {
+        return asToolError(error);
+      }
     },
   );
 
@@ -179,6 +229,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     },
     async (args): Promise<CallToolResult> => {
       try {
+        await requireConnection();
         const config = await requireLayout(args.object);
         const filters: FieldFilter[] = [];
         if (args.stage) filters.push({ field: "dealstage", op: "eq", value: args.stage });
@@ -246,6 +297,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     },
     async (args): Promise<CallToolResult> => {
       try {
+        await requireConnection();
         const config = await requireLayout(args.object);
         let id = args.id;
         let disambiguation = "";
@@ -298,6 +350,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     },
     async (args): Promise<CallToolResult> => {
       try {
+        await requireConnection();
         const config = await requireLayout(args.object);
         const rel = config.recordCard.relatedLists.find(
           (r) => r.relationship === args.relationship,
@@ -359,6 +412,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     },
     async (args): Promise<CallToolResult> => {
       try {
+        await requireConnection();
         const config = await requireLayout(args.object);
         const exposed = await exposedViewsFor(config.object);
         if (exposed.length === 0) {
@@ -426,7 +480,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         }
 
         if (!match) throw new Error("Could not resolve a saved view.");
-        const page = await adapter.getViewRows(match.view.id, args.cursor);
+        const page = await rowsForView(match, args.cursor);
         const payload = await buildResultsTablePayload({
           source: adapter,
           config,
@@ -471,6 +525,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     },
     async (): Promise<CallToolResult> => {
       try {
+        await requireConnection();
         const homeCard = await configStore.getHomeCard(tenantId);
         if (!homeCard) throw new Error("No home card is configured for this workspace.");
 
@@ -482,7 +537,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
               ? allExposedViews.filter((e) => listsBlock.viewIds.includes(e.view.id))
               : allExposedViews;
           for (const entry of wanted.slice(0, listsBlock.maxTiles)) {
-            const page = await adapter.getViewRows(entry.view.id);
+            const page = await rowsForView(entry);
             lists.push({
               viewId: entry.view.id,
               name: entry.view.name,
@@ -550,6 +605,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     },
     async (args): Promise<CallToolResult> => {
       try {
+        await requireConnection();
         const task = await adapter.completeTask(args.id);
         const writtenAs = await adapter.getConnectedUser();
         await auditLog.append({
@@ -594,6 +650,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     },
     async (args): Promise<CallToolResult> => {
       try {
+        await requireConnection();
         const config = await requireLayout(args.object);
         if (!config.permissions.writeEnabled) {
           throw new Error(`Writes are disabled for ${args.object}.`);
@@ -703,6 +760,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     },
     async (args): Promise<CallToolResult> => {
       try {
+        await requireConnection();
         const config = await requireLayout(args.object);
         if (!config.permissions.writeEnabled) {
           throw new Error(`Writes are disabled for ${args.object}.`);
