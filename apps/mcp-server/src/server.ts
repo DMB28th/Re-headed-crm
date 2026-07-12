@@ -29,6 +29,7 @@ import {
 } from "@cardstack/core";
 import {
   CrmAuthError,
+  CrmRateLimitError,
   CrmRecordNotFoundError,
   CrmValidationError,
   type CrmAdapter,
@@ -63,8 +64,6 @@ export interface ServerDeps {
 const RECORD_CARD_URI = "ui://cardstack/record-card";
 const RESULTS_TABLE_URI = "ui://cardstack/results-table";
 const HOME_CARD_URI = "ui://cardstack/home-card";
-
-const OPEN_STAGE_EXCLUSIONS = ["Closed won", "Closed lost"];
 
 /**
  * Async because tool descriptions are tenant-specific: the exposed views'
@@ -162,7 +161,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         ? "unauthorized"
         : error instanceof CrmRecordNotFoundError
           ? "not-found"
-          : /missing a scope|rate limit/i.test(message)
+          : error instanceof CrmRateLimitError || /missing a scope|rate limit/i.test(message)
             ? "crm-unavailable"
             : "unknown";
     const connection = await configStore.getConnection(tenantId).catch(() => null);
@@ -254,8 +253,11 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       inputSchema: {
         object: z.string().default("deals").describe("Object API name, e.g. \"deals\""),
         query: z.string().optional().describe("Free-text search on record names"),
-        stage: z.string().optional().describe("Exact stage/pipeline-step filter"),
+        stage: z.string().optional().describe("Stage filter — a stage LABEL or internal value; resolved either way"),
         openOnly: z.boolean().optional().describe("Only records not closed (won or lost)"),
+        owner: z.string().optional().describe("Owner name or id, to scope to a person's records"),
+        closingAfter: z.string().optional().describe("ISO date — only records with a close date on/after this"),
+        closingBefore: z.string().optional().describe("ISO date — only records with a close date on/before this"),
         minAmount: z.number().optional(),
         maxAmount: z.number().optional(),
         limit: z.number().int().positive().max(50).optional(),
@@ -268,18 +270,59 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       try {
         await requireConnection();
         const config = await requireLayout(args.object);
+        const describe = await adapter.describeObject(config.object);
+        const byApi = new Map(describe.fields.map((f) => [f.api, f]));
+        // Resolve filter fields from the describe's semantic hints, never
+        // hardcoded HubSpot names — so the same tool works on Salesforce.
+        const stageField = describe.stageField;
+        const amountField = describe.amountField;
+        const ownerField = describe.ownerField;
+        const closeDateField = describe.closeDateField;
+        const stageMeta = stageField ? byApi.get(stageField) : undefined;
+
+        // Map a stage label to its internal value (case-insensitive), so a model
+        // passing "Discovery" or "Closed won · EU" matches real ids.
+        const resolveStageValue = (input: string): string => {
+          const labels = stageMeta?.valueLabels ?? {};
+          const hit = Object.entries(labels).find(
+            ([, label]) => label.toLowerCase() === input.toLowerCase(),
+          );
+          return hit ? hit[0] : input;
+        };
+        // Reverse an owner name to an owner id via the owner field's valueLabels.
+        const resolveOwnerValue = (input: string): string => {
+          const labels = (ownerField ? byApi.get(ownerField)?.valueLabels : undefined) ?? {};
+          const hit = Object.entries(labels).find(
+            ([, label]) => label.toLowerCase() === input.toLowerCase(),
+          );
+          return hit ? hit[0] : input;
+        };
+
         const filters: FieldFilter[] = [];
-        if (args.stage) filters.push({ field: "dealstage", op: "eq", value: args.stage });
-        if (args.openOnly) {
-          for (const stage of OPEN_STAGE_EXCLUSIONS) {
-            filters.push({ field: "dealstage", op: "neq", value: stage });
+        if (args.stage && stageField) {
+          filters.push({ field: stageField, op: "eq", value: resolveStageValue(args.stage) });
+        }
+        if (args.openOnly && stageField) {
+          // Exclude the actual closed stage ids (from describe), not label guesses.
+          const closed = stageMeta?.closedValues ?? [];
+          if (closed.length > 0) {
+            filters.push({ field: stageField, op: "not_in", values: closed });
           }
         }
-        if (args.minAmount !== undefined) {
-          filters.push({ field: "amount", op: "gt", value: args.minAmount });
+        if (args.owner && ownerField) {
+          filters.push({ field: ownerField, op: "eq", value: resolveOwnerValue(args.owner) });
         }
-        if (args.maxAmount !== undefined) {
-          filters.push({ field: "amount", op: "lt", value: args.maxAmount });
+        if (args.minAmount !== undefined && amountField) {
+          filters.push({ field: amountField, op: "gte", value: args.minAmount });
+        }
+        if (args.maxAmount !== undefined && amountField) {
+          filters.push({ field: amountField, op: "lte", value: args.maxAmount });
+        }
+        if (args.closingAfter && closeDateField) {
+          filters.push({ field: closeDateField, op: "gte", value: args.closingAfter });
+        }
+        if (args.closingBefore && closeDateField) {
+          filters.push({ field: closeDateField, op: "lte", value: args.closingBefore });
         }
         const query: SearchQuery = {
           ...(args.query ? { text: args.query } : {}),
@@ -290,12 +333,13 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         };
 
         const page = await adapter.search(config.object, query);
-        const title = searchTitle(args, page.total ?? page.rows.length, config.object);
+        const currency = amountField ? byApi.get(amountField)?.currencyCode : undefined;
+        const title = searchTitle(args, page.total ?? page.rows.length, config.object, currency);
         const payload = await buildResultsTablePayload({ source: adapter, config, page, title });
 
         const top = page.rows[0];
         const topLine = top
-          ? ` Largest/first: ${describeRow(top.fields)}.`
+          ? ` Largest/first: ${describeRow(top.fields, byApi, currency)}.`
           : " No matches.";
         return {
           content: [
@@ -354,12 +398,17 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
 
         const record = await adapter.getRecord(config.object, id, []);
         const payload = await buildRecordCardPayload({ source: adapter, config, record });
+        const recDescribe = await adapter.describeObject(config.object);
+        const recByApi = new Map(recDescribe.fields.map((f) => [f.api, f]));
 
         return {
           content: [
             {
               type: "text",
-              text: summarizeRecord(config, payload.record.fields) + disambiguation + fieldNotes(payload.meta, 4),
+              text:
+                summarizeRecord(config, payload.record.fields, recByApi) +
+                disambiguation +
+                fieldNotes(payload.meta, 4),
             },
           ],
           structuredContent: payload as unknown as Record<string, unknown>,
@@ -528,6 +577,10 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           savedViewFilterSummary: match.view.filterSummary,
         });
         const top = page.rows[0];
+        const viewByApi = new Map(
+          (await adapter.describeObject(config.object)).fields.map((f) => [f.api, f]),
+        );
+        const viewCurrency = viewByApi.get("amount")?.currencyCode;
         return {
           content: [
             {
@@ -535,7 +588,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
               text:
                 `Rendered ${match.custom ? "Cardstack list" : "saved view"} "${match.view.name}" (${page.total ?? page.rows.length} ${config.object}; ` +
                 `filters ${match.custom ? "defined in Cardstack" : `from ${payload.provenance.crmLabel}`}: ${match.view.filterSummary}).` +
-                (top ? ` First: ${describeRow(top.fields)}.` : ""),
+                (top ? ` First: ${describeRow(top.fields, viewByApi, viewCurrency)}.` : ""),
             },
           ],
           structuredContent: payload as unknown as Record<string, unknown>,
@@ -601,9 +654,15 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           ? await adapter.listRecentRecords("me", recentBlock.limit).catch(() => [])
           : [];
         const followupsBlock = homeCard.blocks.find((b) => b.type === "followups");
-        const tasks = followupsBlock
+        const allTasks = followupsBlock
           ? (await adapter.listTasks("me").catch(() => ({ rows: [], hasMore: false }))).rows
           : [];
+        // Slice to the block's limit BEFORE building payload and summary, so the
+        // model never narrates "20 follow-ups" over a card showing 5.
+        const tasks =
+          followupsBlock && "limit" in followupsBlock
+            ? allTasks.slice(0, (followupsBlock as { limit: number }).limit)
+            : allTasks;
 
         // writeEnabled: task check-off is a write; mirror the deals-layout policy.
         const anyLayout = await configStore.getLayout(
@@ -720,6 +779,39 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           );
         }
 
+        // Required fields (design 2a) can't be cleared from chat — enforcement,
+        // not just a badge. A null/"" on a required field refuses the whole call.
+        const requiredApis = new Set(
+          config.recordCard.sections
+            .flatMap((s) => s.fields)
+            .filter((f) => f.required)
+            .map((f) => f.api),
+        );
+        const cleared = Object.keys(patch).filter(
+          (field) => requiredApis.has(field) && (patch[field] === null || patch[field] === ""),
+        );
+        if (cleared.length > 0) {
+          const names = cleared.map((f) => describeByApi.get(f)?.label ?? f).join(", ");
+          throw new Error(
+            `${names} ${cleared.length > 1 ? "are" : "is"} required on this card and can't be cleared from chat.`,
+          );
+        }
+
+        // Normalize model-supplied picklist LABELS to internal values (the model
+        // sees labels in every text response, so it will write them). A label
+        // that matches valueLabels case-insensitively is swapped for its value.
+        for (const field of Object.keys(patch)) {
+          const raw = patch[field];
+          const labels = describeByApi.get(field)?.valueLabels;
+          const values = describeByApi.get(field)?.values;
+          if (typeof raw !== "string" || !labels || !values) continue;
+          if (values.includes(raw)) continue; // already an internal value
+          const match = Object.entries(labels).find(
+            ([, label]) => label.toLowerCase() === raw.toLowerCase(),
+          );
+          if (match) patch[field] = match[0];
+        }
+
         const fields = Object.keys(patch);
         const before = await adapter.getRecord(config.object, args.id, fields);
         const results: FieldWriteResult[] = [];
@@ -783,8 +875,11 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           provenance: { ...provenanceFor(sanitized), connectedUser: writtenAs },
         };
 
+        const valueLabels = new Map(
+          [...describeByApi].map(([api, f]) => [api, f.valueLabels ?? {}]),
+        );
         return {
-          content: [{ type: "text", text: receiptText(payload) }],
+          content: [{ type: "text", text: receiptText(payload, valueLabels) }],
           structuredContent: payload as unknown as Record<string, unknown>,
           isError: false,
         };
@@ -864,11 +959,22 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
 }
 
 /** Model-facing mirror of the write receipt — same content the card collapses to (4c). */
-function receiptText(payload: WriteReceiptPayload): string {
+function receiptText(
+  payload: WriteReceiptPayload,
+  valueLabels?: Map<string, Record<string, string>>,
+): string {
   const saved = payload.results.filter((r) => r.ok);
   const failed = payload.results.filter((r) => !r.ok);
+  // Narrate labels, not internal ids ("Closed won", not "2540864").
+  const display = (field: string, value: unknown): string => {
+    const labels = valueLabels?.get(field);
+    if (value !== null && value !== undefined && labels?.[String(value)]) {
+      return labels[String(value)]!;
+    }
+    return formatPlain(value);
+  };
   const changes = saved
-    .map((r) => `${r.label} ${formatPlain(r.before)}→${formatPlain(r.after)}`)
+    .map((r) => `${r.label} ${display(r.field, r.before)}→${display(r.field, r.after)}`)
     .join(", ");
   let text =
     failed.length === 0
@@ -892,50 +998,77 @@ function formatPlain(value: unknown): string {
   return String(value);
 }
 
+function money(n: number, currency?: string): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: currency || "USD",
+    maximumFractionDigits: 0,
+  }).format(n);
+}
+
 function searchTitle(
-  args: { openOnly?: boolean; minAmount?: number; maxAmount?: number; stage?: string; query?: string },
+  args: {
+    openOnly?: boolean;
+    minAmount?: number;
+    maxAmount?: number;
+    stage?: string;
+    query?: string;
+    owner?: string;
+    closingAfter?: string;
+    closingBefore?: string;
+  },
   total: number,
   object: string,
+  currency?: string,
 ): string {
-  const usd = (n: number) =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 0,
-    }).format(n);
   const parts: string[] = [String(total)];
   if (args.openOnly) parts.push("open");
   parts.push(object);
   const qualifiers: string[] = [];
-  if (args.minAmount !== undefined) qualifiers.push(`over ${usd(args.minAmount)}`);
-  if (args.maxAmount !== undefined) qualifiers.push(`under ${usd(args.maxAmount)}`);
+  if (args.minAmount !== undefined) qualifiers.push(`over ${money(args.minAmount, currency)}`);
+  if (args.maxAmount !== undefined) qualifiers.push(`under ${money(args.maxAmount, currency)}`);
   if (args.stage) qualifiers.push(`in ${args.stage}`);
+  if (args.owner) qualifiers.push(`owned by ${args.owner}`);
+  if (args.closingAfter) qualifiers.push(`closing on/after ${args.closingAfter}`);
+  if (args.closingBefore) qualifiers.push(`closing on/before ${args.closingBefore}`);
   if (args.query) qualifiers.push(`matching "${args.query}"`);
   return [parts.join(" "), ...qualifiers].join(" ");
 }
 
-function describeRow(fields: Record<string, unknown>): string {
-  const name = fields.dealname ?? fields.name ?? "unnamed";
+/** Resolve a raw field value to its human label via describe.valueLabels. */
+function labelFor(
+  fields: Record<string, unknown>,
+  api: string | undefined,
+  byApi?: Map<string, { valueLabels?: Record<string, string> }>,
+): string | undefined {
+  if (!api) return undefined;
+  const raw = fields[api];
+  if (raw === null || raw === undefined || raw === "") return undefined;
+  const labels = byApi?.get(api)?.valueLabels;
+  return labels?.[String(raw)] ?? String(raw);
+}
+
+function describeRow(
+  fields: Record<string, unknown>,
+  byApi?: Map<string, { valueLabels?: Record<string, string>; currencyCode?: string }>,
+  currency?: string,
+): string {
+  const name = fields.dealname ?? fields.name ?? fields.__display_name ?? "unnamed";
   const amount =
-    typeof fields.amount === "number"
-      ? new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          maximumFractionDigits: 0,
-        }).format(fields.amount)
-      : undefined;
-  const stage = fields.dealstage;
+    typeof fields.amount === "number" ? money(fields.amount, currency) : undefined;
+  // Prefer the stage LABEL over its internal id in everything the model narrates.
+  const stage = labelFor(fields, "dealstage", byApi) ?? fields.dealstage;
   return [name, amount, stage ? `(${stage})` : undefined].filter(Boolean).join(" ");
 }
 
 function summarizeRecord(
   config: LayoutConfig,
   fields: Record<string, unknown>,
+  byApi?: Map<string, { valueLabels?: Record<string, string>; currencyCode?: string }>,
 ): string {
   const title = fields[config.recordCard.header.title] ?? "record";
-  const badge = config.recordCard.header.badge
-    ? fields[config.recordCard.header.badge]
-    : undefined;
-  const detail = describeRow(fields);
+  const badge = labelFor(fields, config.recordCard.header.badge, byApi);
+  const currency = config.recordCard && byApi?.get("amount")?.currencyCode;
+  const detail = describeRow(fields, byApi, currency);
   return `Rendered ${config.object} card for "${title}"${badge ? `, stage ${badge}` : ""}. ${detail}.`;
 }

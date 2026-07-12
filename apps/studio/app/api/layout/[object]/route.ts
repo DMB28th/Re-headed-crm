@@ -49,3 +49,13 @@ export async function PUT(req: Request, { params }: Params) {
     return NextResponse.json({ error: String(error) }, { status: 400 });
   }
 }
+
+export async function DELETE(_req: Request, { params }: Params) {
+  const { object } = await params;
+  try {
+    await (await getStore()).discardDraft(TENANT_ID, object);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json({ error: String(error) }, { status: 400 });
+  }
+}

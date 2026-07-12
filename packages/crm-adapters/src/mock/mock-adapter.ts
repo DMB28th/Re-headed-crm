@@ -59,7 +59,20 @@ export class MockCrmAdapter implements CrmAdapter {
   async describeObject(objectApi: string): Promise<ObjectDescribe> {
     const describe = fixtures.OBJECTS[objectApi];
     if (!describe) throw new CrmObjectNotFoundError(objectApi);
-    return clone(describe);
+    const out = clone(describe);
+    // Semantic hints so the server builds filters from concepts, not literals.
+    // In the mock, stage VALUES are the labels ("Closed won"), so closedValues
+    // carries those directly.
+    const has = (api: string) => out.fields.some((f) => f.api === api);
+    if (has("dealstage")) {
+      out.stageField = "dealstage";
+      const stage = out.fields.find((f) => f.api === "dealstage");
+      if (stage && !stage.closedValues) stage.closedValues = ["Closed won", "Closed lost"];
+    }
+    if (has("amount")) out.amountField = "amount";
+    if (has("owner")) out.ownerField = "owner";
+    if (has("closedate")) out.closeDateField = "closedate";
+    return out;
   }
 
   async search(objectApi: string, query: SearchQuery): Promise<RecordPage> {
@@ -254,9 +267,14 @@ export class MockCrmAdapter implements CrmAdapter {
   }
 
   private applyFilter(value: CrmFieldValue, filter: FieldFilter): boolean {
-    const { op, value: expected } = filter;
-    // "open" convenience: dealstage neq handles closed stages via two filters;
-    // comparisons on null are always false except neq.
+    const { op } = filter;
+    const expected = filter.value ?? null;
+    // Emptiness ops read null directly; other comparisons on null are false
+    // except neq / not_in.
+    if (op === "is_empty") return value === null;
+    if (op === "not_empty") return value !== null;
+    if (op === "in") return (filter.values ?? []).some((v) => v === value);
+    if (op === "not_in") return !(filter.values ?? []).some((v) => v === value);
     if (value === null) return op === "neq";
     switch (op) {
       case "eq":
@@ -273,6 +291,8 @@ export class MockCrmAdapter implements CrmAdapter {
         return compareValues(value, expected) < 0;
       case "lte":
         return compareValues(value, expected) <= 0;
+      default:
+        return false;
     }
   }
 

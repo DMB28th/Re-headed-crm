@@ -186,18 +186,26 @@ export class HubSpotAdapter implements CrmAdapter {
    */
   private pipelineCache = new Map<
     string,
-    { stages: Record<string, string>; pipelines: Record<string, string> }
+    { stages: Record<string, string>; pipelines: Record<string, string>; closedStageIds: string[] }
   >();
 
   private async ensurePipelines(
     objectApi: string,
-  ): Promise<{ stages: Record<string, string>; pipelines: Record<string, string> }> {
+  ): Promise<{ stages: Record<string, string>; pipelines: Record<string, string>; closedStageIds: string[] }> {
     const cached = this.pipelineCache.get(objectApi);
     if (cached) return cached;
-    let labels = { stages: {} as Record<string, string>, pipelines: {} as Record<string, string> };
+    let labels = {
+      stages: {} as Record<string, string>,
+      pipelines: {} as Record<string, string>,
+      closedStageIds: [] as string[],
+    };
     try {
       const { results } = await this.request<{
-        results: { id: string; label: string; stages: { id: string; label: string }[] }[];
+        results: {
+          id: string;
+          label: string;
+          stages: { id: string; label: string; metadata?: { isClosed?: string | boolean } }[];
+        }[];
       }>("GET", `/crm/v3/pipelines/${objectApi}`);
       const multi = results.length > 1;
       for (const pipeline of results) {
@@ -205,6 +213,10 @@ export class HubSpotAdapter implements CrmAdapter {
         for (const stage of pipeline.stages) {
           // Disambiguate stage names across pipelines ("Closed won · EU pipeline").
           labels.stages[stage.id] = multi ? `${stage.label} · ${pipeline.label}` : stage.label;
+          // metadata.isClosed is a string in the wire format ("true"/"false").
+          if (stage.metadata?.isClosed === "true" || stage.metadata?.isClosed === true) {
+            labels.closedStageIds.push(stage.id);
+          }
         }
       }
     } catch (error) {
@@ -395,7 +407,7 @@ export class HubSpotAdapter implements CrmAdapter {
     const pipelineInfo =
       objectApi === "deals" || objectApi === "tickets"
         ? await this.ensurePipelines(objectApi)
-        : { stages: {}, pipelines: {} };
+        : { stages: {}, pipelines: {}, closedStageIds: [] as string[] };
     const fields: FieldDescribe[] = results
       .filter((p) => !p.hidden)
       .map((p) => {
@@ -421,6 +433,7 @@ export class HubSpotAdapter implements CrmAdapter {
         }
         const valueLabels =
           p.referencedObjectType === "OWNER" ? owners : optionLabels;
+        const isStageField = p.name === "dealstage" || p.name === "hs_pipeline_stage";
         return {
           api: p.name,
           label: p.label || p.name,
@@ -431,6 +444,11 @@ export class HubSpotAdapter implements CrmAdapter {
           ...(options.length > 0 ? { values: options.map((o) => o.value) } : {}),
           ...(Object.keys(valueLabels).length > 0 ? { valueLabels } : {}),
           ...(mapType(p) === "currency" ? { currencyCode } : {}),
+          // Which stage ids mean "closed" — the server's openOnly filter is
+          // built from this, never from label string-matching.
+          ...(isStageField && pipelineInfo.closedStageIds.length > 0
+            ? { closedValues: pipelineInfo.closedStageIds }
+            : {}),
         };
       });
     if (objectApi === "contacts") {
@@ -446,6 +464,10 @@ export class HubSpotAdapter implements CrmAdapter {
       });
     }
     await this.ensureCustomObjects(); // custom-object related lists join here
+    // Semantic hints: only claimed when the field actually exists on this
+    // portal, so CRM-agnostic filter building degrades instead of 400ing.
+    const has = (api: string) => fields.some((f) => f.api === api);
+    const stageApi = objectApi === "tickets" ? "hs_pipeline_stage" : "dealstage";
     const describe: ObjectDescribe = {
       ...summary,
       fields,
@@ -453,6 +475,10 @@ export class HubSpotAdapter implements CrmAdapter {
         ...(RELATIONSHIPS[objectApi] ?? []),
         ...(this.customRelationships.get(objectApi) ?? []),
       ],
+      ...(has(stageApi) ? { stageField: stageApi } : {}),
+      ...(has("amount") ? { amountField: "amount" } : {}),
+      ...(has("hubspot_owner_id") ? { ownerField: "hubspot_owner_id" } : {}),
+      ...(has("closedate") ? { closeDateField: "closedate" } : {}),
     };
     this.describeCache.set(objectApi, describe);
     return describe;
@@ -507,11 +533,28 @@ export class HubSpotAdapter implements CrmAdapter {
 
   async search(objectApi: string, query: SearchQuery): Promise<RecordPage> {
     const properties = await this.propertyNames(objectApi);
-    const filters = (query.filters ?? []).map((f) => ({
-      propertyName: f.field,
-      operator: SEARCH_OPS[f.op] ?? "EQ",
-      value: String(f.value),
-    }));
+    const filters = (query.filters ?? []).map((f) => {
+      // Set/emptiness ops have their own HubSpot shapes; everything else is
+      // a single-value operator.
+      if (f.op === "in" || f.op === "not_in") {
+        return {
+          propertyName: f.field,
+          operator: f.op === "in" ? "IN" : "NOT_IN",
+          values: (f.values ?? []).map(String),
+        };
+      }
+      if (f.op === "is_empty" || f.op === "not_empty") {
+        return {
+          propertyName: f.field,
+          operator: f.op === "is_empty" ? "NOT_HAS_PROPERTY" : "HAS_PROPERTY",
+        };
+      }
+      return {
+        propertyName: f.field,
+        operator: SEARCH_OPS[f.op] ?? "EQ",
+        value: String(f.value),
+      };
+    });
     const body: Record<string, unknown> = {
       properties,
       limit: query.limit ?? 10,
@@ -648,15 +691,68 @@ export class HubSpotAdapter implements CrmAdapter {
       sorts: [{ propertyName: "hs_timestamp", direction: "ASCENDING" }],
       limit: 20,
     });
+    const rows = data.results.map((r) => ({
+      id: r.id,
+      subject: r.properties.hs_task_subject ?? "(no subject)",
+      dueDate: taskDate(r.properties.hs_timestamp),
+      status: "open" as const,
+    }));
+    // Enrich with the related record's name so identical subjects ("Initiation"
+    // × 4) are distinguishable and the widget can render "· Acme deal". A failure
+    // here degrades to no context, never breaks the follow-ups block.
+    const related = await this.taskAssociations(rows.map((r) => r.id)).catch(() => new Map());
     return {
-      rows: data.results.map((r) => ({
-        id: r.id,
-        subject: r.properties.hs_task_subject ?? "(no subject)",
-        dueDate: taskDate(r.properties.hs_timestamp),
-        status: "open" as const,
-      })),
+      rows: rows.map((r) => {
+        const rel = related.get(r.id);
+        return rel ? { ...r, ...rel } : r;
+      }),
       hasMore: !!data.paging?.next?.after,
     };
+  }
+
+  /**
+   * Task id → its primary related deal/contact/company (id + name), so home-card
+   * follow-ups aren't a wall of context-free duplicates. One associations read
+   * per object type, then one batch/read for the names.
+   */
+  private async taskAssociations(
+    taskIds: string[],
+  ): Promise<Map<string, { relatedRecordId: string; relatedRecordName: string }>> {
+    const out = new Map<string, { relatedRecordId: string; relatedRecordName: string }>();
+    if (taskIds.length === 0) return out;
+    for (const to of ["deals", "contacts", "companies"] as const) {
+      const assoc = await this.request<{
+        results: { from: { id: string }; to: { toObjectId: number | string }[] }[];
+      }>("POST", `/crm/v4/associations/tasks/${to}/batch/read`, {
+        inputs: taskIds.filter((id) => !out.has(id)).map((id) => ({ id })),
+      }).catch(() => ({ results: [] as { from: { id: string }; to: { toObjectId: number | string }[] }[] }));
+      const pairs = assoc.results
+        .map((r) => ({ taskId: r.from.id, recordId: r.to[0] ? String(r.to[0].toObjectId) : null }))
+        .filter((p): p is { taskId: string; recordId: string } => p.recordId !== null);
+      if (pairs.length === 0) continue;
+      const titleField = to === "deals" ? "dealname" : to === "companies" ? "name" : "firstname";
+      const uniqueIds = [...new Set(pairs.map((p) => p.recordId))];
+      const batch = await this.request<{
+        results: { id: string; properties: Record<string, string | null> }[];
+      }>("POST", `/crm/v3/objects/${to}/batch/read`, {
+        properties: to === "contacts" ? ["firstname", "lastname"] : [titleField],
+        inputs: uniqueIds.map((id) => ({ id })),
+      }).catch(() => ({ results: [] as { id: string; properties: Record<string, string | null> }[] }));
+      const names = new Map(
+        batch.results.map((rec) => [
+          rec.id,
+          to === "contacts"
+            ? [rec.properties.firstname, rec.properties.lastname].filter(Boolean).join(" ") || "Contact"
+            : rec.properties[titleField] || (to === "deals" ? "Deal" : "Company"),
+        ]),
+      );
+      for (const p of pairs) {
+        if (out.has(p.taskId)) continue;
+        const name = names.get(p.recordId);
+        if (name) out.set(p.taskId, { relatedRecordId: p.recordId, relatedRecordName: name });
+      }
+    }
+    return out;
   }
 
   async completeTask(id: string): Promise<CrmTask> {

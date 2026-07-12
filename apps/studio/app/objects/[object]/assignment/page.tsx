@@ -1,5 +1,5 @@
 /** Assignment (2f–2i): v1 teaching state — one default layout, audiences later. */
-import { getStore, TENANT_ID } from "../../../../lib/backend";
+import { getAdapter, getStore, TENANT_ID } from "../../../../lib/backend";
 import { NoConnection } from "../../../../components/no-connection";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +15,11 @@ export default async function AssignmentPage({
   if (connection.status !== "connected") return <NoConnection />;
   const record = await store.getLayoutRecord(TENANT_ID, object);
   const layoutName = record.published?.name ?? "default layout";
+  // Live user count when the CRM can answer; number-free copy otherwise.
+  const userCount = await getAdapter()
+    .then((adapter) => adapter.getPortalInfo())
+    .then((info) => info.userCount)
+    .catch(() => null);
 
   return (
     <div className="max-w-[620px]">
@@ -38,7 +43,11 @@ export default async function AssignmentPage({
       </div>
 
       <div className="mt-3 rounded-[10px] border border-line-soft bg-surface px-4 py-2.5 text-[11.5px] text-ink-55">
-        Coverage: <strong>38 → {layoutName}</strong> · 0 overrides · 0 unassigned
+        Coverage:{" "}
+        <strong>
+          {userCount !== null ? `${userCount} users` : "everyone"} → {layoutName}
+        </strong>{" "}
+        · 0 overrides · 0 unassigned
       </div>
 
       <div className="mt-6 rounded-[13px] border border-dashed border-line p-6 text-center">

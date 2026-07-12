@@ -2,6 +2,7 @@
 /** Publish flow (2b): the signing mechanic again — diff vs published, then commit. */
 import { useEffect, useState } from "react";
 import type { LayoutDiff } from "@cardstack/config-store";
+import { usePortalInfo } from "../use-portal-info";
 
 export function PublishModal({
   object,
@@ -20,6 +21,7 @@ export function PublishModal({
   const [diff, setDiff] = useState<LayoutDiff | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { info } = usePortalInfo();
 
   useEffect(() => {
     (async () => {
@@ -81,7 +83,10 @@ export function PublishModal({
 
         <div className="mt-4 flex items-center justify-between">
           <span className="text-[11.5px] text-ink-45">
-            Publishes to 38 users · previous versions are kept — roll back anytime.
+            {info.userCount !== null
+              ? `Publishes to ${info.userCount} users`
+              : "Publishes to your whole team"}{" "}
+            · previous versions are kept — roll back anytime.
           </span>
           <span className="flex gap-2">
             <button type="button" className="st-btn" onClick={onClose}>

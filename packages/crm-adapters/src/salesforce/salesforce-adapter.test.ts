@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SalesforceAdapter } from "./salesforce-adapter.js";
-import { CrmValidationError } from "../adapter.js";
+import { CrmRateLimitError, CrmValidationError } from "../adapter.js";
 
 type Handler = (url: string, init?: RequestInit) => { status: number; json: unknown } | undefined;
 
@@ -32,6 +32,30 @@ const tokenHandler: (token?: string) => Handler = (token = "tok-1") => (url, ini
   url.includes("/services/oauth2/token") && init?.method === "POST"
     ? { status: 200, json: { access_token: token } }
     : undefined;
+
+/** Org + stage metadata queries that describeObject now issues. */
+const orgHandler: Handler = (url) => {
+  const q = decodeURIComponent(url);
+  if (q.includes("FROM Organization")) {
+    return { status: 200, json: { totalSize: 1, records: [{ IsSandbox: true, DefaultCurrencyIsoCode: "EUR" }] } };
+  }
+  if (q.includes("FROM OpportunityStage")) {
+    return {
+      status: 200,
+      json: {
+        totalSize: 2,
+        records: [
+          { ApiName: "ClosedWon", MasterLabel: "Closed Won", IsClosed: true },
+          { ApiName: "ClosedLost", MasterLabel: "Closed Lost", IsClosed: true },
+        ],
+      },
+    };
+  }
+  if (q.includes("FROM TaskStatus")) {
+    return { status: 200, json: { totalSize: 1, records: [{ ApiName: "Completed", MasterLabel: "Completed" }] } };
+  }
+  return undefined;
+};
 
 const OPP_DESCRIBE = {
   fields: [
@@ -97,9 +121,10 @@ describe("SalesforceAdapter", () => {
   it("search builds escaped SOQL with filters, sort and offset paging", async () => {
     const { impl, calls } = fetchStub([
       tokenHandler(),
+      orgHandler,
       (url) => (url.includes("/describe") ? { status: 200, json: OPP_DESCRIBE } : undefined),
       (url) =>
-        url.includes("/query?q=SELECT+COUNT%28%29") || url.includes("/query?q=SELECT%20COUNT()")
+        decodeURIComponent(url).includes("COUNT()")
           ? { status: 200, json: { totalSize: 42, records: [] } }
           : url.includes("/query")
             ? {
@@ -121,7 +146,8 @@ describe("SalesforceAdapter", () => {
       limit: 10,
       cursor: "20",
     });
-    const soqlCall = calls.find((c) => c.url.includes("/query") && !decodeURIComponent(c.url).includes("COUNT("))!;
+    // The main search query is the one carrying OFFSET (org/stage/COUNT don't).
+    const soqlCall = calls.find((c) => decodeURIComponent(c.url).includes("OFFSET"))!;
     const soql = decodeURIComponent(soqlCall.url.split("?q=")[1]!).replace(/\+/g, " ");
     expect(soql).toContain("FROM Opportunity");
     expect(soql).toContain("Name LIKE '%O\\'Neil%'"); // quote escaped
@@ -185,5 +211,93 @@ describe("SalesforceAdapter", () => {
     await expect(
       adapter.updateRecord("Opportunity", "006bad", { StageName: "Closed Won" }),
     ).rejects.toThrow(CrmValidationError);
+  });
+
+  it("quotes an injection-shaped filter value instead of splicing raw SOQL", async () => {
+    const { impl, calls } = fetchStub([
+      tokenHandler(),
+      orgHandler,
+      (url) => (url.includes("/describe") ? { status: 200, json: OPP_DESCRIBE } : undefined),
+      (url) =>
+        decodeURIComponent(url).includes("COUNT()")
+          ? { status: 200, json: { totalSize: 0, records: [] } }
+          : url.includes("/query")
+            ? { status: 200, json: { totalSize: 0, records: [] } }
+            : undefined,
+    ]);
+    const adapter = new SalesforceAdapter(CREDS, impl);
+    await adapter.search("Opportunity", {
+      filters: [{ field: "StageName", op: "eq", value: "2024-01-01 OR Amount > 0" }],
+    });
+    const soql = decodeURIComponent(calls.find((c) => c.url.includes("OFFSET"))!.url);
+    // Not emitted as a bare date literal — it's quoted, so the OR can't execute.
+    expect(soql).toContain("StageName = '2024-01-01 OR Amount > 0'");
+  });
+
+  it("rejects a filter on an unknown field", async () => {
+    const { impl } = fetchStub([
+      tokenHandler(),
+      orgHandler,
+      (url) => (url.includes("/describe") ? { status: 200, json: OPP_DESCRIBE } : undefined),
+    ]);
+    const adapter = new SalesforceAdapter(CREDS, impl);
+    await expect(
+      adapter.search("Opportunity", { filters: [{ field: "SecretField", op: "eq", value: "x" }] }),
+    ).rejects.toThrow(CrmValidationError);
+  });
+
+  it("populates StageName.closedValues and marks the org as sandbox", async () => {
+    const { impl } = fetchStub([
+      tokenHandler(),
+      orgHandler,
+      (url) => (url.includes("/describe") ? { status: 200, json: OPP_DESCRIBE } : undefined),
+    ]);
+    const adapter = new SalesforceAdapter(CREDS, impl);
+    const describe = await adapter.describeObject("Opportunity");
+    const stage = describe.fields.find((f) => f.api === "StageName");
+    expect(stage?.closedValues).toEqual(["ClosedWon", "ClosedLost"]);
+    expect(describe.stageField).toBe("StageName");
+    expect(describe.amountField).toBe("Amount");
+    const info = await adapter.getPortalInfo();
+    expect(info.isSandbox).toBe(true);
+    expect(info.defaultCurrency).toBe("EUR");
+  });
+
+  it("classifies REQUEST_LIMIT_EXCEEDED as a rate-limit, not an auth error", async () => {
+    const { impl } = fetchStub([
+      tokenHandler(),
+      (url) =>
+        url.includes("/describe")
+          ? {
+              status: 403,
+              json: [{ message: "TotalRequests Limit exceeded.", errorCode: "REQUEST_LIMIT_EXCEEDED" }],
+            }
+          : undefined,
+    ]);
+    const adapter = new SalesforceAdapter(CREDS, impl);
+    await expect(adapter.describeObject("Opportunity")).rejects.toThrow(CrmRateLimitError);
+  });
+
+  it("completeTask uses the org's actual closed status", async () => {
+    const patched: Record<string, unknown>[] = [];
+    const { impl } = fetchStub([
+      tokenHandler(),
+      orgHandler,
+      (url, init) => {
+        if (url.includes("/sobjects/Task/00Tx") && init?.method === "PATCH") {
+          patched.push(JSON.parse(String(init.body)));
+          return { status: 200, json: {} };
+        }
+        return undefined;
+      },
+      (url) =>
+        decodeURIComponent(url).includes("FROM Task WHERE")
+          ? { status: 200, json: { totalSize: 1, records: [{ Id: "00Tx", Subject: "Call", ActivityDate: "2026-08-01" }] } }
+          : undefined,
+    ]);
+    const adapter = new SalesforceAdapter(CREDS, impl);
+    const task = await adapter.completeTask("00Tx");
+    expect(patched[0]).toEqual({ Status: "Completed" });
+    expect(task.status).toBe("completed");
   });
 });

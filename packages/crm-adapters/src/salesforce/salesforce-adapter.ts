@@ -15,6 +15,11 @@
  * - getActivity / getValidationRules / listFlows return [] (Tooling API needs
  *   extra perms — see PLAN's 3d spike).
  * - listRecentRecords uses /recent (no timestamps → "recently viewed" note).
+ * - Describe metadata carries semantic hints (stage/amount/owner/closeDate) and
+ *   closedValues from OpportunityStage; describe cache has a ~10-minute TTL so
+ *   FLS/picklist edits in Setup propagate without a redeploy.
+ * - 403s are parsed: REQUEST_LIMIT_EXCEEDED → CrmRateLimitError, anything else
+ *   is a permissions gap on the integration user (NOT an auth error).
  */
 import type {
   ActivityEntry,
@@ -38,6 +43,7 @@ import type {
 import {
   CrmAuthError,
   CrmObjectNotFoundError,
+  CrmRateLimitError,
   CrmRecordNotFoundError,
   CrmValidationError,
   type CrmAdapter,
@@ -102,12 +108,19 @@ function mapType(sf: { type: string }): FieldType {
 }
 
 const soqlEscape = (value: string): string => value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+// Escape LIKE metacharacters too, so a value containing % or _ can't widen the match.
+const soqlLikeEscape = (value: string): string =>
+  soqlEscape(value).replace(/%/g, "\\%").replace(/_/g, "\\_");
 
-function soqlLiteral(value: CrmFieldValue, type?: FieldType): string {
-  if (value === null) return "null";
+// Only a FULL-string ISO date/datetime is emitted unquoted — a partial match like
+// "2024-01-01 OR Amount > 0" must be quoted, or it splices raw SOQL (injection).
+const ISO_DATE_LITERAL = /^\d{4}-\d{2}-\d{2}(T[\d:.]+(?:Z|[+-]\d{2}:\d{2})?)?$/;
+
+function soqlLiteral(value: CrmFieldValue | undefined, type?: FieldType): string {
+  if (value === null || value === undefined) return "null";
   if (typeof value === "number" || typeof value === "boolean") return String(value);
-  // Dates/datetimes are unquoted SOQL literals.
-  if (type === "date" || type === "datetime" || /^\d{4}-\d{2}-\d{2}/.test(value)) return value;
+  if ((type === "date" || type === "datetime") && ISO_DATE_LITERAL.test(value)) return value;
+  if (ISO_DATE_LITERAL.test(value)) return value;
   return `'${soqlEscape(value)}'`;
 }
 
@@ -123,10 +136,52 @@ interface SfDescribeField {
   picklistValues?: { value: string; label?: string; active: boolean }[];
 }
 
+const DESCRIBE_TTL_MS = 10 * 60 * 1000;
+
 export class SalesforceAdapter implements CrmAdapter {
   private token: string | null = null;
-  private describeCache = new Map<string, ObjectDescribe>();
+  private describeCache = new Map<string, { describe: ObjectDescribe; fetchedAt: number }>();
   private viewObjectById = new Map<string, string>();
+  /** Opportunity stage ApiName → IsClosed, fetched once. */
+  private closedStageValues: string[] | null = null;
+  /** Org facts (IsSandbox, default currency), fetched once. */
+  private orgInfo: { isSandbox: boolean; currency: string | null } | null = null;
+  /** Task's closed-status ApiName, resolved lazily (orgs rename the picklist). */
+  private closedTaskStatus: string | null = null;
+
+  private now(): number {
+    return Date.now();
+  }
+
+  private async ensureOrgInfo(): Promise<{ isSandbox: boolean; currency: string | null }> {
+    if (this.orgInfo) return this.orgInfo;
+    try {
+      const { records } = await this.soql<{ IsSandbox: boolean; DefaultCurrencyIsoCode?: string }>(
+        "SELECT IsSandbox, DefaultCurrencyIsoCode FROM Organization LIMIT 1",
+      );
+      const org = records[0];
+      this.orgInfo = {
+        isSandbox: org?.IsSandbox ?? false,
+        currency: org?.DefaultCurrencyIsoCode ?? null,
+      };
+    } catch {
+      this.orgInfo = { isSandbox: false, currency: null };
+    }
+    return this.orgInfo;
+  }
+
+  private async ensureClosedStageValues(): Promise<string[]> {
+    if (this.closedStageValues) return this.closedStageValues;
+    try {
+      const { records } = await this.soql<{ ApiName?: string; MasterLabel: string; IsClosed: boolean }>(
+        "SELECT ApiName, MasterLabel, IsClosed FROM OpportunityStage WHERE IsClosed = true",
+      );
+      this.closedStageValues = records.map((r) => r.ApiName ?? r.MasterLabel);
+    } catch {
+      this.closedStageValues = [];
+    }
+    return this.closedStageValues;
+  }
 
   constructor(
     private readonly credentials: SalesforceCredentials,
@@ -167,7 +222,7 @@ export class SalesforceAdapter implements CrmAdapter {
       this.token = null;
       return this.request(method, path, body, true);
     }
-    if (res.status === 401 || res.status === 403) throw new CrmAuthError("Salesforce");
+    if (res.status === 401) throw new CrmAuthError("Salesforce");
     if (res.status === 404) throw new CrmRecordNotFoundError("salesforce resource", path);
     if (!res.ok) {
       const errors = (await res.json().catch(() => [])) as {
@@ -176,6 +231,17 @@ export class SalesforceAdapter implements CrmAdapter {
         fields?: string[];
       }[];
       const first = Array.isArray(errors) ? errors[0] : undefined;
+      // A 403 is NOT always expired auth: an exhausted API budget and an FLS gap
+      // both 403. Never render either as "reconnect" — the fixes differ.
+      if (res.status === 403) {
+        if (first?.errorCode === "REQUEST_LIMIT_EXCEEDED") {
+          throw new CrmRateLimitError("Salesforce", first.message);
+        }
+        throw new Error(
+          `Salesforce denied ${method} ${path} (403) — a permissions gap on the integration user` +
+            `${first?.message ? `: ${first.message}` : "; check its object/field access."}`,
+        );
+      }
       if (res.status === 400 && first?.message) {
         throw new CrmValidationError(first.message, first.fields?.[0]);
       }
@@ -197,11 +263,15 @@ export class SalesforceAdapter implements CrmAdapter {
     const summary = OBJECTS.find((o) => o.api === objectApi);
     if (!summary) throw new CrmObjectNotFoundError(objectApi);
     const cached = this.describeCache.get(objectApi);
-    if (cached) return cached;
+    // TTL so an FLS/picklist change in Setup propagates without a redeploy.
+    if (cached && this.now() - cached.fetchedAt < DESCRIBE_TTL_MS) return cached.describe;
     const data = await this.request<{ fields: SfDescribeField[] }>(
       "GET",
       `${API}/sobjects/${objectApi}/describe`,
     );
+    const currency = (await this.ensureOrgInfo()).currency ?? "USD";
+    const closedStages = objectApi === "Opportunity" ? await this.ensureClosedStageValues() : [];
+    const has = (api: string) => data.fields.some((f) => f.name === api);
     const fields: FieldDescribe[] = data.fields
       .filter((f) => f.type !== "address" && f.type !== "location")
       .map((f) => {
@@ -220,15 +290,21 @@ export class SalesforceAdapter implements CrmAdapter {
           ...(f.inlineHelpText ? { description: f.inlineHelpText } : {}),
           ...(active.length > 0 ? { values: active.map((v) => v.value) } : {}),
           ...(Object.keys(valueLabels).length > 0 ? { valueLabels } : {}),
-          ...(f.type === "currency" ? { currencyCode: "USD" } : {}),
+          ...(f.type === "currency" ? { currencyCode: currency } : {}),
+          ...(f.name === "StageName" && closedStages.length > 0 ? { closedValues: closedStages } : {}),
         };
       });
     const describe: ObjectDescribe = {
       ...summary,
       fields,
       relationships: RELATIONSHIPS[objectApi] ?? [],
+      // Semantic hints so the server builds filters from concepts, not literals.
+      ...(has("StageName") ? { stageField: "StageName" } : {}),
+      ...(has("Amount") ? { amountField: "Amount" } : {}),
+      ...(has("OwnerId") ? { ownerField: "OwnerId" } : {}),
+      ...(has("CloseDate") ? { closeDateField: "CloseDate" } : {}),
     };
-    this.describeCache.set(objectApi, describe);
+    this.describeCache.set(objectApi, { describe, fetchedAt: this.now() });
     return describe;
   }
 
@@ -251,11 +327,18 @@ export class SalesforceAdapter implements CrmAdapter {
     const describe = await this.describeObject(objectApi);
     const typeOf = (api: string) => describe.fields.find((f) => f.api === api)?.type;
     const selectable = describe.fields.filter((f) => f.type !== "reference").map((f) => f.api);
+    // Reject filter/sort on fields not on the object — blocks MALFORMED_QUERY and
+    // stops a prompt-injected model probing denied fields through the WHERE clause.
+    const known = new Set(describe.fields.map((f) => f.api));
+    const requireField = (api: string) => {
+      if (!known.has(api)) throw new CrmValidationError(`Unknown field "${api}" on ${objectApi}.`);
+    };
     const clauses: string[] = [];
     if (query.text) {
-      clauses.push(`${this.nameField(objectApi)} LIKE '%${soqlEscape(query.text)}%'`);
+      clauses.push(`${this.nameField(objectApi)} LIKE '%${soqlLikeEscape(query.text)}%'`);
     }
     for (const f of query.filters ?? []) {
+      requireField(f.field);
       const literal = soqlLiteral(f.value, typeOf(f.field));
       switch (f.op) {
         case "eq":
@@ -265,13 +348,26 @@ export class SalesforceAdapter implements CrmAdapter {
           clauses.push(`${f.field} != ${literal}`);
           break;
         case "contains":
-          clauses.push(`${f.field} LIKE '%${soqlEscape(String(f.value))}%'`);
+          clauses.push(`${f.field} LIKE '%${soqlLikeEscape(String(f.value ?? ""))}%'`);
+          break;
+        case "in":
+        case "not_in": {
+          const list = (f.values ?? []).map((v) => soqlLiteral(v, typeOf(f.field))).join(", ");
+          clauses.push(`${f.field} ${f.op === "in" ? "IN" : "NOT IN"} (${list})`);
+          break;
+        }
+        case "is_empty":
+          clauses.push(`${f.field} = null`);
+          break;
+        case "not_empty":
+          clauses.push(`${f.field} != null`);
           break;
         default:
           clauses.push(`${f.field} ${{ gt: ">", gte: ">=", lt: "<", lte: "<=" }[f.op]} ${literal}`);
       }
     }
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+    if (query.sort) requireField(query.sort.field);
     const order = query.sort ? ` ORDER BY ${query.sort.field} ${query.sort.dir.toUpperCase()} NULLS LAST` : "";
     const limit = query.limit ?? 10;
     const offset = query.cursor ? Number.parseInt(query.cursor, 10) || 0 : 0;
@@ -422,8 +518,24 @@ export class SalesforceAdapter implements CrmAdapter {
     };
   }
 
+  private async ensureClosedTaskStatus(): Promise<string> {
+    if (this.closedTaskStatus) return this.closedTaskStatus;
+    try {
+      const { records } = await this.soql<{ ApiName?: string; MasterLabel: string }>(
+        "SELECT ApiName, MasterLabel FROM TaskStatus WHERE IsClosed = true ORDER BY SortOrder LIMIT 1",
+      );
+      this.closedTaskStatus = records[0]?.ApiName ?? records[0]?.MasterLabel ?? "Completed";
+    } catch {
+      this.closedTaskStatus = "Completed";
+    }
+    return this.closedTaskStatus;
+  }
+
   async completeTask(id: string): Promise<CrmTask> {
-    await this.request("PATCH", `${API}/sobjects/Task/${id}`, { Status: "Completed" });
+    // Status is an org-customizable picklist; a hardcoded "Completed" 400s on
+    // orgs that renamed it. Resolve the actual closed status first.
+    const status = await this.ensureClosedTaskStatus();
+    await this.request("PATCH", `${API}/sobjects/Task/${id}`, { Status: status });
     const { records } = await this.soql<{
       Id: string;
       Subject: string | null;
@@ -478,13 +590,15 @@ export class SalesforceAdapter implements CrmAdapter {
   }
 
   async getPortalInfo(): Promise<PortalInfo> {
-    const count = await this.soql<never>(
-      "SELECT COUNT() FROM User WHERE IsActive = true",
-    ).catch(() => null);
+    const [count, org] = await Promise.all([
+      this.soql<never>("SELECT COUNT() FROM User WHERE IsActive = true").catch(() => null),
+      this.ensureOrgInfo().catch(() => ({ isSandbox: false, currency: null })),
+    ]);
     return {
       userCount: count ? count.totalSize : null,
       portalId: null,
-      defaultCurrency: null,
+      defaultCurrency: org.currency,
+      isSandbox: org.isSandbox,
       scopeGaps: [],
     };
   }
@@ -492,6 +606,7 @@ export class SalesforceAdapter implements CrmAdapter {
   /** Connect-time validation: token grant + identity in one go. */
   async validateConnection(): Promise<string> {
     await this.fetchToken();
+    await this.ensureOrgInfo().catch(() => undefined);
     return this.getConnectedUser();
   }
 }

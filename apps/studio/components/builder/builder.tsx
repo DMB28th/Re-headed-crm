@@ -33,7 +33,8 @@ export function Builder({ object }: { object: string }) {
   const [publishedRevision, setPublishedRevision] = useState<number | null>(null);
   const [history, setHistory] = useState<{ revision: number; name?: string }[]>([]);
   const [rollingBack, setRollingBack] = useState<number | null>(null);
-  const [saveState, setSaveState] = useState<"clean" | "saving" | "saved">("clean");
+  const [rollbackConfirm, setRollbackConfirm] = useState<number | null>(null);
+  const [saveState, setSaveState] = useState<"clean" | "saving" | "saved" | "error">("clean");
   const [publishOpen, setPublishOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const skipNextSave = useRef(true);
@@ -73,6 +74,23 @@ export function Builder({ object }: { object: string }) {
       await load();
     } finally {
       setRollingBack(null);
+      setRollbackConfirm(null);
+    }
+  };
+
+  const [discarding, setDiscarding] = useState(false);
+  const [discardConfirm, setDiscardConfirm] = useState(false);
+  const discardDraft = async () => {
+    setDiscarding(true);
+    try {
+      const res = await fetch(`/api/layout/${object}`, { method: "DELETE" });
+      if (res.ok) {
+        await load();
+        setSaveState("clean");
+      }
+      setDiscardConfirm(false);
+    } finally {
+      setDiscarding(false);
     }
   };
 
@@ -109,6 +127,25 @@ export function Builder({ object }: { object: string }) {
     })();
   }, []);
 
+  // Save the current draft; shared by the debounced autosave and the retry chip.
+  // A failed PUT must never read "Saved just now" — that's silent data loss.
+  const saveDraft = useCallback(
+    async (draft: LayoutConfig) => {
+      setSaveState("saving");
+      try {
+        const res = await fetch(`/api/layout/${object}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(draft),
+        });
+        setSaveState(res.ok ? "saved" : "error");
+      } catch {
+        setSaveState("error");
+      }
+    },
+    [object],
+  );
+
   // Autosave the draft, debounced ("Saved just now").
   useEffect(() => {
     if (!config) return;
@@ -117,16 +154,9 @@ export function Builder({ object }: { object: string }) {
       return;
     }
     setSaveState("saving");
-    const timer = setTimeout(async () => {
-      await fetch(`/api/layout/${object}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config),
-      });
-      setSaveState("saved");
-    }, 600);
+    const timer = setTimeout(() => void saveDraft(config), 600);
     return () => clearTimeout(timer);
-  }, [config, object]);
+  }, [config, saveDraft]);
 
   if (loadError) {
     return <LoadFailed error={loadError} onRetry={() => void load()} />;
@@ -168,9 +198,20 @@ export function Builder({ object }: { object: string }) {
           <span className="st-chip-mono bg-draft text-draft-ink">
             Draft{publishedRevision ? ` · v${publishedRevision + 1} from v${publishedRevision}` : ""}
           </span>
-          <span className="text-[11.5px] text-ink-45">
-            {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved just now" : " "}
-          </span>
+          {saveState === "error" ? (
+            <button
+              type="button"
+              className="st-chip-mono bg-drift text-drift-ink"
+              title="The last autosave failed — this draft is not stored. Click to retry."
+              onClick={() => config && void saveDraft(config)}
+            >
+              Couldn't save — retry
+            </button>
+          ) : (
+            <span className="text-[11.5px] text-ink-45">
+              {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved just now" : " "}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {history.length > 0 && (
@@ -185,20 +226,41 @@ export function Builder({ object }: { object: string }) {
                 {history.map((entry) => (
                   <div
                     key={entry.revision}
-                    className="flex items-center justify-between rounded-[8px] px-2 py-1.5 hover:bg-paper"
+                    className="flex flex-wrap items-center justify-between gap-1.5 rounded-[8px] px-2 py-1.5 hover:bg-paper"
                   >
                     <span className="text-[12px]">
                       <span className="st-chip-mono bg-paper text-ink-55">v{entry.revision}</span>{" "}
                       {entry.name ?? ""}
                     </span>
-                    <button
-                      type="button"
-                      className="cs-link-btn st-btn !py-0.5 text-[11px]"
-                      disabled={rollingBack !== null}
-                      onClick={() => rollback(entry.revision)}
-                    >
-                      {rollingBack === entry.revision ? "Rolling back…" : "Roll back"}
-                    </button>
+                    {rollbackConfirm === entry.revision ? (
+                      <span className="flex flex-wrap items-center justify-end gap-1.5 text-[11px] text-ink-55">
+                        Republishes v{entry.revision} to reps immediately — confirm?
+                        <button
+                          type="button"
+                          className="st-btn !py-0.5 text-[11px]"
+                          onClick={() => setRollbackConfirm(null)}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          className="st-btn st-btn--primary !py-0.5 text-[11px]"
+                          disabled={rollingBack !== null}
+                          onClick={() => rollback(entry.revision)}
+                        >
+                          {rollingBack === entry.revision ? "Rolling back…" : "Confirm"}
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="cs-link-btn st-btn !py-0.5 text-[11px]"
+                        disabled={rollingBack !== null}
+                        onClick={() => setRollbackConfirm(entry.revision)}
+                      >
+                        Roll back
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
