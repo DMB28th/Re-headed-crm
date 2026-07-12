@@ -40,6 +40,31 @@ export default function ConnectionsPage() {
   const [hsFormOpen, setHsFormOpen] = useState(false);
   const [sf, setSf] = useState({ instanceUrl: "", clientId: "", clientSecret: "" });
   const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Re-read scopes/lists without re-entering the token. Reloads so scope
+  // coverage + imported lists reflect the fresh probe.
+  const refresh = async () => {
+    setRefreshing(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/connections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "refresh" }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setError(json.error ?? "Refresh failed.");
+        setRefreshing(false);
+        return;
+      }
+      window.location.reload();
+    } catch (e) {
+      setError(String(e));
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     void (async () => {
@@ -159,6 +184,17 @@ export default function ConnectionsPage() {
         <dd>{new Date(connection.changedAt).toLocaleString()}</dd>
       </dl>
       <div className="mt-4 flex items-center justify-end gap-2">
+        {!confirming && connection.live && (
+          <button
+            type="button"
+            className="st-btn"
+            disabled={refreshing || busy}
+            title="Re-read scopes and lists after changing the token's permissions in the CRM — no need to re-enter it"
+            onClick={refresh}
+          >
+            {refreshing ? "Refreshing…" : "↻ Refresh connection"}
+          </button>
+        )}
         {!confirming ? (
           <button type="button" className="st-btn" onClick={() => setConfirming(true)}>
             Disconnect…

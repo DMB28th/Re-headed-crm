@@ -37,7 +37,7 @@ export async function GET() {
 }
 
 interface ConnectBody {
-  action?: "connect" | "disconnect";
+  action?: "connect" | "disconnect" | "refresh";
   kind?: "mock" | "hubspot" | "salesforce";
   credentials?: Record<string, string>;
 }
@@ -45,6 +45,33 @@ interface ConnectBody {
 export async function POST(req: Request) {
   const body = (await req.json()) as ConnectBody;
   const store = await getStore();
+
+  // Re-read scopes/lists WITHOUT re-entering credentials: drop cached adapters,
+  // re-probe with a fresh one, and bump changedAt so every process (incl. the
+  // MCP server) rebuilds its adapter on the next call.
+  if (body.action === "refresh") {
+    const current = await store.getConnection(TENANT_ID);
+    if (current.status !== "connected" || !current.credentials) {
+      return NextResponse.json({ error: "No live connection to refresh." }, { status: 400 });
+    }
+    invalidateAdapterCache({ crm: current.crm, credentials: current.credentials });
+    let connectedUser: string | null = null;
+    let scopeGaps: string[] = [];
+    try {
+      const probe =
+        current.crm === "salesforce"
+          ? new SalesforceAdapter(current.credentials as unknown as SalesforceCredentials)
+          : new HubSpotAdapter(current.credentials as unknown as HubSpotCredentials);
+      connectedUser = await probe.validateConnection();
+      scopeGaps = await scopeGapsFor(probe);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return NextResponse.json({ error: `Refresh failed: ${message}` }, { status: 400 });
+    }
+    const state: ConnectionState = { ...current, changedAt: new Date().toISOString() };
+    await store.setConnection(state);
+    return NextResponse.json({ connection: redact(state), connectedUser, scopeGaps });
+  }
 
   if (body.action === "disconnect") {
     const current = await store.getConnection(TENANT_ID);

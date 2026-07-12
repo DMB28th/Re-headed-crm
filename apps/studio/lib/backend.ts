@@ -50,5 +50,8 @@ export async function getAdapter(): Promise<CrmAdapter> {
   return createAdapterForConnection({
     crm: connection.crm,
     ...(connection.credentials ? { credentials: connection.credentials } : {}),
+    // Busts the cache (in every process) whenever the connection is written —
+    // connect, disconnect, or an explicit refresh.
+    cacheNonce: connection.changedAt,
   });
 }

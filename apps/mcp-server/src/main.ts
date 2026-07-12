@@ -109,6 +109,9 @@ app.all("/mcp", async (req, res) => {
   const adapter = createAdapterForConnection({
     crm: connection.crm,
     ...(connection.credentials ? { credentials: connection.credentials } : {}),
+    // Shared with Studio via the store: a refresh bumps changedAt, which busts
+    // this process's cached adapter on its next request too.
+    cacheNonce: connection.changedAt,
   });
   const server = await createCardstackServer({
     adapter,
