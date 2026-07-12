@@ -719,7 +719,9 @@ export class HubSpotAdapter implements CrmAdapter {
           });
         }
         if (!data.hasMore || lists.length === 0) break;
-        offset = data.offset != null ? data.offset + lists.length : offset + lists.length;
+        // Accumulate by what we actually fetched — robust no matter whether the
+        // response's `offset` echoes the request or is already the next offset.
+        offset += lists.length;
       }
     } catch (error) {
       if (isScope403(error)) {
