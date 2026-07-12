@@ -37,7 +37,8 @@ export function formatValue(
   }
 }
 
-function formatDate(raw: string, locale: string, withTime = false): string {
+/** Locale date ("Jul 15, 2026") from an ISO date/datetime string. */
+export function formatDate(raw: string, locale: string, withTime = false): string {
   const date = new Date(withTime || raw.includes("T") ? raw : `${raw}T00:00:00`);
   if (Number.isNaN(date.getTime())) return raw;
   return new Intl.DateTimeFormat(locale, {

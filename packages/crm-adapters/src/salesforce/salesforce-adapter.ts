@@ -445,6 +445,8 @@ export class SalesforceAdapter implements CrmAdapter {
       .map((i) => ({
         id: i.Id,
         object: i.attributes.type,
+        objectLabel:
+          OBJECTS.find((o) => o.api === i.attributes.type)?.label ?? i.attributes.type,
         name: i.Name ?? i.Id,
         note: "Recently viewed",
         timestamp: new Date().toISOString(),

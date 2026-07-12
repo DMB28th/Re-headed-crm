@@ -11,6 +11,8 @@ import type {
   CrmRecord,
   FieldDescribe,
   ObjectDescribe,
+  ObjectSummary,
+  RecentRecord,
   RecordPage,
 } from "./crm-types.js";
 import type {
@@ -119,6 +121,25 @@ export async function buildRecordCardPayload(args: {
       connectedUser: await source.getConnectedUser(),
     },
   };
+}
+
+/**
+ * Attach the singular display label ("Company") to each recent record for the
+ * home card's type pill — the widget must never derive it by string-hacking
+ * the object api. listObjects() is cheap (adapters cache it); any failure
+ * leaves the records unlabeled and the widget falls back to the api string.
+ */
+export async function labelRecentRecords(
+  recent: RecentRecord[],
+  listObjects: () => Promise<ObjectSummary[]>,
+): Promise<RecentRecord[]> {
+  if (recent.length === 0) return recent;
+  const objects = await listObjects().catch((): ObjectSummary[] => []);
+  const labels = new Map(objects.map((o) => [o.api, o.label]));
+  return recent.map((r) => {
+    const objectLabel = labels.get(r.object);
+    return objectLabel ? { ...r, objectLabel } : r;
+  });
 }
 
 /**

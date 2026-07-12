@@ -4,6 +4,7 @@
  * Edits autosave as a DRAFT; reps keep seeing the published revision until
  * "Publish layout…" (2b). The preview renders the REAL widget component.
  */
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LayoutConfig, ObjectDescribe } from "@cardstack/core";
 import type { LayoutDiff, LayoutRecord } from "@cardstack/config-store";
@@ -21,8 +22,13 @@ interface LayoutApiResponse {
 }
 
 export function Builder({ object }: { object: string }) {
+  const router = useRouter();
   const [config, setConfig] = useState<LayoutConfig | null>(null);
   const [describe, setDescribe] = useState<ObjectDescribe | null>(null);
+  const [configuredObjects, setConfiguredObjects] = useState<
+    { api: string; labelPlural: string }[]
+  >([]);
+  const [jsonCopied, setJsonCopied] = useState(false);
   const [relatedDescribes, setRelatedDescribes] = useState<Record<string, ObjectDescribe>>({});
   const [publishedRevision, setPublishedRevision] = useState<number | null>(null);
   const [history, setHistory] = useState<{ revision: number; name?: string }[]>([]);
@@ -87,6 +93,22 @@ export function Builder({ object }: { object: string }) {
     void load();
   }, [load]);
 
+  // Configured objects feed the header's object switcher (2a top bar).
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/objects");
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          objects?: { api: string; labelPlural: string }[];
+        };
+        setConfiguredObjects(data.objects ?? []);
+      } catch {
+        // switcher degrades to a plain title
+      }
+    })();
+  }, []);
+
   // Autosave the draft, debounced ("Saved just now").
   useEffect(() => {
     if (!config) return;
@@ -124,7 +146,25 @@ export function Builder({ object }: { object: string }) {
     <div className="flex h-[calc(100vh-48px)] min-h-0 flex-col">
       <header className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h1 className="text-[16px] font-semibold capitalize">{object}</h1>
+          {configuredObjects.length > 1 ? (
+            <select
+              aria-label="Switch object"
+              className="st-input py-1 text-[14px] font-semibold"
+              value={object}
+              onChange={(e) => router.push(`/objects/${e.target.value}/layouts`)}
+            >
+              {(configuredObjects.some((o) => o.api === object)
+                ? configuredObjects
+                : [{ api: object, labelPlural: describe.labelPlural }, ...configuredObjects]
+              ).map((o) => (
+                <option key={o.api} value={o.api}>
+                  {o.labelPlural}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <h1 className="text-[16px] font-semibold">{describe.labelPlural}</h1>
+          )}
           <span className="st-chip-mono bg-draft text-draft-ink">
             Draft{publishedRevision ? ` · v${publishedRevision + 1} from v${publishedRevision}` : ""}
           </span>
@@ -187,9 +227,41 @@ export function Builder({ object }: { object: string }) {
           )}
           <details className="relative">
             <summary className="st-btn cursor-pointer list-none font-mono text-[11px]">{"{ }"}</summary>
-            <pre className="absolute right-0 z-20 mt-2 max-h-[420px] w-[440px] overflow-auto rounded-[10px] border border-line bg-surface p-3 text-[10.5px] leading-relaxed shadow-lg">
-              {JSON.stringify(config, null, 2)}
-            </pre>
+            <div className="absolute right-0 z-20 mt-2 w-[440px] rounded-[10px] border border-line bg-surface shadow-lg">
+              <div className="flex items-center justify-end gap-2 border-b border-line-soft p-2">
+                <button
+                  type="button"
+                  className="st-btn !py-1 text-[11px]"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(JSON.stringify(config, null, 2));
+                    setJsonCopied(true);
+                    setTimeout(() => setJsonCopied(false), 1500);
+                  }}
+                >
+                  {jsonCopied ? "Copied" : "Copy JSON"}
+                </button>
+                <button
+                  type="button"
+                  className="st-btn !py-1 text-[11px]"
+                  onClick={() => {
+                    const blob = new Blob([JSON.stringify(config, null, 2)], {
+                      type: "application/json",
+                    });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `${object}-layout.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                >
+                  Download .json
+                </button>
+              </div>
+              <pre className="max-h-[380px] overflow-auto p-3 text-[10.5px] leading-relaxed">
+                {JSON.stringify(config, null, 2)}
+              </pre>
+            </div>
           </details>
           <button type="button" className="st-btn st-btn--primary" onClick={() => setPublishOpen(true)}>
             Publish layout…
@@ -200,6 +272,7 @@ export function Builder({ object }: { object: string }) {
       <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto">
         <Palette
           describe={describe}
+          crm={config.crm}
           usedFields={usedFields}
           onAdd={(api) => {
             setConfig((prev) => {
@@ -223,6 +296,7 @@ export function Builder({ object }: { object: string }) {
       {publishOpen && (
         <PublishModal
           object={object}
+          objectLabel={describe.labelPlural}
           publishedRevision={publishedRevision}
           onClose={() => setPublishOpen(false)}
           onPublished={async () => {

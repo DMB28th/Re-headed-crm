@@ -8,6 +8,7 @@ import { parseLayoutConfig, type FieldDescribe, type LayoutConfig, type ObjectDe
 
 /** Well-known name-ish properties, best first (HubSpot + Salesforce + mock). */
 const TITLE_CANDIDATES = [
+  "__display_name", // Cardstack-computed contact full name (HubSpot adapter)
   "dealname",
   "hs_full_name_or_email",
   "name",

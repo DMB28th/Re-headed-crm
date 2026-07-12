@@ -19,12 +19,25 @@ export interface ConnectionSettings {
 let mockSingleton: MockCrmAdapter | undefined;
 const liveCache = new Map<string, CrmAdapter>();
 
+const cacheKey = (settings: ConnectionSettings): string =>
+  `${settings.crm}:${JSON.stringify(settings.credentials)}`;
+
+/**
+ * Drop the cached live adapter for a credential set. Called on connect AND
+ * disconnect so stale negative caches (owners/pipelines fetched under an old
+ * scope set) never survive a reconnect.
+ */
+export function invalidateAdapterCache(settings: ConnectionSettings): void {
+  if (!settings.credentials || Object.keys(settings.credentials).length === 0) return;
+  liveCache.delete(cacheKey(settings));
+}
+
 export function createAdapterForConnection(settings: ConnectionSettings): CrmAdapter {
   if (!settings.credentials || Object.keys(settings.credentials).length === 0) {
     mockSingleton ??= new MockCrmAdapter();
     return mockSingleton;
   }
-  const key = `${settings.crm}:${JSON.stringify(settings.credentials)}`;
+  const key = cacheKey(settings);
   const cached = liveCache.get(key);
   if (cached) return cached;
   const adapter =

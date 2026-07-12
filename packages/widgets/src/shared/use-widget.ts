@@ -14,13 +14,15 @@ import {
 } from "@modelcontextprotocol/ext-apps";
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { ErrorPayload } from "@cardstack/core";
 
 export interface WidgetState<Payload> {
   app: App | null;
-  /** Parsed structuredContent, once the tool result arrives. */
-  payload: Payload | null;
+  /** Parsed structuredContent, once the tool result arrives. Typed failures
+   *  (kind: "error") flow through as a payload so shells render design 1e. */
+  payload: Payload | ErrorPayload | null;
   /** Local payload replace (e.g. re-fetch after a write). Host tool results still win. */
-  setPayload: (payload: Payload) => void;
+  setPayload: (payload: Payload | ErrorPayload) => void;
   /** Model-facing error text when the tool result reported isError. */
   toolError: string | null;
   connectionError: Error | null;
@@ -35,11 +37,19 @@ function applyHostAppearance(ctx: Partial<McpUiHostContext>) {
 }
 
 export function useWidget<Payload>(name: string): WidgetState<Payload> {
-  const [payload, setPayload] = useState<Payload | null>(null);
+  const [payload, setPayload] = useState<Payload | ErrorPayload | null>(null);
   const [toolError, setToolError] = useState<string | null>(null);
   const [hostContext, setHostContext] = useState<McpUiHostContext | null>(null);
 
   const handleResult = useCallback((result: CallToolResult) => {
+    // Typed failures (ErrorPayload) win over the bare isError text — the shell
+    // renders the actionable 1e card (Retry / Reconnect) instead of a dead end.
+    const structured = result.structuredContent as { kind?: string } | undefined;
+    if (structured?.kind === "error") {
+      setToolError(null);
+      setPayload(structured as ErrorPayload);
+      return;
+    }
     if (result.isError) {
       const text = result.content?.find((c) => c.type === "text");
       setToolError(text?.type === "text" ? text.text : "The tool call failed.");

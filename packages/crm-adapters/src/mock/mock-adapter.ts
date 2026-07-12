@@ -188,7 +188,9 @@ export class MockCrmAdapter implements CrmAdapter {
   }
 
   async listRecentRecords(_userScope: string, limit: number): Promise<RecentRecord[]> {
-    return clone(fixtures.RECENT_RECORDS).slice(0, limit);
+    return clone(fixtures.RECENT_RECORDS)
+      .slice(0, limit)
+      .map((r) => ({ ...r, objectLabel: fixtures.OBJECTS[r.object]?.label ?? r.object }));
   }
 
   async completeTask(id: string): Promise<CrmTask> {

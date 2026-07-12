@@ -32,7 +32,9 @@
 
 .rt-row {
   display: grid;
-  grid-template-columns: 2.2fr 1.2fr 0.9fr 1fr 0.8fr;
+  /* Tracks are computed from the layout's column count (table.tsx sets --rt-cols
+     on the card); the fallback matches the 4-column seed layout. */
+  grid-template-columns: var(--rt-cols, 2.2fr 1fr 1fr 1fr minmax(70px, 0.8fr));
   align-items: center;
   gap: 10px;
   width: 100%;

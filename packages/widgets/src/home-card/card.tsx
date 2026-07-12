@@ -5,7 +5,7 @@
 import { useState } from "react";
 import type { CrmTask, HomeCardPayload, RecentRecord } from "@cardstack/core";
 import { MakerChip } from "../shared/components.tsx";
-import { formatRelative } from "../shared/format.ts";
+import { formatDate, formatRelative } from "../shared/format.ts";
 import type { WidgetHost } from "../record-card/card.tsx";
 
 export function HomeCard({
@@ -46,9 +46,12 @@ export function HomeCard({
                     className="hc-tile"
                     onClick={() => openView(tile.name)}
                   >
-                    <span className="hc-tile-count">{tile.count}</span>
+                    {/* count === null: the tile degrades ("—" + hint) — never a fake 0. */}
+                    <span className="hc-tile-count">{tile.count ?? "—"}</span>
                     <span className="hc-tile-name">{tile.name}</span>
-                    <span className="cs-muted hc-tile-filters">{tile.filterSummary}</span>
+                    <span className="cs-muted hc-tile-filters">
+                      {tile.count === null ? "couldn’t load — tap to retry in chat" : tile.filterSummary}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -75,7 +78,9 @@ export function HomeCard({
                   className="hc-row"
                   onClick={() => openRecord(recent)}
                 >
-                  <span className="cs-pill hc-type-pill">{recent.object.replace(/s$/, "")}</span>
+                  {/* Singular label comes from the server (assemble.labelRecentRecords) —
+                      never derived by string-hacking the api ("companie"). */}
+                  <span className="cs-pill hc-type-pill">{recent.objectLabel ?? recent.object}</span>
                   <span className="hc-row-name">{recent.name}</span>
                   <span className="cs-muted hc-row-note">
                     {recent.note} · {formatRelative(recent.timestamp, locale)}
@@ -92,6 +97,7 @@ export function HomeCard({
               tasks={payload.tasks.slice(0, block.limit)}
               writeEnabled={payload.capabilities.writeEnabled}
               crmLabel={payload.provenance.crmLabel}
+              locale={locale}
               host={host}
             />
           );
@@ -101,7 +107,7 @@ export function HomeCard({
 
       <footer className="hc-footer">
         {payload.capabilities.writeEnabled && (
-          <span className="cs-muted rc-trust">🔒 Writes require confirmation</span>
+          <span className="cs-muted rc-trust">Writes require confirmation</span>
         )}
         <MakerChip provenance={payload.provenance} />
       </footer>
@@ -115,11 +121,13 @@ function FollowUps({
   tasks,
   writeEnabled,
   crmLabel,
+  locale,
   host,
 }: {
   tasks: CrmTask[];
   writeEnabled: boolean;
   crmLabel: string;
+  locale: string;
   host: WidgetHost | null;
 }) {
   const [states, setStates] = useState<Record<string, TaskState>>({});
@@ -177,7 +185,13 @@ function FollowUps({
                 </span>
                 <span className="cs-muted hc-task-meta">
                   {task.relatedRecordName && <>{task.relatedRecordName} · </>}
-                  {overdue ? <span className="hc-overdue-label">overdue</span> : (task.dueDate ?? "no due date")}
+                  {overdue ? (
+                    <span className="hc-overdue-label">overdue</span>
+                  ) : task.dueDate ? (
+                    formatDate(task.dueDate, locale)
+                  ) : (
+                    "no due date"
+                  )}
                 </span>
               </>
             )}

@@ -59,6 +59,14 @@
   overflow-wrap: anywhere;
 }
 
+/* Long text (design 1h): 4-line clamp + "Show full note". */
+.rc-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .rc-lists {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -210,6 +218,45 @@
   margin-left: 7px;
   font-size: 10px;
   opacity: 0.8;
+}
+
+/* Filterable picklist combobox (design 1b: "8 more — type to filter"). */
+.wd-combobox {
+  position: relative;
+}
+.wd-combobox-list {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: var(--cs-card);
+  border: 1px solid var(--cs-border);
+  border-radius: var(--cs-radius-control);
+  box-shadow: var(--shadow-md, 0 4px 14px rgba(0, 0, 0, 0.14));
+  overflow: hidden;
+}
+.wd-combobox-option {
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wd-combobox-option--active {
+  background: var(--cs-card-secondary);
+}
+.wd-combobox-option[aria-selected="true"] {
+  font-weight: 600;
+}
+.wd-combobox-empty,
+.wd-combobox-more {
+  padding: 6px 10px;
+  font-size: 11.5px;
+}
+.wd-combobox-more {
+  border-top: 1px solid var(--cs-border-soft);
 }
 
 /* --- Confirmation diff (design 1c): the signing moment --- */
@@ -368,5 +415,34 @@
   .rc-related + .rc-related {
     border-left: none;
     border-top: 1px solid var(--cs-border-soft);
+  }
+
+  /* Footer stacks: full-width 44px buttons (primary last), chips on their own line. */
+  .rc-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .rc-footer-left,
+  .rc-footer-left--column {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .rc-footer-left .cs-btn--primary {
+    order: 9;
+  }
+  .rc-footer-right {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  /* Diff rows go single-column — label above before/after keeps values readable. */
+  .wd-diff-row {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+  .wd-diff-head {
+    display: none;
   }
 }

@@ -10,11 +10,13 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
   PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -91,6 +93,7 @@ export function HomeCardBuilder() {
   const [publishedNote, setPublishedNote] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [draggingBlock, setDraggingBlock] = useState<HomeCardBlock["type"] | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   useEffect(() => {
@@ -169,7 +172,11 @@ export function HomeCardBuilder() {
       blocks: config.blocks.map((b) => (b.type === type ? ({ ...b, ...patch } as HomeCardBlock) : b)),
     });
 
+  const onDragStart = (event: DragStartEvent) =>
+    setDraggingBlock(String(event.active.id) as HomeCardBlock["type"]);
+
   const onDragEnd = (event: DragEndEvent) => {
+    setDraggingBlock(null);
     const overId = event.over ? String(event.over.id) : null;
     const activeId = String(event.active.id);
     if (!overId || activeId === overId) return;
@@ -286,7 +293,13 @@ export function HomeCardBuilder() {
               <span className="text-[11.5px] text-ink-45">HubSpot · {connectedUser}</span>
             </div>
 
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={onDragStart}
+              onDragCancel={() => setDraggingBlock(null)}
+              onDragEnd={onDragEnd}
+            >
               <SortableContext
                 items={config.blocks.map((b) => b.type)}
                 strategy={verticalListSortingStrategy}
@@ -328,6 +341,19 @@ export function HomeCardBuilder() {
                   </BlockCard>
                 ))}
               </SortableContext>
+
+              {/* Ghost block follows the pointer; the in-list slot renders as
+                  the 2px dashed accent drop indicator (design 2a/8a). */}
+              <DragOverlay dropAnimation={null}>
+                {draggingBlock && (
+                  <div className="cursor-grabbing rounded-[10px] border border-line bg-paper p-3 shadow-lg">
+                    <span className="flex items-center gap-2">
+                      <span className="text-ink-45">⠿</span>
+                      <span className="st-section-label">{BLOCK_META[draggingBlock].label}</span>
+                    </span>
+                  </div>
+                )}
+              </DragOverlay>
             </DndContext>
 
             <div className="mt-3 border-t border-line-soft pt-2 text-[10.5px] text-ink-45">
@@ -383,10 +409,14 @@ function BlockCard({
     </span>
   );
   return (
+    // While dragging, the in-list slot becomes the drop indicator: a 2px
+    // dashed accent outline with invisible contents (ghost is in the overlay).
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`mt-3 rounded-[10px] border border-line-soft bg-paper p-3 ${isDragging ? "opacity-60 shadow-md" : ""}`}
+      className={`mt-3 rounded-[10px] border border-line-soft bg-paper p-3 ${
+        isDragging ? "!border-2 !border-dashed !border-accent [&>*]:invisible" : ""
+      }`}
     >
       {children(grip)}
     </div>

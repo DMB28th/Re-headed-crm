@@ -19,6 +19,18 @@ export default async function HomePage() {
     return <NoConnection />;
   }
 
+  // Real portal facts; null = unknown — the copy drops the number, never invents one.
+  let userCount: number | null = null;
+  try {
+    userCount = (await adapter.getPortalInfo()).userCount;
+  } catch {
+    // copy degrades below
+  }
+  // Custom-object discovery blocked by a missing scope (HubSpot 403) — surfaced
+  // by the adapter so "Every CRM object is configured." is never a lie.
+  const customObjectsBlocked =
+    (adapter as { customObjectsBlocked?: string | null }).customObjectsBlocked ?? null;
+
   // A CRM hiccup (missing scope, rate limit, timeout) degrades this page,
   // never blanks it — configured objects still render from the store.
   let crmError: string | null = null;
@@ -63,7 +75,10 @@ export default async function HomePage() {
     <div className="max-w-[860px]">
       <h1 className="text-[16px] font-semibold">{greeting()}</h1>
       <p className="mt-1 text-[12.5px] text-ink-55">
-        38 reps use these cards in chat. Everything here is scoped to one object at a time.
+        {userCount !== null
+          ? `${userCount} reps use these cards in chat.`
+          : "Reps use these cards in chat."}{" "}
+        Everything here is scoped to one object at a time.
       </p>
 
       {crmError && (
@@ -91,13 +106,16 @@ export default async function HomePage() {
 
       <div className="mt-6 grid grid-cols-2 gap-4">
         {objects.map((object) => (
-          <Link
-            key={object.api}
-            href={`/objects/${object.api}/layouts`}
-            className="st-card block p-4 hover:shadow-sm"
-          >
+          // Stretched-link card: the title link covers the card; the amber
+          // metadata row is its own link (nested anchors are invalid HTML).
+          <div key={object.api} className="st-card relative p-4 hover:shadow-sm">
             <div className="flex items-center justify-between">
-              <span className="text-[13.5px] font-semibold capitalize">{object.labelPlural}</span>
+              <Link
+                href={`/objects/${object.api}/layouts`}
+                className="text-[13.5px] font-semibold capitalize after:absolute after:inset-0"
+              >
+                {object.labelPlural}
+              </Link>
               <span className="flex gap-1.5">
                 {object.record.draft && (
                   <span className="st-chip-mono bg-draft text-draft-ink">draft</span>
@@ -116,16 +134,19 @@ export default async function HomePage() {
                 section(s)
               </div>
               {object.missingDescriptions > 0 && (
-                <div className="text-draft-ink">
+                <Link
+                  href={`/objects/${object.api}/layouts`}
+                  className="relative z-10 block text-draft-ink underline-offset-2 hover:underline"
+                >
                   {object.missingDescriptions} of {object.fieldCount} fields lack descriptions →
-                  fix in HubSpot
-                </div>
+                  review in the builder
+                </Link>
               )}
             </div>
-          </Link>
+          </div>
         ))}
 
-        <AddObjectCard available={available} />
+        <AddObjectCard available={available} customObjectsBlocked={customObjectsBlocked} />
       </div>
 
       <h2 className="st-section-label mt-8">Recent publishes</h2>

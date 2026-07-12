@@ -3,6 +3,8 @@ import type { ConnectionState } from "@cardstack/config-store";
 import {
   HubSpotAdapter,
   SalesforceAdapter,
+  invalidateAdapterCache,
+  type CrmAdapter,
   type HubSpotCredentials,
   type SalesforceCredentials,
 } from "@cardstack/crm-adapters";
@@ -14,14 +16,24 @@ function redact(connection: ConnectionState): Record<string, unknown> {
   return { ...rest, live: !!credentials && Object.keys(credentials).length > 0 };
 }
 
+/** Capability gaps from missing token scopes — the connect-time coverage report. */
+async function scopeGapsFor(adapter: CrmAdapter): Promise<string[]> {
+  const info = await adapter.getPortalInfo().catch(() => null);
+  return info?.scopeGaps ?? [];
+}
+
 export async function GET() {
   const store = await getStore();
   const connection = await store.getConnection(TENANT_ID);
-  const connectedUser =
-    connection.status === "connected"
-      ? await (await getAdapter()).getConnectedUser().catch(() => null)
-      : null;
-  return NextResponse.json({ connection: redact(connection), connectedUser });
+  if (connection.status !== "connected") {
+    return NextResponse.json({ connection: redact(connection), connectedUser: null, scopeGaps: [] });
+  }
+  const adapter = await getAdapter();
+  const [connectedUser, scopeGaps] = await Promise.all([
+    adapter.getConnectedUser().catch(() => null),
+    scopeGapsFor(adapter),
+  ]);
+  return NextResponse.json({ connection: redact(connection), connectedUser, scopeGaps });
 }
 
 interface ConnectBody {
@@ -36,13 +48,17 @@ export async function POST(req: Request) {
 
   if (body.action === "disconnect") {
     const current = await store.getConnection(TENANT_ID);
+    if (current.credentials) {
+      // A later reconnect must build a FRESH adapter, not inherit stale caches.
+      invalidateAdapterCache({ crm: current.crm, credentials: current.credentials });
+    }
     const state: ConnectionState = {
       ...current,
       status: "disconnected",
       changedAt: new Date().toISOString(),
     };
     await store.setConnection(state);
-    return NextResponse.json({ connection: redact(state), connectedUser: null });
+    return NextResponse.json({ connection: redact(state), connectedUser: null, scopeGaps: [] });
   }
   if (body.action !== "connect") {
     return NextResponse.json({ error: "action must be connect|disconnect" }, { status: 400 });
@@ -51,6 +67,7 @@ export async function POST(req: Request) {
   const kind = body.kind ?? "mock";
   let state: ConnectionState;
   let connectedUser: string;
+  let scopeGaps: string[] = [];
 
   try {
     if (kind === "mock") {
@@ -68,8 +85,12 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "A private-app access token is required." }, { status: 400 });
       }
       const credentials: HubSpotCredentials = { accessToken };
-      // Validate BEFORE storing: cheapest authenticated read + identity.
-      connectedUser = await new HubSpotAdapter(credentials).validateConnection();
+      // Validate BEFORE storing: cheapest authenticated read + identity. The
+      // probe also runs the optional-capability checks, so the scope-coverage
+      // report is ready the moment the connect succeeds.
+      const probe = new HubSpotAdapter(credentials);
+      connectedUser = await probe.validateConnection();
+      scopeGaps = await scopeGapsFor(probe);
       state = {
         tenantId: TENANT_ID,
         status: "connected",
@@ -92,7 +113,9 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Instance URL must start with https://" }, { status: 400 });
       }
       const credentials: SalesforceCredentials = { instanceUrl, clientId, clientSecret };
-      connectedUser = await new SalesforceAdapter(credentials).validateConnection();
+      const probe = new SalesforceAdapter(credentials);
+      connectedUser = await probe.validateConnection();
+      scopeGaps = await scopeGapsFor(probe);
       state = {
         tenantId: TENANT_ID,
         status: "connected",
@@ -110,6 +133,10 @@ export async function POST(req: Request) {
     );
   }
 
+  if (state.credentials) {
+    // Same credential set may have been cached with pre-scope-change state.
+    invalidateAdapterCache({ crm: state.crm, credentials: state.credentials });
+  }
   await store.setConnection(state);
-  return NextResponse.json({ connection: redact(state), connectedUser });
+  return NextResponse.json({ connection: redact(state), connectedUser, scopeGaps });
 }

@@ -34,9 +34,31 @@ export function coerceInputValue(raw: string, meta: FieldDescribe | undefined): 
 }
 
 /** Raw value → what the input element should display. */
-export function inputDisplayValue(value: CrmFieldValue | undefined): string {
+export function inputDisplayValue(value: CrmFieldValue | undefined, control?: string): string {
   if (value === null || value === undefined) return "";
-  return String(value);
+  const str = String(value);
+  // datetime-local inputs reject full ISO-Z strings and would render EMPTY.
+  if (control === "datetime") return isoToDatetimeLocal(str);
+  // date inputs tolerate ISO datetimes by slicing to the date part.
+  if (control === "date" && str.includes("T")) return str.slice(0, 10);
+  return str;
+}
+
+/** ISO datetime → the local "YYYY-MM-DDTHH:mm" a datetime-local input requires. */
+export function isoToDatetimeLocal(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours(),
+  )}:${pad(date.getMinutes())}`;
+}
+
+/** datetime-local string (local time) → full ISO with timezone — CRMs reject timezone-less writes. */
+export function datetimeLocalToIso(raw: string): CrmFieldValue {
+  if (raw === "") return null;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? raw : date.toISOString();
 }
 
 export function draftEntries(draft: Draft): [string, CrmFieldValue][] {

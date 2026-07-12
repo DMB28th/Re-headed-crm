@@ -5,11 +5,14 @@ import type { LayoutDiff } from "@cardstack/config-store";
 
 export function PublishModal({
   object,
+  objectLabel,
   publishedRevision,
   onClose,
   onPublished,
 }: {
   object: string;
+  /** CRM display label — page titles never show raw api slugs. */
+  objectLabel?: string;
   publishedRevision: number | null;
   onClose: () => void;
   onPublished: () => void;
@@ -43,7 +46,7 @@ export function PublishModal({
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-[rgba(20,24,40,0.35)]">
       <div className="st-card w-[460px] p-5">
         <h2 className="text-[14px] font-semibold">
-          Publish {object} layout {publishedRevision ? `v${publishedRevision + 1}` : ""}
+          Publish {objectLabel ?? object} layout {publishedRevision ? `v${publishedRevision + 1}` : ""}
         </h2>
         <p className="mt-1 text-[11.5px] text-ink-55">
           Changes vs {publishedRevision ? `v${publishedRevision}` : "nothing published"} — the same

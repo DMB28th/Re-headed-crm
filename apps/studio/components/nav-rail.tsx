@@ -20,6 +20,8 @@ interface ObjectsData {
   connection: { status: "connected" | "disconnected" } | null;
   objects: { api: string; labelPlural: string; draft: boolean; publishedRevision: number | null }[];
   available: { api: string; labelPlural: string }[];
+  /** Set when custom-object discovery is blocked by a missing token scope. */
+  customObjectsBlocked?: string | null;
 }
 
 function RailLink({
@@ -113,11 +115,19 @@ export function NavRail() {
             return (
               <div key={object.api}>
                 <RailLink
-                  href={`/objects/${object.api}/layouts`}
-                  active={false}
+                  href={`/objects/${object.api}`}
+                  active={pathname === `/objects/${object.api}`}
                 >
                   <span className="flex items-center justify-between">
-                    <span className="font-medium capitalize text-ink">{object.labelPlural}</span>
+                    <span className="flex items-center gap-1.5 font-medium capitalize text-ink">
+                      {object.labelPlural}
+                      {object.draft && (
+                        <span
+                          className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-warn-dot"
+                          title="Unpublished draft — reps still see the published version"
+                        />
+                      )}
+                    </span>
                     {object.draft && (
                       <span className="st-chip-mono bg-draft text-draft-ink">draft</span>
                     )}
@@ -161,6 +171,11 @@ export function NavRail() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+        {connected && data?.customObjectsBlocked && (
+          <div className="mx-2.5 mt-2 rounded-[8px] bg-draft px-2.5 py-1.5 text-[11px] leading-snug text-draft-ink">
+            {data.customObjectsBlocked}
           </div>
         )}
       </div>

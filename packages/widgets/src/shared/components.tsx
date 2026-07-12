@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import type { WidgetProvenance } from "@cardstack/core";
+import type { ErrorPayload, WidgetProvenance } from "@cardstack/core";
 
 export function MakerChip({ provenance }: { provenance: WidgetProvenance }) {
   return (
@@ -97,10 +97,13 @@ export function MessageCard({
   title,
   body,
   action,
+  provenance,
 }: {
   title: string;
   body?: string;
   action?: ReactNode;
+  /** When available, the maker chip renders bottom-right — every widget carries it. */
+  provenance?: WidgetProvenance;
 }) {
   return (
     <div className="cs-card" style={{ padding: 24, textAlign: "center" }}>
@@ -111,6 +114,93 @@ export function MessageCard({
         </div>
       )}
       {action && <div style={{ marginTop: 14 }}>{action}</div>}
+      {provenance && (
+        <div style={{ marginTop: 18, display: "flex", justifyContent: "flex-end" }}>
+          <MakerChip provenance={provenance} />
+        </div>
+      )}
     </div>
+  );
+}
+
+/** Structural slice of WidgetHost — shared/ must not import from record-card/. */
+interface ErrorCardHost {
+  callTool(
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<{ isError?: boolean | undefined; structuredContent?: unknown }>;
+  sendFollowup?(text: string): void;
+}
+
+/**
+ * Typed tool-failure card (design 1e). "unauthorized" gets the re-auth
+ * treatment ("{CRM} connection expired" + "Reconnect {CRM}"); everything else
+ * gets the error message + Retry re-invoking the original call. Never says
+ * "Nothing was written." — that copy is reserved for write failures.
+ */
+export function ErrorCard<P>({
+  payload,
+  host,
+  onPayload,
+}: {
+  payload: ErrorPayload;
+  host: ErrorCardHost | null;
+  /** Successful retry swaps in the fresh payload (typed by the consuming shell). */
+  onPayload: (payload: P) => void;
+}) {
+  const [retrying, setRetrying] = useState(false);
+  const crm = payload.crmLabel ?? "Your CRM";
+
+  const retry = async () => {
+    if (!host || !payload.retry) return;
+    setRetrying(true);
+    try {
+      const result = await host.callTool(payload.retry.tool, payload.retry.args);
+      if (result.structuredContent) onPayload(result.structuredContent as P);
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  if (payload.reason === "unauthorized") {
+    return (
+      <MessageCard
+        title={`${crm} connection expired`}
+        body={payload.message}
+        action={
+          <button
+            type="button"
+            className="cs-btn cs-btn--primary"
+            onClick={() =>
+              host?.sendFollowup?.(
+                `My ${crm} connection expired — please ask the admin to reconnect ${crm} in Cardstack Studio.`,
+              )
+            }
+          >
+            Reconnect {crm}
+          </button>
+        }
+      />
+    );
+  }
+
+  const title =
+    payload.reason === "crm-unavailable"
+      ? `${crm} didn't respond`
+      : payload.reason === "not-found"
+        ? `${crm} couldn't find that record`
+        : "Something went wrong";
+  return (
+    <MessageCard
+      title={title}
+      body={payload.message}
+      action={
+        payload.retry ? (
+          <button type="button" className="cs-btn" onClick={retry} disabled={retrying}>
+            {retrying ? "Retrying…" : "Retry"}
+          </button>
+        ) : undefined
+      }
+    />
   );
 }

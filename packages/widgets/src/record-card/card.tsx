@@ -7,9 +7,10 @@
  * Host access is abstracted behind WidgetHost so the component never knows
  * whether it's talking to a real MCP host or Studio's simulator.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   ActivityEntry,
+  CardAction,
   CrmFieldValue,
   FieldWriteResult,
   LayoutSection,
@@ -62,12 +63,15 @@ export function RecordCard({
 
   const { layout, meta, record, provenance, capabilities } = payload;
   const { header, sections, relatedLists } = layout.recordCard;
+  const objectLabel = layout.object.charAt(0).toUpperCase() + layout.object.slice(1);
 
   if (sections.length === 0) {
     return (
       <MessageCard
-        title={`No fields configured for ${layout.object}`}
+        title={`No fields configured for ${objectLabel}`}
         body="Ask your admin to add fields to this layout in Cardstack Studio."
+        action={<CopyRequestButton objectLabel={objectLabel} />}
+        provenance={provenance}
       />
     );
   }
@@ -149,9 +153,24 @@ export function RecordCard({
     setMode({ kind: "editing", draft: failed });
   };
 
-  const title = record.fields[header.title];
-  const subtitle = header.subtitle ? record.fields[header.subtitle] : null;
-  const badge = header.badge ? record.fields[header.badge] : null;
+  // Header slots go through the SAME formatting pipeline as every field —
+  // valueLabels turn internal ids (dealstage, owner) into human labels, and
+  // stageTone only ever fires on the label, never the raw id.
+  const title = fmt(header.title, record.fields[header.title]);
+  const subtitle = header.subtitle ? fmt(header.subtitle, record.fields[header.subtitle]) : null;
+  const badgeLabel = header.badge ? fmt(header.badge, record.fields[header.badge]) : null;
+
+  // Configured layout actions (design 1a/3a): update_record names the primary
+  // edit button; create_related actions post a followup so the model drives
+  // crm_create_record (upgrades to the inline create form when 10b lands).
+  const actions = layout.recordCard.actions;
+  const titleText = title ?? record.id;
+  const runCreateRelated = (action: Extract<CardAction, { type: "create_related" }>) =>
+    host?.sendFollowup?.(
+      `Create a new ${action.object} related to "${titleText}" (id ${record.id})`,
+    );
+  const logNote = () =>
+    host?.sendFollowup?.(`Log a note on the ${layout.object} "${titleText}" (id ${record.id})`);
 
   const collapsed = mode.kind === "receipt" || mode.kind === "partial";
   const diffRows =
@@ -170,7 +189,7 @@ export function RecordCard({
           <h1 className="rc-title">{title ?? <NullValue />}</h1>
           <div className="rc-subtitle cs-muted">{[subtitle].filter(Boolean).join(" · ") || " "}</div>
         </div>
-        {badge != null && <StagePill value={String(badge)} tone={stageTone(String(badge))} />}
+        {badgeLabel != null && <StagePill value={badgeLabel} tone={stageTone(badgeLabel)} />}
       </header>
 
       {mode.kind === "receipt" && (
@@ -238,9 +257,12 @@ export function RecordCard({
         <FooterControls
           mode={mode}
           canEdit={canEdit}
+          actions={actions}
           crmLabel={provenance.crmLabel}
           connectedUser={provenance.connectedUser}
           onEdit={() => setMode({ kind: "editing", draft: {} })}
+          onCreateRelated={runCreateRelated}
+          onLogNote={logNote}
           onDiscard={() => setMode({ kind: "ready" })}
           onReview={() =>
             mode.kind === "editing" && setMode({ kind: "confirming", draft: mode.draft })
@@ -253,6 +275,10 @@ export function RecordCard({
           }
         />
         <span className="rc-footer-right">
+          {/* Right-aligned trust line (design 1a) — wherever writes are possible. */}
+          {mode.kind === "ready" && canEdit && (
+            <span className="cs-muted rc-trust">Writes require confirmation</span>
+          )}
           <LayoutChip provenance={provenance} />
           <MakerChip provenance={provenance} />
         </span>
@@ -264,9 +290,12 @@ export function RecordCard({
 function FooterControls({
   mode,
   canEdit,
+  actions,
   crmLabel,
   connectedUser,
   onEdit,
+  onCreateRelated,
+  onLogNote,
   onDiscard,
   onReview,
   onBack,
@@ -274,26 +303,48 @@ function FooterControls({
 }: {
   mode: CardMode;
   canEdit: boolean;
+  actions: CardAction[];
   crmLabel: string;
   connectedUser?: string | undefined;
   onEdit: () => void;
+  onCreateRelated: (action: Extract<CardAction, { type: "create_related" }>) => void;
+  onLogNote: () => void;
   onDiscard: () => void;
   onReview: () => void;
   onBack: () => void;
   onConfirm: () => void;
 }) {
   switch (mode.kind) {
-    case "ready":
+    case "ready": {
+      const editLabel =
+        actions.find((a): a is Extract<CardAction, { type: "update_record" }> => a.type === "update_record")
+          ?.label ?? "Edit fields";
+      const createActions = actions.filter(
+        (a): a is Extract<CardAction, { type: "create_related" }> => a.type === "create_related",
+      );
       return (
         <span className="rc-footer-left">
           {canEdit && (
             <button type="button" className="cs-btn cs-btn--primary" onClick={onEdit}>
-              Edit fields
+              {editLabel}
             </button>
           )}
-          {canEdit && <span className="cs-muted rc-trust">🔒 Writes require confirmation</span>}
+          {createActions.map((action) => (
+            <button
+              key={`${action.object}:${action.label}`}
+              type="button"
+              className="cs-btn"
+              onClick={() => onCreateRelated(action)}
+            >
+              {action.label}
+            </button>
+          ))}
+          <button type="button" className="cs-btn" onClick={onLogNote}>
+            Log a note
+          </button>
         </span>
       );
+    }
     case "editing": {
       const count = dirtyCount(mode.draft);
       return (
@@ -408,7 +459,13 @@ function Section({
                 />
               ) : (
                 <div className="rc-field-value">
-                  {formatted ?? <NullValue />}
+                  {formatted === null ? (
+                    <NullValue />
+                  ) : fieldMeta?.type === "textarea" ? (
+                    <ClampedText text={formatted} />
+                  ) : (
+                    formatted
+                  )}
                   {flsBlocked && (
                     <span className="cs-pill wd-fls-pill">
                       Read-only · {payload.provenance.crmLabel} field security
@@ -491,10 +548,59 @@ function RelatedList({
       })}
       {hasMore && remaining > 0 && (
         <button type="button" className="cs-link-btn" onClick={showMore} disabled={loadingMore}>
-          {loadingMore ? "Loading…" : `Show ${remaining} more`}
+          {loadingMore ? "Loading…" : `Show ${remaining} more ${rel.object}`}
         </button>
       )}
     </section>
+  );
+}
+
+/**
+ * Long text values (design 1h): 4-line clamp with a "Show full note" toggle —
+ * the toggle only appears when the content actually overflows the clamp.
+ */
+function ClampedText({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (el && !expanded) setOverflowing(el.scrollHeight > el.clientHeight + 1);
+  }, [text, expanded]);
+
+  return (
+    <>
+      <div ref={ref} className={expanded ? undefined : "rc-clamp"}>
+        {text}
+      </div>
+      {(overflowing || expanded) && (
+        <button type="button" className="cs-link-btn" onClick={() => setExpanded((e) => !e)}>
+          {expanded ? "Show less" : "Show full note"}
+        </button>
+      )}
+    </>
+  );
+}
+
+/** Empty-state action (design 1e): a prewritten ask for the admin, one click to copy. */
+function CopyRequestButton({ objectLabel }: { objectLabel: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(
+        `Could you add fields to the ${objectLabel} card layout in Cardstack Studio? I got an empty card in chat.`,
+      );
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard access denied by the host — the button quietly does nothing.
+    }
+  };
+  return (
+    <button type="button" className="cs-btn" onClick={copy}>
+      {copied ? "Copied" : "Copy request for your admin"}
+    </button>
   );
 }
 

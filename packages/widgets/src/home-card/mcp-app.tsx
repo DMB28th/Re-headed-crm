@@ -7,7 +7,7 @@ import { createRoot } from "react-dom/client";
 import type { HomeCardPayload } from "@cardstack/core";
 import type { App } from "@modelcontextprotocol/ext-apps";
 import { useWidget } from "../shared/use-widget.js";
-import { LoadingCard, MessageCard } from "../shared/components.tsx";
+import { ErrorCard, LoadingCard, MessageCard } from "../shared/components.tsx";
 import type { WidgetHost } from "../record-card/card.tsx";
 import { HomeCard } from "./card.tsx";
 import "../shared/theme.css";
@@ -27,17 +27,21 @@ function hostFromApp(app: App | null): WidgetHost | null {
 }
 
 function HomeCardApp() {
-  const { app, payload, toolError, connectionError, locale } =
+  const { app, payload, setPayload, toolError, connectionError, locale } =
     useWidget<HomeCardPayload>("Home Card");
 
   if (connectionError) {
     return <MessageCard title="Couldn't connect to the chat host" body={connectionError.message} />;
   }
   if (toolError) {
-    return <MessageCard title={toolError} body="Nothing was written." />;
+    // Failed READ — "Nothing was written." is reserved for write failures.
+    return <MessageCard title={toolError} body="Nothing was loaded — try asking again." />;
   }
   if (!payload) {
     return <LoadingCard label="Opening your CRM…" />;
+  }
+  if (payload.kind === "error") {
+    return <ErrorCard payload={payload} host={hostFromApp(app)} onPayload={setPayload} />;
   }
   return <HomeCard payload={payload} locale={locale} host={hostFromApp(app)} />;
 }

@@ -10,7 +10,8 @@
  * Coverage notes:
  * - Custom objects are discovered via /crm/v3/schemas: they appear in
  *   listObjects (primary cards) and as related-list options on the core
- *   objects. Tickets and line items are describable related-list targets.
+ *   objects. Tickets are first-class (3c); line items are describable
+ *   related-list targets.
  * - listSavedViews returns [] — HubSpot has no public saved-views API; admins
  *   get lists via Cardstack lists instead (same exposure model).
  * - getActivity / listRecentRecords return [] — the engagements timeline and
@@ -59,13 +60,24 @@ const OBJECTS: ObjectSummary[] = [
   { api: "deals", label: "Deal", labelPlural: "Deals", custom: false },
   { api: "contacts", label: "Contact", labelPlural: "Contacts", custom: false },
   { api: "companies", label: "Company", labelPlural: "Companies", custom: false },
+  { api: "tickets", label: "Ticket", labelPlural: "Tickets", custom: false },
 ];
 
 /** Describable-but-not-primary objects (related-list targets). */
 const SUPPORT_OBJECTS: ObjectSummary[] = [
-  { api: "tickets", label: "Ticket", labelPlural: "Tickets", custom: false },
   { api: "line_items", label: "Line item", labelPlural: "Line items", custom: false },
 ];
+
+/**
+ * Cardstack-computed contact display name — never a HubSpot property, so it is
+ * stripped from every outgoing property list and rejected from writes.
+ */
+const DISPLAY_NAME_FIELD = "__display_name";
+const DISPLAY_NAME_INPUTS = ["firstname", "lastname", "email"];
+
+/** Definitive scope denial (vs transient 429/timeout) — safe to negative-cache. */
+const isScope403 = (error: unknown): boolean =>
+  error instanceof Error && /missing a scope/.test(error.message);
 
 /** Association-based related lists (standard objects; customs merge in at describe time). */
 const RELATIONSHIPS: Record<string, { api: string; label: string; relatedObject: string }[]> = {
@@ -152,6 +164,12 @@ export class HubSpotAdapter implements CrmAdapter {
   /** Set when custom-object discovery hit a scope 403 — surfaced, never swallowed. */
   customObjectsBlocked: string | null = null;
   private ownerLabels: Record<string, string> | null = null;
+  /** Active (non-archived) owner count from the owners pass — the "N reps" number. */
+  private ownerCount: number | null = null;
+  /** Set when the owners read hit a scope 403 — surfaced via getPortalInfo(). */
+  private ownersBlocked: string | null = null;
+  /** Portal account facts (home currency, portal id), cached like pipelineCache. */
+  private accountInfo: { portalId?: number; companyCurrency?: string } | null = null;
   /** relationship api → association endpoints, incl. dynamic custom-object rels. */
   private relTargets = new Map<string, { from: string; to: string }>(Object.entries(REL_TARGET));
   /** Custom-object related lists per core object (instance state, not module state). */
@@ -189,30 +207,79 @@ export class HubSpotAdapter implements CrmAdapter {
           labels.stages[stage.id] = multi ? `${stage.label} · ${pipeline.label}` : stage.label;
         }
       }
-    } catch {
-      // no pipelines scope / non-pipeline object — ids stay visible, nothing breaks
+    } catch (error) {
+      // No pipelines scope / non-pipeline object is definitive — cache the
+      // emptiness. A transient failure (429/timeout) must NOT stick, or ids
+      // stay raw until the process restarts.
+      if (!isScope403(error) && !(error instanceof CrmRecordNotFoundError)) return labels;
     }
     this.pipelineCache.set(objectApi, labels);
     return labels;
   }
 
+  private async fetchOwnersPage(
+    archived: boolean,
+    after?: string,
+  ): Promise<{
+    results: { id: string; firstName?: string; lastName?: string; email?: string }[];
+    paging?: { next?: { after?: string } };
+  }> {
+    const params = `limit=100${archived ? "&archived=true" : ""}${after ? `&after=${after}` : ""}`;
+    return this.request("GET", `/crm/v3/owners?${params}`);
+  }
+
   /** Owner id → display name (raw ids on cards are the #1 "feels broken"). */
   private async ensureOwnerLabels(): Promise<Record<string, string>> {
     if (this.ownerLabels) return this.ownerLabels;
+    const labels: Record<string, string> = {};
+    const OWNER_CAP = 1000;
+    const collect = async (archived: boolean): Promise<number> => {
+      let after: string | undefined;
+      let fetched = 0;
+      do {
+        const { results, paging } = await this.fetchOwnersPage(archived, after);
+        for (const o of results) {
+          labels[o.id] = [o.firstName, o.lastName].filter(Boolean).join(" ") || o.email || o.id;
+        }
+        fetched += results.length;
+        after = paging?.next?.after;
+      } while (after && fetched < OWNER_CAP);
+      return fetched;
+    };
     try {
-      const { results } = await this.request<{
-        results: { id: string; firstName?: string; lastName?: string; email?: string }[];
-      }>("GET", "/crm/v3/owners?limit=100");
-      this.ownerLabels = Object.fromEntries(
-        results.map((o) => [
-          o.id,
-          [o.firstName, o.lastName].filter(Boolean).join(" ") || o.email || o.id,
-        ]),
-      );
-    } catch {
-      this.ownerLabels = {}; // missing owners scope → ids stay visible, nothing breaks
+      this.ownerCount = await collect(false);
+      // Archived owners still label historic records; best-effort only.
+      await collect(true).catch(() => {});
+      this.ownerLabels = labels;
+    } catch (error) {
+      if (isScope403(error)) {
+        // Definitive scope denial: cache the emptiness and remember WHY.
+        this.ownersBlocked =
+          "Owner names are hidden — the private app is missing the crm.objects.owners.read scope; cards show raw owner ids.";
+        this.ownerLabels = labels;
+      } else {
+        return labels; // transient (429/timeout) — do NOT cache; retry next call
+      }
     }
-    return this.ownerLabels;
+    return this.ownerLabels ?? labels;
+  }
+
+  /** Portal home currency + portal id, fetched once (GET /account-info/v3/details). */
+  private async ensureAccountInfo(): Promise<{ portalId?: number; companyCurrency?: string }> {
+    if (this.accountInfo) return this.accountInfo;
+    try {
+      this.accountInfo = await this.request<{ portalId?: number; companyCurrency?: string }>(
+        "GET",
+        "/account-info/v3/details",
+      );
+    } catch (error) {
+      if (isScope403(error)) {
+        this.accountInfo = {}; // definitive: this token can't read account info
+      } else {
+        return {}; // transient — retry next call
+      }
+    }
+    return this.accountInfo ?? {};
   }
 
   /** Custom-object schemas, discovered once (portals without any → []). */
@@ -240,7 +307,7 @@ export class HubSpotAdapter implements CrmAdapter {
         }
       }
     } catch (error) {
-      if (error instanceof Error && /missing a scope/.test(error.message)) {
+      if (isScope403(error)) {
         // Definitive 403: remember WHY so Studio can say it out loud.
         this.customObjectsBlocked =
           "Custom objects are hidden — the private app is missing the crm.schemas.custom.read scope. Add it in HubSpot and reconnect.";
@@ -257,6 +324,7 @@ export class HubSpotAdapter implements CrmAdapter {
     method: string,
     path: string,
     body?: unknown,
+    retriedAfter429 = false,
   ): Promise<T> {
     const res = await this.fetchImpl(`${BASE}${path}`, {
       method,
@@ -280,6 +348,14 @@ export class HubSpotAdapter implements CrmAdapter {
     }
     if (res.status === 404) throw new CrmRecordNotFoundError("hubspot resource", path);
     if (res.status === 429) {
+      if (!retriedAfter429) {
+        // Honor Retry-After once; a second 429 surfaces so callers can degrade.
+        const seconds = Number(res.headers.get("Retry-After"));
+        const waitMs =
+          Number.isFinite(seconds) && seconds >= 0 ? Math.min(seconds * 1000, 10_000) : 2_000;
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        return this.request(method, path, body, true);
+      }
       throw new Error("HubSpot rate limit hit (429) — retry in a few seconds.");
     }
     if (!res.ok) {
@@ -314,6 +390,8 @@ export class HubSpotAdapter implements CrmAdapter {
       `/crm/v3/properties/${objectApi}`,
     );
     const owners = await this.ensureOwnerLabels();
+    // Portal home currency; USD only as the last resort when account-info 403s.
+    const currencyCode = (await this.ensureAccountInfo()).companyCurrency ?? "USD";
     const pipelineInfo =
       objectApi === "deals" || objectApi === "tickets"
         ? await this.ensurePipelines(objectApi)
@@ -352,9 +430,21 @@ export class HubSpotAdapter implements CrmAdapter {
           ...(p.description ? { description: p.description } : {}),
           ...(options.length > 0 ? { values: options.map((o) => o.value) } : {}),
           ...(Object.keys(valueLabels).length > 0 ? { valueLabels } : {}),
-          ...(mapType(p) === "currency" ? { currencyCode: "USD" } : {}),
+          ...(mapType(p) === "currency" ? { currencyCode } : {}),
         };
       });
+    if (objectApi === "contacts") {
+      // Contacts have no single name property; synthesize a computed read-only
+      // "Name" so title slots never fall back to email-or-firstname guessing.
+      fields.unshift({
+        api: DISPLAY_NAME_FIELD,
+        label: "Name",
+        type: "string",
+        required: false,
+        readOnly: true,
+        description: "Full name (first + last, or email) — computed by Cardstack from HubSpot fields.",
+      });
+    }
     await this.ensureCustomObjects(); // custom-object related lists join here
     const describe: ObjectDescribe = {
       ...summary,
@@ -369,7 +459,21 @@ export class HubSpotAdapter implements CrmAdapter {
   }
 
   private async propertyNames(objectApi: string): Promise<string[]> {
-    return (await this.describeObject(objectApi)).fields.map((f) => f.api);
+    return this.materializeProperties(
+      objectApi,
+      (await this.describeObject(objectApi)).fields.map((f) => f.api),
+    );
+  }
+
+  /** Outgoing property lists: strip Cardstack-computed fields, ride their inputs along. */
+  private materializeProperties(objectApi: string, wanted: string[]): string[] {
+    const requested = wanted.filter((p) => p !== DISPLAY_NAME_FIELD);
+    if (objectApi === "contacts") {
+      for (const input of DISPLAY_NAME_INPUTS) {
+        if (!requested.includes(input)) requested.push(input);
+      }
+    }
+    return requested;
   }
 
   private toRecord(objectApi: string, raw: { id: string; properties: Record<string, string | null> }): CrmRecord {
@@ -387,8 +491,16 @@ export class HubSpotAdapter implements CrmAdapter {
           : type === "boolean"
             ? value === "true"
             : type === "date"
-              ? value.slice(0, 10)
-              : value;
+              ? datePart(value)
+              : type === "datetime"
+                ? isoDatetime(value)
+                : value;
+    }
+    if (objectApi === "contacts") {
+      const name = [raw.properties.firstname, raw.properties.lastname]
+        .filter(Boolean)
+        .join(" ");
+      fields[DISPLAY_NAME_FIELD] = name || raw.properties.email || null;
     }
     return { id: raw.id, fields };
   }
@@ -429,7 +541,10 @@ export class HubSpotAdapter implements CrmAdapter {
   }
 
   async getRecord(objectApi: string, id: string, fields: string[]): Promise<CrmRecord> {
-    const properties = fields.length > 0 ? fields : await this.propertyNames(objectApi);
+    const properties =
+      fields.length > 0
+        ? this.materializeProperties(objectApi, fields)
+        : await this.propertyNames(objectApi);
     // batch/read, not GET: real portals have hundreds of properties and a
     // ?properties= query string blows past URL limits (the "stuck loading
     // screen" bug on live sandboxes). POST bodies have no such limit.
@@ -460,7 +575,7 @@ export class HubSpotAdapter implements CrmAdapter {
     const batch = await this.request<{
       results: { id: string; properties: Record<string, string | null> }[];
     }>("POST", `/crm/v3/objects/${target.to}/batch/read`, {
-      properties: rel.columns,
+      properties: this.materializeProperties(target.to, rel.columns),
       inputs: ids.slice(0, rel.limit).map((id) => ({ id })),
     });
     return {
@@ -475,6 +590,7 @@ export class HubSpotAdapter implements CrmAdapter {
   }
 
   async updateRecord(objectApi: string, id: string, patch: FieldPatch): Promise<CrmRecord> {
+    this.rejectComputedFields(patch);
     await this.request("PATCH", `/crm/v3/objects/${objectApi}/${id}`, {
       properties: Object.fromEntries(
         Object.entries(patch).map(([k, v]) => [k, v === null ? "" : String(v)]),
@@ -483,7 +599,17 @@ export class HubSpotAdapter implements CrmAdapter {
     return this.getRecord(objectApi, id, []);
   }
 
+  private rejectComputedFields(patch: FieldPatch): void {
+    if (DISPLAY_NAME_FIELD in patch) {
+      throw new CrmValidationError(
+        "Name is computed from First name / Last name — edit those fields instead.",
+        DISPLAY_NAME_FIELD,
+      );
+    }
+  }
+
   async createRecord(objectApi: string, fields: FieldPatch): Promise<CrmRecord> {
+    this.rejectComputedFields(fields);
     const created = await this.request<{ id: string }>("POST", `/crm/v3/objects/${objectApi}`, {
       properties: Object.fromEntries(
         Object.entries(fields).map(([k, v]) => [k, v === null ? "" : String(v)]),
@@ -503,11 +629,22 @@ export class HubSpotAdapter implements CrmAdapter {
   async listTasks(): Promise<TaskPage> {
     const data = await this.request<{
       results: { id: string; properties: Record<string, string | null> }[];
+      paging?: { next?: { after?: string } };
     }>("POST", "/crm/v3/objects/tasks/search", {
+      // IN on the open statuses, not NEQ COMPLETED: DEFERRED (and any custom
+      // terminal status) must not show up as an open follow-up.
       filterGroups: [
-        { filters: [{ propertyName: "hs_task_status", operator: "NEQ", value: "COMPLETED" }] },
+        {
+          filters: [
+            {
+              propertyName: "hs_task_status",
+              operator: "IN",
+              values: ["NOT_STARTED", "IN_PROGRESS", "WAITING"],
+            },
+          ],
+        },
       ],
-      properties: ["hs_task_subject", "hs_timestamp", "hs_task_status"],
+      properties: ["hs_task_subject", "hs_timestamp", "hs_task_status", "hs_task_priority"],
       sorts: [{ propertyName: "hs_timestamp", direction: "ASCENDING" }],
       limit: 20,
     });
@@ -518,7 +655,7 @@ export class HubSpotAdapter implements CrmAdapter {
         dueDate: taskDate(r.properties.hs_timestamp),
         status: "open" as const,
       })),
-      hasMore: false,
+      hasMore: !!data.paging?.next?.after,
     };
   }
 
@@ -569,15 +706,13 @@ export class HubSpotAdapter implements CrmAdapter {
   async getPortalInfo(): Promise<PortalInfo> {
     const [owners, account] = await Promise.all([
       this.ensureOwnerLabels(),
-      this.request<{ portalId?: number; companyCurrency?: string }>(
-        "GET",
-        "/account-info/v3/details",
-      ).catch(() => ({}) as { portalId?: number; companyCurrency?: string }),
+      this.ensureAccountInfo(),
     ]);
-    const ownerCount = Object.keys(owners).length;
-    const scopeGaps: string[] = [];
     await this.ensureCustomObjects();
+    const scopeGaps: string[] = [];
     if (this.customObjectsBlocked) scopeGaps.push(this.customObjectsBlocked);
+    if (this.ownersBlocked) scopeGaps.push(this.ownersBlocked);
+    const ownerCount = this.ownerCount ?? Object.keys(owners).length;
     return {
       userCount: ownerCount > 0 ? ownerCount : null,
       portalId: account.portalId ? String(account.portalId) : null,
@@ -589,11 +724,15 @@ export class HubSpotAdapter implements CrmAdapter {
   /**
    * Connect-time validation: prove the token can read records AND schemas —
    * a missing crm.schemas scope otherwise passes connect and breaks every
-   * Studio page later (describe 403s).
+   * Studio page later (describe 403s). The optional-capability probes
+   * (custom objects, owners) run here too so scope gaps are reportable the
+   * moment the connection succeeds — each ensure* records its own blocked
+   * note on a definitive 403 instead of throwing.
    */
   async validateConnection(): Promise<string> {
     await this.request("GET", "/crm/v3/objects/deals?limit=1");
     await this.describeObject("deals");
+    await Promise.all([this.ensureCustomObjects(), this.ensureOwnerLabels()]);
     return this.getConnectedUser();
   }
 }
@@ -601,9 +740,20 @@ export class HubSpotAdapter implements CrmAdapter {
 /** hs_timestamp arrives as ISO 8601 or epoch millis depending on the API path. */
 function taskDate(value: string | null | undefined): string | null {
   if (!value) return null;
-  if (/^\d+$/.test(value)) {
-    const parsed = new Date(Number(value));
-    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
-  }
-  return value.slice(0, 10);
+  return datePart(value);
+}
+
+/** HubSpot date/datetime property values arrive as ISO strings OR epoch millis. */
+function epochToDate(value: string): Date | null {
+  if (!/^\d+$/.test(value)) return null;
+  const parsed = new Date(Number(value));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function datePart(value: string): string {
+  return epochToDate(value)?.toISOString().slice(0, 10) ?? value.slice(0, 10);
+}
+
+function isoDatetime(value: string): string {
+  return epochToDate(value)?.toISOString() ?? value;
 }

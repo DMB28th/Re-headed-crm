@@ -5,17 +5,34 @@ import { useState } from "react";
 
 export function AddObjectCard({
   available,
+  customObjectsBlocked,
 }: {
   available: { api: string; labelPlural: string }[];
+  /** Set when custom-object discovery is blocked by a missing token scope. */
+  customObjectsBlocked?: string | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
 
+  // Never claim "every object is configured" while discovery is blind.
+  const blockedNote = customObjectsBlocked ? (
+    <div className="mt-2 rounded-[8px] bg-draft px-2.5 py-1.5 text-[11.5px] text-draft-ink">
+      <strong>Custom objects are hidden.</strong> {customObjectsBlocked}
+    </div>
+  ) : null;
+
   if (available.length === 0) {
     return (
       <div className="rounded-[13px] border border-dashed border-line p-4 text-[12.5px] text-ink-45">
-        Every CRM object is configured.
+        {customObjectsBlocked ? (
+          <>
+            Every discoverable object is configured.
+            {blockedNote}
+          </>
+        ) : (
+          "Every CRM object is configured."
+        )}
       </div>
     );
   }
@@ -46,6 +63,7 @@ export function AddObjectCard({
           Starts a draft card from the CRM&apos;s fields — nothing reaches reps until you publish.
         </div>
       </button>
+      {blockedNote}
       {open && (
         <div className="absolute left-3 top-full z-30 mt-1 w-[220px] rounded-[10px] border border-line bg-surface p-1 shadow-lg">
           {available.map((object) => (

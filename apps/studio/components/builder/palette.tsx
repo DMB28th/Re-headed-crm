@@ -2,17 +2,22 @@
 /** Left palette (2a): searchable describe fields, gaps nudge, used-field dimming. */
 import { useState } from "react";
 import type { ObjectDescribe } from "@cardstack/core";
+import { usePortalInfo } from "../use-portal-info";
 
 export function Palette({
   describe,
+  crm,
   usedFields,
   onAdd,
 }: {
   describe: ObjectDescribe;
+  crm: "hubspot" | "salesforce";
   usedFields: Set<string>;
   onAdd: (api: string) => void;
 }) {
   const [query, setQuery] = useState("");
+  const { info } = usePortalInfo();
+  const crmLabel = crm === "hubspot" ? "HubSpot" : "Salesforce";
   const fields = describe.fields.filter(
     (f) =>
       !query ||
@@ -73,7 +78,20 @@ export function Palette({
         <div className="mt-4 rounded-[10px] bg-crmmeta p-3 text-[11.5px] text-crmmeta-ink">
           <strong>Metadata gaps.</strong> {missing} of {describe.fields.length} fields have no
           description — the model, rep tooltips and coverage all read the same CRM metadata.{" "}
-          <span className="underline">Fix in HubSpot ↗</span>
+          {crm === "hubspot" && info.portalId ? (
+            <a
+              href={`https://app.hubspot.com/property-settings/${info.portalId}/properties?type=${describe.api}`}
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              Fix in HubSpot ↗
+            </a>
+          ) : (
+            // No portal id (or no deep-link URL for this CRM) — plain text,
+            // nothing clickable-but-dead.
+            <span>Fix in {crmLabel}.</span>
+          )}
         </div>
       )}
     </aside>

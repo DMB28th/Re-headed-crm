@@ -7,11 +7,13 @@
  */
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
   PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -20,8 +22,9 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import Link from "next/link";
 import { useState } from "react";
-import type { LayoutConfig, LayoutField, ObjectDescribe } from "@cardstack/core";
+import type { FieldDescribe, LayoutConfig, LayoutField, ObjectDescribe } from "@cardstack/core";
 
 type SetConfig = (updater: (prev: LayoutConfig | null) => LayoutConfig | null) => void;
 
@@ -38,6 +41,13 @@ export function Canvas({
 }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const labelOf = (api: string) => describe.fields.find((f) => f.api === api)?.label ?? api;
+  const crmLabel = config.crm === "hubspot" ? "HubSpot" : "SFDC";
+  // Ghost chip / ghost section for the DragOverlay (2a mid-drag feedback).
+  const [dragging, setDragging] = useState<
+    { kind: "field"; api: string } | { kind: "section"; index: number } | null
+  >(null);
+  const [nudgeDismissed, setNudgeDismissed] = useState(false);
+  const totalFields = config.recordCard.sections.reduce((n, s) => n + s.fields.length, 0);
 
   const mutateSections = (
     fn: (sections: LayoutConfig["recordCard"]["sections"]) => LayoutConfig["recordCard"]["sections"],
@@ -60,7 +70,15 @@ export function Canvas({
         : prev,
     );
 
+  const onDragStart = (event: DragStartEvent) => {
+    const id = String(event.active.id);
+    setDragging(
+      id.startsWith("sec-") ? { kind: "section", index: Number(id.slice(4)) } : { kind: "field", api: id },
+    );
+  };
+
   const onDragEnd = (event: DragEndEvent) => {
+    setDragging(null);
     const activeId = String(event.active.id);
     const overId = event.over ? String(event.over.id) : null;
     if (!overId || activeId === overId) return;
@@ -145,7 +163,13 @@ export function Canvas({
         </div>
       </div>
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={onDragStart}
+        onDragCancel={() => setDragging(null)}
+        onDragEnd={onDragEnd}
+      >
         <SortableContext
           items={config.recordCard.sections.map((_, i) => `sec-${i}`)}
           strategy={verticalListSortingStrategy}
@@ -201,7 +225,9 @@ export function Canvas({
                       key={field.api}
                       field={field}
                       label={labelOf(field.api)}
-                      crmReadOnly={describe.fields.find((f) => f.api === field.api)?.readOnly ?? false}
+                      describeField={describe.fields.find((f) => f.api === field.api)}
+                      object={config.object}
+                      crmLabel={crmLabel}
                       denied={config.permissions.fieldDenylist.includes(field.api)}
                       onToggleEditable={() =>
                         mutateSections((sections) => {
@@ -227,6 +253,26 @@ export function Canvas({
             </SectionCard>
           ))}
         </SortableContext>
+
+        {/* Ghost chip follows the pointer; the in-list slot renders as the
+            2px dashed accent drop indicator (design 2a). */}
+        <DragOverlay dropAnimation={null}>
+          {dragging?.kind === "field" && (
+            <div className="flex cursor-grabbing items-center gap-2 rounded-[8px] border border-line bg-surface px-2.5 py-1.5 text-[12px] shadow-lg">
+              <span className="text-ink-45">⠿</span>
+              <span>{labelOf(dragging.api)}</span>
+              <span className="st-chip-mono bg-paper text-ink-45">{dragging.api}</span>
+            </div>
+          )}
+          {dragging?.kind === "section" && (
+            <div className="st-card cursor-grabbing p-3 shadow-lg">
+              <span className="flex items-center gap-2 text-[12.5px] font-medium">
+                <span className="text-ink-45">⠿</span>
+                {config.recordCard.sections[dragging.index]?.label ?? "Section"}
+              </span>
+            </div>
+          )}
+        </DragOverlay>
       </DndContext>
 
       <button
@@ -248,6 +294,25 @@ export function Canvas({
       >
         + Add section
       </button>
+
+      {totalFields > 15 && !nudgeDismissed && (
+        <div className="mt-3 flex items-start justify-between gap-3 rounded-[10px] bg-draft p-3 text-[11.5px] text-draft-ink">
+          <span>
+            This card has {totalFields} fields — cards over ~15 work better split by audience.{" "}
+            <Link href={`/objects/${config.object}/assignment`} className="underline">
+              Assignment
+            </Link>
+          </span>
+          <button
+            type="button"
+            className="opacity-70 hover:opacity-100"
+            aria-label="Dismiss field-count nudge"
+            onClick={() => setNudgeDismissed(true)}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <div className="st-card mt-3 p-3">
         <div className="flex items-center justify-between">
@@ -545,10 +610,15 @@ function SectionCard({
     </span>
   );
   return (
+    // While dragging, the in-list slot becomes the drop indicator: a 2px
+    // dashed accent outline with invisible contents (the ghost is in the
+    // DragOverlay).
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`st-card mt-3 p-3 ${isDragging ? "opacity-60 shadow-md" : ""}`}
+      className={`st-card mt-3 p-3 ${
+        isDragging ? "!border-2 !border-dashed !border-accent bg-paper [&>*]:invisible" : ""
+      }`}
       id={`section-${sectionIdx}`}
     >
       {children(grip)}
@@ -559,14 +629,18 @@ function SectionCard({
 function FieldChip({
   field,
   label,
-  crmReadOnly,
+  describeField,
+  object,
+  crmLabel,
   denied,
   onToggleEditable,
   onRemove,
 }: {
   field: LayoutField;
   label: string;
-  crmReadOnly: boolean;
+  describeField: FieldDescribe | undefined;
+  object: string;
+  crmLabel: string;
   denied: boolean;
   onToggleEditable: () => void;
   onRemove: () => void;
@@ -574,21 +648,34 @@ function FieldChip({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: field.api,
   });
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const crmReadOnly = describeField?.readOnly ?? false;
+  // CRM-required (3d requirements pass-through): badge + can't leave the card.
+  const required = describeField?.required ?? false;
+  const requiredTitle = `Required in ${crmLabel} — records can't be saved without it, so it can't leave the card.`;
+
   return (
+    // While dragging, the in-list slot becomes the drop indicator: a 2px
+    // dashed accent outline with invisible contents (ghost is in the overlay).
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`flex items-center justify-between rounded-[8px] border border-line-soft bg-surface px-2.5 py-1.5 ${
-        isDragging ? "opacity-60 shadow-md" : ""
+      className={`relative flex items-center justify-between rounded-[8px] border border-line-soft bg-surface px-2.5 py-1.5 ${
+        isDragging ? "!border-2 !border-dashed !border-accent bg-paper [&>*]:invisible" : ""
       }`}
     >
       <span className="flex items-center gap-2 text-[12px]">
         <span {...attributes} {...listeners} className="cursor-grab text-ink-45" title="Drag to reorder">
           ⠿
         </span>
-        <span className="inline-block max-w-[180px] truncate" title={label}>
+        <button
+          type="button"
+          className="inline-block max-w-[180px] truncate text-left hover:underline"
+          title={label}
+          onClick={() => setPopoverOpen((o) => !o)}
+        >
           {label}
-        </span>
+        </button>
         {/* Real portals have very long internal names — truncate, full name on hover. */}
         <span
           className="st-chip-mono inline-block max-w-[140px] truncate bg-paper text-ink-45"
@@ -596,6 +683,11 @@ function FieldChip({
         >
           {field.api}
         </span>
+        {required && (
+          <span className="st-chip-mono bg-draft text-draft-ink" title={requiredTitle}>
+            Required · {crmLabel}
+          </span>
+        )}
         {denied && <span className="st-chip-mono bg-drift text-drift-ink">denylisted</span>}
       </span>
       <span className="flex items-center gap-2">
@@ -615,10 +707,67 @@ function FieldChip({
             {field.editable ? "Editable" : "Read-only"}
           </button>
         )}
-        <button type="button" onClick={onRemove} className="text-ink-45 hover:text-drift-ink" aria-label={`Remove ${label}`}>
+        <button
+          type="button"
+          onClick={required ? undefined : onRemove}
+          disabled={required}
+          className={required ? "cursor-not-allowed text-ink-45 opacity-40" : "text-ink-45 hover:text-drift-ink"}
+          aria-label={required ? `${label} is required and can't be removed` : `Remove ${label}`}
+          title={required ? requiredTitle : undefined}
+        >
           ×
         </button>
       </span>
+
+      {popoverOpen && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setPopoverOpen(false)} />
+          <div className="absolute left-6 top-full z-30 mt-1 w-[300px] rounded-[10px] border border-line bg-surface p-3 shadow-lg">
+            <div className="text-[12.5px] font-medium">{label}</div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <span className="st-chip-mono bg-paper text-ink-45">{field.api}</span>
+              <span className="st-chip-mono bg-paper text-ink-45">
+                {describeField?.type ?? "unknown"}
+              </span>
+              {required && (
+                <span className="st-chip-mono bg-draft text-draft-ink">Required · {crmLabel}</span>
+              )}
+            </div>
+            <p className="mt-2 text-[11.5px] leading-snug text-ink-55">
+              {describeField?.description ||
+                `No description in ${crmLabel} — the model, rep tooltips and coverage all read this metadata.`}
+            </p>
+            {required && (
+              <p className="mt-1.5 text-[11px] text-draft-ink">Can't be saved empty from chat.</p>
+            )}
+            {crmReadOnly ? (
+              <p className="mt-2 text-[11px] text-ink-45">Read-only · {crmLabel} field security.</p>
+            ) : (
+              <div className="mt-2.5 flex items-center justify-between">
+                <span className="text-[12px]">Reps can edit</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={field.editable}
+                  aria-label={`Reps can edit ${label}`}
+                  onClick={onToggleEditable}
+                  className={`h-5 w-9 rounded-full transition-colors ${field.editable ? "bg-accent" : "bg-line"}`}
+                >
+                  <span
+                    className={`block h-4 w-4 rounded-full bg-white transition-transform ${field.editable ? "translate-x-4" : "translate-x-0.5"}`}
+                  />
+                </button>
+              </div>
+            )}
+            <Link
+              href={`/objects/${object}/permissions`}
+              className="mt-2.5 block text-[11.5px] text-ink-55 underline underline-offset-2 hover:text-ink"
+            >
+              {denied ? "Denylisted — manage in Permissions" : "Denylist fields in Permissions"}
+            </Link>
+          </div>
+        </>
+      )}
     </div>
   );
 }

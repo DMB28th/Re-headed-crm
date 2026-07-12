@@ -2,7 +2,7 @@
  * The results-table component — shared by the MCP widget shell and Studio's
  * home-card drill-in preview (one render codepath, like the record card).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import type { CrmRecord, ResultsTablePayload } from "@cardstack/core";
 import { LayoutChip, MakerChip, MessageCard, NullValue, StagePill } from "../shared/components.tsx";
 import { formatValue, stageTone } from "../shared/format.ts";
@@ -64,12 +64,22 @@ export function ResultsTable({
       <MessageCard
         title={`No ${payload.object} match`}
         body="Try widening the ask — or check the saved views your admin exposed."
+        provenance={payload.provenance}
       />
     );
   }
 
+  // Track list follows the configured columns (design 1f): first column widest,
+  // the last track always reserved for the hover "Open card ↗" action cell.
+  // 2 cols → "2.2fr 1fr minmax(70px, 0.8fr)"; 7 cols → 2.2fr + 6×1fr + action.
+  const gridTracks = [
+    "2.2fr",
+    ...Array<string>(Math.max(columns.length - 1, 0)).fill("1fr"),
+    "minmax(70px, 0.8fr)",
+  ].join(" ");
+
   return (
-    <div className="cs-card">
+    <div className="cs-card" style={{ "--rt-cols": gridTracks } as CSSProperties}>
       <header className="rt-header">
         <div className="rt-title-group">
           <h1 className="rt-title">{payload.title}</h1>

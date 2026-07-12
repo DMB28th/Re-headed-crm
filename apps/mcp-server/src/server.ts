@@ -18,14 +18,21 @@ import {
   filterRecord,
   summarizeCustomFilters,
   type CrmFieldValue,
+  type ErrorPayload,
   type FieldFilter,
   type FieldWriteResult,
+  type HomeListTile,
   type LayoutConfig,
   type RecordPage,
   type SearchQuery,
   type WriteReceiptPayload,
 } from "@cardstack/core";
-import { CrmValidationError, type CrmAdapter } from "@cardstack/crm-adapters";
+import {
+  CrmAuthError,
+  CrmRecordNotFoundError,
+  CrmValidationError,
+  type CrmAdapter,
+} from "@cardstack/crm-adapters";
 import { getWidgetHtml, type WidgetName } from "@cardstack/widgets";
 import { DEMO_TENANT_ID, InMemoryConfigStore, type ConfigStore } from "./config/store.js";
 import type { PreferenceStore } from "./config/preferences.js";
@@ -139,10 +146,40 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     return config;
   };
 
-  const asToolError = (error: unknown): CallToolResult => ({
-    content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
-    isError: true,
-  });
+  /**
+   * Typed tool failure (design 1e): isError text for the model PLUS an
+   * ErrorPayload in structuredContent so the widget renders an actionable
+   * card — re-auth for "unauthorized", a Retry button (the embedded original
+   * call) for read-only tools.
+   */
+  const asToolError = async (
+    error: unknown,
+    call?: { tool: string; args?: Record<string, unknown>; readOnly?: boolean },
+  ): Promise<CallToolResult> => {
+    const message = error instanceof Error ? error.message : String(error);
+    const reason: ErrorPayload["reason"] =
+      error instanceof CrmAuthError
+        ? "unauthorized"
+        : error instanceof CrmRecordNotFoundError
+          ? "not-found"
+          : /missing a scope|rate limit/i.test(message)
+            ? "crm-unavailable"
+            : "unknown";
+    const connection = await configStore.getConnection(tenantId).catch(() => null);
+    const payload: ErrorPayload = {
+      kind: "error",
+      reason,
+      message,
+      crmLabel: connection?.crm === "salesforce" ? "Salesforce" : "HubSpot",
+      // Retry only re-invokes reads; failed writes go back through the diff.
+      ...(call?.readOnly ? { retry: { tool: call.tool, args: call.args ?? {} } } : {}),
+    };
+    return {
+      content: [{ type: "text", text: message }],
+      isError: true,
+      structuredContent: payload as unknown as Record<string, unknown>,
+    };
+  };
 
   // --- Widget resources (one self-contained HTML bundle each) ---
   for (const [uri, widget] of [
@@ -199,7 +236,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           structuredContent: { objects: summaries },
         };
       } catch (error) {
-        return asToolError(error);
+        return asToolError(error, { tool: "crm_list_objects", readOnly: true });
       }
     },
   );
@@ -273,7 +310,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           structuredContent: payload as unknown as Record<string, unknown>,
         };
       } catch (error) {
-        return asToolError(error);
+        return asToolError(error, { tool: "crm_search", args, readOnly: true });
       }
     },
   );
@@ -328,7 +365,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           structuredContent: payload as unknown as Record<string, unknown>,
         };
       } catch (error) {
-        return asToolError(error);
+        return asToolError(error, { tool: "crm_get_record", args, readOnly: true });
       }
     },
   );
@@ -384,7 +421,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           structuredContent: { page: filtered },
         };
       } catch (error) {
-        return asToolError(error);
+        return asToolError(error, { tool: "crm_get_related", args, readOnly: true });
       }
     },
   );
@@ -504,7 +541,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           structuredContent: payload as unknown as Record<string, unknown>,
         };
       } catch (error) {
-        return asToolError(error);
+        return asToolError(error, { tool: "crm_list_view", args, readOnly: true });
       }
     },
   );
@@ -530,21 +567,31 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         if (!homeCard) throw new Error("No home card is configured for this workspace.");
 
         const listsBlock = homeCard.blocks.find((b) => b.type === "lists");
-        const lists = [];
+        const lists: HomeListTile[] = [];
         if (listsBlock) {
           const wanted =
             listsBlock.source === "curated"
               ? allExposedViews.filter((e) => listsBlock.viewIds.includes(e.view.id))
               : allExposedViews;
-          for (const entry of wanted.slice(0, listsBlock.maxTiles)) {
-            // One broken view/list degrades its tile, not the whole card.
-            const page = await rowsForView(entry).catch(() => ({ rows: [], hasMore: false, total: 0 }));
-            lists.push({
+          const entries = wanted.slice(0, listsBlock.maxTiles);
+          const tileFor = async (entry: ExposedView): Promise<HomeListTile> => {
+            const base = {
               viewId: entry.view.id,
               name: entry.view.name,
               filterSummary: entry.view.filterSummary,
-              count: page.total ?? page.rows.length,
-            });
+            };
+            try {
+              const page = await rowsForView(entry);
+              return { ...base, count: page.total ?? page.rows.length };
+            } catch {
+              // One broken view/list degrades its tile, not the whole card —
+              // and it degrades to "—", never a fake 0.
+              return { ...base, count: null, error: true };
+            }
+          };
+          // Concurrency 3: parallel enough to be fast, gentle on CRM rate limits.
+          for (let i = 0; i < entries.length; i += 3) {
+            lists.push(...(await Promise.all(entries.slice(i, i + 3).map(tileFor))));
           }
         }
 
@@ -584,7 +631,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
               type: "text",
               text:
                 `Rendered the CRM home card: ${lists.length} list tiles (${lists
-                  .map((l) => `${l.name}: ${l.count}`)
+                  .map((l) => `${l.name}: ${l.count ?? "unavailable"}`)
                   .join(", ")}), ${recent.length} recent records, ${tasks.length} open follow-ups` +
                 (overdue > 0 ? ` (${overdue} overdue)` : "") +
                 ".",
@@ -593,7 +640,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           structuredContent: payload as unknown as Record<string, unknown>,
         };
       } catch (error) {
-        return asToolError(error);
+        return asToolError(error, { tool: "crm_home", readOnly: true });
       }
     },
   );
@@ -630,7 +677,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           structuredContent: { task } as unknown as Record<string, unknown>,
         };
       } catch (error) {
-        return asToolError(error);
+        return asToolError(error, { tool: "crm_complete_task" });
       }
     },
   );
@@ -742,7 +789,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           isError: false,
         };
       } catch (error) {
-        return asToolError(error);
+        return asToolError(error, { tool: "crm_update_record" });
       }
     },
   );
@@ -808,7 +855,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           structuredContent: { record: fresh },
         };
       } catch (error) {
-        return asToolError(error);
+        return asToolError(error, { tool: "crm_create_record" });
       }
     },
   );

@@ -8,7 +8,7 @@ import { createRoot } from "react-dom/client";
 import type { ResultsTablePayload, ViewPickerPayload } from "@cardstack/core";
 import type { App } from "@modelcontextprotocol/ext-apps";
 import { useWidget } from "../shared/use-widget.js";
-import { LoadingCard, MakerChip, MessageCard } from "../shared/components.tsx";
+import { ErrorCard, LoadingCard, MakerChip, MessageCard } from "../shared/components.tsx";
 import type { WidgetHost } from "../record-card/card.tsx";
 import { ResultsTable } from "./table.tsx";
 import "../shared/theme.css";
@@ -37,10 +37,14 @@ function ResultsTableApp() {
     return <MessageCard title="Couldn't connect to the chat host" body={connectionError.message} />;
   }
   if (toolError) {
-    return <MessageCard title={toolError} body="Nothing was written." />;
+    // Failed READ — "Nothing was written." is reserved for write failures.
+    return <MessageCard title={toolError} body="Nothing was loaded — try asking again." />;
   }
   if (!payload) {
-    return <LoadingCard label="Loading results…" />;
+    return <LoadingCard label="Loading results from your CRM…" />;
+  }
+  if (payload.kind === "error") {
+    return <ErrorCard payload={payload} host={hostFromApp(app)} onPayload={setPayload} />;
   }
   if (payload.kind === "view-picker") {
     return <ViewPicker payload={payload} app={app} onResolved={setPayload} />;
