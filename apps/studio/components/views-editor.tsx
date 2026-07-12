@@ -217,8 +217,11 @@ export function ViewsEditor({ object }: { object: string }) {
         </div>
         {savedViews.length === 0 && (
           <div className="px-4 py-3 text-[12.5px] text-ink-45">
-            No saved views synced. HubSpot doesn't expose saved views through its public API —
-            define Cardstack lists below instead; they work the same way in chat.
+            No CRM lists for this object. HubSpot <strong>Lists</strong> (Contacts ▸ Lists, plus
+            company/deal lists) import here automatically when the token has the{" "}
+            <code className="st-chip-mono bg-paper">crm.lists.read</code> scope — Connections shows a
+            note if it's missing. The object-table “saved views” aren't in HubSpot's public API;
+            recreate those as Cardstack lists below.
           </div>
         )}
         {savedViews.map((view) => {

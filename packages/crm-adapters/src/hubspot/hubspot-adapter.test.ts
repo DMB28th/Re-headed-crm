@@ -588,3 +588,87 @@ describe("HubSpotAdapter pipeline-stage fallback", () => {
     expect(byApi.pipeline!.valueLabels).toEqual({ default: "Sales pipeline" });
   });
 });
+
+describe("HubSpotAdapter Lists import", () => {
+  it("maps /crm/v3/lists to SavedViews scoped by object and reads memberships", async () => {
+    const { impl } = fetchStub([
+      (url, init) =>
+        url.endsWith("/crm/v3/lists/search") && init?.method === "POST"
+          ? {
+              status: 200,
+              json: {
+                total: 2,
+                hasMore: false,
+                lists: [
+                  {
+                    listId: 101,
+                    name: "Hot deals",
+                    objectTypeId: "0-3",
+                    processingType: "DYNAMIC",
+                    additionalProperties: { hs_list_size: "12" },
+                  },
+                  {
+                    listId: 202,
+                    name: "Newsletter contacts",
+                    objectTypeId: "0-1",
+                    processingType: "MANUAL",
+                    additionalProperties: { hs_list_size: "500" },
+                  },
+                ],
+              },
+            }
+          : url.includes("/crm/v3/lists/101/memberships")
+            ? { status: 200, json: { results: [{ recordId: "5001" }, { recordId: "5002" }], total: 12 } }
+            : url.endsWith("/crm/v3/objects/deals/batch/read") && init?.method === "POST"
+              ? {
+                  status: 200,
+                  json: {
+                    results: [
+                      { id: "5001", properties: { dealname: "Acme", amount: "1000" } },
+                      { id: "5002", properties: { dealname: "Globex", amount: "2000" } },
+                    ],
+                  },
+                }
+              : url.includes("/crm/v3/properties/deals")
+                ? { status: 200, json: DEAL_PROPERTIES }
+                : url.includes("/crm/v3/pipelines/") ||
+                    url.includes("/crm/v3/owners") ||
+                    url.includes("/account-info") ||
+                    url.includes("/crm/v3/schemas")
+                  ? { status: 200, json: { results: [] } }
+                  : undefined,
+    ]);
+    const adapter = new HubSpotAdapter({ accessToken: "pat-test" }, impl);
+
+    const dealViews = await adapter.listSavedViews("deals");
+    expect(dealViews).toHaveLength(1);
+    expect(dealViews[0]).toMatchObject({ id: "101", object: "deals", name: "Hot deals" });
+    expect(dealViews[0]!.filterSummary).toContain("12 records");
+    // Contact list is filtered out of the deals view.
+    expect(await adapter.listSavedViews("contacts")).toHaveLength(1);
+
+    const rows = await adapter.getViewRows("101");
+    expect(rows.total).toBe(12);
+    expect(rows.rows.map((r) => r.fields.dealname)).toEqual(["Acme", "Globex"]);
+  });
+
+  it("surfaces a scope gap (not a crash) when Lists read is 403", async () => {
+    const { impl } = fetchStub([
+      (url) =>
+        url.endsWith("/crm/v3/lists/search")
+          ? {
+              status: 403,
+              json: { message: "missing a scope", category: "MISSING_SCOPES" },
+            }
+          : url.includes("/crm/v3/owners") ||
+              url.includes("/account-info") ||
+              url.includes("/crm/v3/schemas")
+            ? { status: 200, json: { results: [] } }
+            : undefined,
+    ]);
+    const adapter = new HubSpotAdapter({ accessToken: "pat-test" }, impl);
+    expect(await adapter.listSavedViews("deals")).toEqual([]);
+    const info = await adapter.getPortalInfo();
+    expect(info.scopeGaps.some((g) => g.includes("crm.lists.read"))).toBe(true);
+  });
+});

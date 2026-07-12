@@ -108,6 +108,14 @@ const REL_TARGET: Record<string, { from: string; to: string }> = {
   company_contacts: { from: "companies", to: "contacts" },
 };
 
+/** HubSpot object type ids → our object api names (for Lists import). */
+const LIST_OBJECT_TYPE: Record<string, string> = {
+  "0-1": "contacts",
+  "0-2": "companies",
+  "0-3": "deals",
+  "0-5": "tickets",
+};
+
 const SEARCH_OPS: Record<string, string> = {
   eq: "EQ",
   neq: "NEQ",
@@ -174,6 +182,10 @@ export class HubSpotAdapter implements CrmAdapter {
   private relTargets = new Map<string, { from: string; to: string }>(Object.entries(REL_TARGET));
   /** Custom-object related lists per core object (instance state, not module state). */
   private customRelationships = new Map<string, { api: string; label: string; relatedObject: string }[]>();
+  /** HubSpot Lists (Contacts ▸ Lists, deal/company lists) as importable views. */
+  private listsCache: { views: SavedView[]; objectByList: Map<string, string> } | null = null;
+  /** Set when the Lists read hit a scope 403 — surfaced via getPortalInfo(). */
+  private listsBlocked: string | null = null;
 
   constructor(
     private readonly credentials: HubSpotCredentials,
@@ -661,12 +673,99 @@ export class HubSpotAdapter implements CrmAdapter {
     return this.getRecord(objectApi, created.id, []);
   }
 
-  async listSavedViews(): Promise<SavedView[]> {
-    return []; // no public saved-views API — Cardstack lists fill this (5a note)
+  /**
+   * HubSpot Lists (Contacts ▸ Lists, plus company/deal lists) via /crm/v3/lists.
+   * These are the CRM's own segmentation lists — importable as read-only views.
+   * (Object-table "saved views" remain absent from HubSpot's public API; those
+   * are recreated as Cardstack lists.)
+   */
+  private async ensureLists(): Promise<{ views: SavedView[]; objectByList: Map<string, string> }> {
+    if (this.listsCache) return this.listsCache;
+    const objectByList = new Map<string, string>();
+    const views: SavedView[] = [];
+    try {
+      let offset = 0;
+      for (let page = 0; page < 10; page++) {
+        const data = await this.request<{
+          total?: number;
+          offset?: number;
+          hasMore?: boolean;
+          lists?: {
+            listId: string | number;
+            name: string;
+            objectTypeId: string;
+            processingType?: string;
+            additionalProperties?: { hs_list_size?: string };
+          }[];
+        }>("POST", "/crm/v3/lists/search", {
+          count: 100,
+          offset,
+          additionalProperties: ["hs_list_size"],
+        });
+        const lists = data.lists ?? [];
+        for (const l of lists) {
+          const object = LIST_OBJECT_TYPE[l.objectTypeId];
+          if (!object) continue; // list of an object we don't surface
+          const id = String(l.listId);
+          objectByList.set(id, object);
+          const size = Number(l.additionalProperties?.hs_list_size);
+          const kind = (l.processingType ?? "").toLowerCase();
+          views.push({
+            id,
+            object,
+            name: l.name,
+            filterSummary: `HubSpot ${kind ? `${kind} ` : ""}list${Number.isFinite(size) ? ` · ${size} records` : ""}`,
+            visibility: "shared",
+          });
+        }
+        if (!data.hasMore || lists.length === 0) break;
+        offset = data.offset != null ? data.offset + lists.length : offset + lists.length;
+      }
+    } catch (error) {
+      if (isScope403(error)) {
+        this.listsBlocked =
+          "HubSpot Lists aren't importable — the private app is missing the crm.lists.read scope. Add it in HubSpot and reconnect.";
+        this.listsCache = { views: [], objectByList };
+        return this.listsCache;
+      }
+      return { views, objectByList }; // transient — don't cache emptiness
+    }
+    this.listsCache = { views, objectByList };
+    return this.listsCache;
   }
 
-  async getViewRows(viewId: string): Promise<RecordPage> {
-    throw new CrmRecordNotFoundError("saved view", viewId);
+  async listSavedViews(objectApi: string): Promise<SavedView[]> {
+    const { views } = await this.ensureLists();
+    return views.filter((v) => v.object === objectApi);
+  }
+
+  async getViewRows(viewId: string, cursor?: string): Promise<RecordPage> {
+    const { objectByList } = await this.ensureLists();
+    const object = objectByList.get(viewId);
+    if (!object) throw new CrmRecordNotFoundError("hubspot list", viewId);
+    const memberships = await this.request<{
+      results: { recordId: string | number }[];
+      paging?: { next?: { after?: string } };
+      total?: number;
+    }>("GET", `/crm/v3/lists/${viewId}/memberships?limit=100${cursor ? `&after=${cursor}` : ""}`);
+    const ids = memberships.results.map((r) => String(r.recordId));
+    if (ids.length === 0) {
+      return { rows: [], hasMore: false, total: memberships.total ?? 0 };
+    }
+    await this.describeObject(object); // warm the type cache for value coercion
+    const batch = await this.request<{
+      results: { id: string; properties: Record<string, string | null> }[];
+    }>("POST", `/crm/v3/objects/${object}/batch/read`, {
+      properties: await this.propertyNames(object),
+      inputs: ids.map((id) => ({ id })),
+    });
+    const after = memberships.paging?.next?.after;
+    return {
+      rows: batch.results.map((r) => this.toRecord(object, r)),
+      hasMore: !!after,
+      ...(after ? { cursor: after } : {}),
+      ...(memberships.total != null ? { total: memberships.total } : {}),
+    };
   }
 
   async listTasks(): Promise<TaskPage> {
@@ -805,9 +904,11 @@ export class HubSpotAdapter implements CrmAdapter {
       this.ensureAccountInfo(),
     ]);
     await this.ensureCustomObjects();
+    await this.ensureLists();
     const scopeGaps: string[] = [];
     if (this.customObjectsBlocked) scopeGaps.push(this.customObjectsBlocked);
     if (this.ownersBlocked) scopeGaps.push(this.ownersBlocked);
+    if (this.listsBlocked) scopeGaps.push(this.listsBlocked);
     const ownerCount = this.ownerCount ?? Object.keys(owners).length;
     return {
       userCount: ownerCount > 0 ? ownerCount : null,

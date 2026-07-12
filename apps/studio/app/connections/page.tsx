@@ -265,7 +265,8 @@ export default function ConnectionsPage() {
                           </li>
                           <li>
                             optional: <code className="st-chip-mono">crm.objects.owners.read</code>{" "}
-                            (owner names), <code className="st-chip-mono">crm.schemas.custom.read</code>{" "}
+                            (owner names), <code className="st-chip-mono">crm.lists.read</code>{" "}
+                            (import your HubSpot Lists), <code className="st-chip-mono">crm.schemas.custom.read</code>{" "}
                             (custom objects), tickets / e-commerce for those objects
                           </li>
                         </ul>
