@@ -367,7 +367,7 @@ function FilterEditor({
     if (meta?.values) {
       return (
         <select
-          className="st-input py-1 text-[11.5px]"
+          className="st-input w-[180px] shrink-0 py-1 text-[11.5px]"
           value={String(filter.value ?? "")}
           onChange={(e) => update(i, { value: e.target.value })}
         >
@@ -383,7 +383,7 @@ function FilterEditor({
     const numeric = meta?.type === "number" || meta?.type === "currency";
     return (
       <input
-        className="st-input w-[140px] py-1 text-[11.5px]"
+        className="st-input w-[140px] shrink-0 py-1 text-[11.5px]"
         type={numeric ? "number" : "text"}
         placeholder={meta?.type === "date" ? "YYYY-MM-DD" : "value"}
         defaultValue={filter.value === null ? "" : String(filter.value)}
@@ -397,9 +397,9 @@ function FilterEditor({
   return (
     <div className="space-y-2 border-t border-line-soft bg-paper px-4 py-3">
       {filters.map((filter, i) => (
-        <div key={i} className="flex items-center gap-2">
+        <div key={i} className="flex flex-wrap items-center gap-2">
           <select
-            className="st-input py-1 text-[11.5px]"
+            className="st-input min-w-0 max-w-[220px] flex-1 py-1 text-[11.5px]"
             value={filter.field}
             onChange={(e) => update(i, { field: e.target.value, value: "" })}
           >
@@ -410,7 +410,7 @@ function FilterEditor({
             ))}
           </select>
           <select
-            className="st-input py-1 text-[11.5px]"
+            className="st-input w-[130px] shrink-0 py-1 text-[11.5px]"
             value={filter.op}
             onChange={(e) => {
               const op = e.target.value as CustomListFilter["op"];
