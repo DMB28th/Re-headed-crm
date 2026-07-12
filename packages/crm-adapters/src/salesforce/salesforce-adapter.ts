@@ -119,7 +119,7 @@ interface SfDescribeField {
   updateable: boolean;
   defaultedOnCreate: boolean;
   inlineHelpText?: string | null;
-  picklistValues?: { value: string; active: boolean }[];
+  picklistValues?: { value: string; label?: string; active: boolean }[];
 }
 
 export class SalesforceAdapter implements CrmAdapter {
@@ -203,18 +203,25 @@ export class SalesforceAdapter implements CrmAdapter {
     );
     const fields: FieldDescribe[] = data.fields
       .filter((f) => f.type !== "address" && f.type !== "location")
-      .map((f) => ({
-        api: f.name,
-        label: f.label,
-        type: mapType(f),
-        required: !f.nillable && f.createable && !f.defaultedOnCreate,
-        readOnly: !f.updateable,
-        ...(f.inlineHelpText ? { description: f.inlineHelpText } : {}),
-        ...(f.picklistValues && f.picklistValues.length > 0
-          ? { values: f.picklistValues.filter((v) => v.active).map((v) => v.value) }
-          : {}),
-        ...(f.type === "currency" ? { currencyCode: "USD" } : {}),
-      }));
+      .map((f) => {
+        const active = (f.picklistValues ?? []).filter((v) => v.active);
+        const valueLabels = Object.fromEntries(
+          active
+            .filter((v) => v.label && v.label !== v.value)
+            .map((v): [string, string] => [v.value, v.label!]),
+        );
+        return {
+          api: f.name,
+          label: f.label,
+          type: mapType(f),
+          required: !f.nillable && f.createable && !f.defaultedOnCreate,
+          readOnly: !f.updateable,
+          ...(f.inlineHelpText ? { description: f.inlineHelpText } : {}),
+          ...(active.length > 0 ? { values: active.map((v) => v.value) } : {}),
+          ...(Object.keys(valueLabels).length > 0 ? { valueLabels } : {}),
+          ...(f.type === "currency" ? { currencyCode: "USD" } : {}),
+        };
+      });
     const describe: ObjectDescribe = {
       ...summary,
       fields,

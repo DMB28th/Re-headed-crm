@@ -56,7 +56,14 @@ export async function GET() {
       }
     }
   }
-  return NextResponse.json({ homeCard, exposedViews, connection, connectedUser });
+  // Redact: credentials never leave the server (hard rule 3).
+  const { credentials, ...connectionSafe } = connection;
+  return NextResponse.json({
+    homeCard,
+    exposedViews,
+    connection: { ...connectionSafe, live: !!credentials && Object.keys(credentials).length > 0 },
+    connectedUser,
+  });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 502 });
   }

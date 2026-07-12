@@ -7,8 +7,11 @@ export async function GET() {
   const store = await getStore();
   const adapter = await getAdapter();
   const connection = await store.getConnection(TENANT_ID);
+  // Redact: credentials never leave the server (hard rule 3).
+  const { credentials, ...connectionSafe } = connection;
+  const redacted = { ...connectionSafe, live: !!credentials && Object.keys(credentials).length > 0 };
   if (connection.status !== "connected") {
-    return NextResponse.json({ connection, objects: [], available: [] });
+    return NextResponse.json({ connection: redacted, objects: [], available: [] });
   }
   const crmObjects = await adapter.listObjects();
   const objects: { api: string; labelPlural: string; draft: boolean; publishedRevision: number | null }[] = [];
@@ -26,7 +29,7 @@ export async function GET() {
       available.push({ api: summary.api, labelPlural: summary.labelPlural });
     }
   }
-  return NextResponse.json({ connection, objects, available });
+  return NextResponse.json({ connection: redacted, objects, available });
 }
 
 /** Add an object: generate a starter DRAFT layout from describe (3c). */

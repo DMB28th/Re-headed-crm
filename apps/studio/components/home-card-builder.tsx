@@ -85,6 +85,7 @@ export function HomeCardBuilder() {
   const [config, setConfig] = useState<HomeCardConfig | null>(null);
   const [exposedViews, setExposedViews] = useState<ExposedViewInfo[]>([]);
   const [connectedUser, setConnectedUser] = useState<string>("the rep");
+  const [liveHubspot, setLiveHubspot] = useState(false);
   const [publishedRevision, setPublishedRevision] = useState<number>(1);
   const [publishing, setPublishing] = useState(false);
   const [publishedNote, setPublishedNote] = useState(false);
@@ -101,6 +102,7 @@ export function HomeCardBuilder() {
           homeCard: HomeCardConfig | null;
           exposedViews: ExposedViewInfo[];
           connectedUser: string | null;
+          connection?: { crm: string; live?: boolean };
           error?: string;
         };
         if (!res.ok || data.error) {
@@ -113,6 +115,7 @@ export function HomeCardBuilder() {
         }
         setExposedViews(data.exposedViews);
         if (data.connectedUser) setConnectedUser(data.connectedUser);
+        setLiveHubspot(data.connection?.crm === "hubspot" && !!data.connection?.live);
       } catch (error) {
         setLoadError(String(error));
       }
@@ -302,6 +305,13 @@ export function HomeCardBuilder() {
                         <p className="mt-1 text-[11.5px] text-ink-55">
                           {BLOCK_META[block.type].explainer}
                         </p>
+                        {block.type === "recent" && liveHubspot && (
+                          <p className="mt-2 rounded-[8px] bg-draft px-2.5 py-1.5 text-[11.5px] text-draft-ink">
+                            HubSpot doesn&apos;t expose &ldquo;recently viewed&rdquo; through its
+                            public API — this block fills on Salesforce and the mock portal, and
+                            renders empty for reps on HubSpot. Consider toggling it off.
+                          </p>
+                        )}
                         {block.type === "lists" && exposedViews.length === 0 && (
                           <p className="mt-2 rounded-[8px] bg-draft px-2.5 py-1.5 text-[11.5px] text-draft-ink">
                             Nothing is exposed yet, so this block renders empty for reps —

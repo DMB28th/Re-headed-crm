@@ -32,8 +32,14 @@ export interface FieldDescribe {
    * Empty string / undefined = metadata gap.
    */
   description?: string;
-  /** Picklist values, when type === "picklist". */
+  /** Picklist values (INTERNAL values — what the CRM stores), when type === "picklist". */
   values?: string[];
+  /**
+   * Internal value → human label, when they differ (HubSpot pipeline-stage ids,
+   * owner ids, Salesforce picklist labels). Display surfaces render the label;
+   * writes always send the internal value.
+   */
+  valueLabels?: Record<string, string>;
   currencyCode?: string;
 }
 

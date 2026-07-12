@@ -239,3 +239,52 @@ describe("HubSpotAdapter custom objects", () => {
     expect(describe.relationships.some((r) => r.api.startsWith("deal_2-"))).toBe(false);
   });
 });
+
+describe("HubSpotAdapter value labels", () => {
+  it("maps picklist option labels and owner ids to names", async () => {
+    const { impl } = fetchStub([
+      (url) =>
+        url.includes("/crm/v3/owners")
+          ? {
+              status: 200,
+              json: { results: [{ id: "1519", firstName: "Daniel", lastName: "Ben-Atar" }] },
+            }
+          : undefined,
+      (url) =>
+        url.includes("/crm/v3/properties/deals")
+          ? {
+              status: 200,
+              json: {
+                results: [
+                  { name: "dealname", label: "Deal Name", type: "string", fieldType: "text" },
+                  {
+                    name: "dealstage",
+                    label: "Deal Stage",
+                    type: "enumeration",
+                    fieldType: "select",
+                    options: [
+                      { label: "Contract sent", value: "49614379" },
+                      { label: "Closed lost", value: "closedlost" },
+                    ],
+                  },
+                  {
+                    name: "hubspot_owner_id",
+                    label: "Deal owner",
+                    type: "enumeration",
+                    fieldType: "select",
+                    referencedObjectType: "OWNER",
+                  },
+                ],
+              },
+            }
+          : undefined,
+    ]);
+    const adapter = new HubSpotAdapter({ accessToken: "pat-test" }, impl);
+    const describe = await adapter.describeObject("deals");
+    const byApi = Object.fromEntries(describe.fields.map((f) => [f.api, f]));
+    // Raw pipeline-stage ids resolve to labels; writes still use internal values.
+    expect(byApi.dealstage!.valueLabels).toEqual({ "49614379": "Contract sent", closedlost: "Closed lost" });
+    expect(byApi.dealstage!.values).toEqual(["49614379", "closedlost"]);
+    expect(byApi.hubspot_owner_id!.valueLabels).toEqual({ "1519": "Daniel Ben-Atar" });
+  });
+});

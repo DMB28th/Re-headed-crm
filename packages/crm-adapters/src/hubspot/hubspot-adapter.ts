@@ -116,6 +116,7 @@ interface HsProperty {
   options?: { label: string; value: string; hidden?: boolean }[];
   modificationMetadata?: { readOnlyValue?: boolean };
   showCurrencySymbol?: boolean;
+  referencedObjectType?: string;
 }
 
 function mapType(p: HsProperty): FieldType {
@@ -147,6 +148,7 @@ function mapType(p: HsProperty): FieldType {
 export class HubSpotAdapter implements CrmAdapter {
   private describeCache = new Map<string, ObjectDescribe>();
   private customObjects: ObjectSummary[] | null = null;
+  private ownerLabels: Record<string, string> | null = null;
   /** relationship api → association endpoints, incl. dynamic custom-object rels. */
   private relTargets = new Map<string, { from: string; to: string }>(Object.entries(REL_TARGET));
   /** Custom-object related lists per core object (instance state, not module state). */
@@ -156,6 +158,25 @@ export class HubSpotAdapter implements CrmAdapter {
     private readonly credentials: HubSpotCredentials,
     private readonly fetchImpl: FetchLike = fetch,
   ) {}
+
+  /** Owner id → display name (raw ids on cards are the #1 "feels broken"). */
+  private async ensureOwnerLabels(): Promise<Record<string, string>> {
+    if (this.ownerLabels) return this.ownerLabels;
+    try {
+      const { results } = await this.request<{
+        results: { id: string; firstName?: string; lastName?: string; email?: string }[];
+      }>("GET", "/crm/v3/owners?limit=100");
+      this.ownerLabels = Object.fromEntries(
+        results.map((o) => [
+          o.id,
+          [o.firstName, o.lastName].filter(Boolean).join(" ") || o.email || o.id,
+        ]),
+      );
+    } catch {
+      this.ownerLabels = {}; // missing owners scope → ids stay visible, nothing breaks
+    }
+    return this.ownerLabels;
+  }
 
   /** Custom-object schemas, discovered once (portals without any → []). */
   private async ensureCustomObjects(): Promise<ObjectSummary[]> {
@@ -247,20 +268,30 @@ export class HubSpotAdapter implements CrmAdapter {
       "GET",
       `/crm/v3/properties/${objectApi}`,
     );
+    const owners = await this.ensureOwnerLabels();
     const fields: FieldDescribe[] = results
       .filter((p) => !p.hidden)
-      .map((p) => ({
-        api: p.name,
-        label: p.label || p.name,
-        type: mapType(p),
-        required: false, // HubSpot requiredness is form-level; writes surface it
-        readOnly: p.calculated === true || p.modificationMetadata?.readOnlyValue === true,
-        ...(p.description ? { description: p.description } : {}),
-        ...(p.options && p.options.length > 0
-          ? { values: p.options.filter((o) => !o.hidden).map((o) => o.value) }
-          : {}),
-        ...(mapType(p) === "currency" ? { currencyCode: "USD" } : {}),
-      }));
+      .map((p) => {
+        const options = (p.options ?? []).filter((o) => !o.hidden);
+        // Internal value → label whenever they differ (pipeline stage ids etc.),
+        // plus owner-reference fields resolve to owner names.
+        const optionLabels = Object.fromEntries(
+          options.filter((o) => o.label && o.label !== o.value).map((o) => [o.value, o.label]),
+        );
+        const valueLabels =
+          p.referencedObjectType === "OWNER" ? owners : optionLabels;
+        return {
+          api: p.name,
+          label: p.label || p.name,
+          type: mapType(p),
+          required: false, // HubSpot requiredness is form-level; writes surface it
+          readOnly: p.calculated === true || p.modificationMetadata?.readOnlyValue === true,
+          ...(p.description ? { description: p.description } : {}),
+          ...(options.length > 0 ? { values: options.map((o) => o.value) } : {}),
+          ...(Object.keys(valueLabels).length > 0 ? { valueLabels } : {}),
+          ...(mapType(p) === "currency" ? { currencyCode: "USD" } : {}),
+        };
+      });
     await this.ensureCustomObjects(); // custom-object related lists join here
     const describe: ObjectDescribe = {
       ...summary,

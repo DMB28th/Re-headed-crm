@@ -33,7 +33,7 @@ export function FieldInput({
           <option value="">—</option>
           {(meta?.values ?? []).map((v) => (
             <option key={v} value={v}>
-              {v}
+              {meta?.valueLabels?.[v] ?? v}
             </option>
           ))}
         </select>

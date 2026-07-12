@@ -70,6 +70,19 @@ export function Builder({ object }: { object: string }) {
     }
   };
 
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenConfirm, setRegenConfirm] = useState(false);
+  const regenerate = async () => {
+    setRegenerating(true);
+    try {
+      const res = await fetch(`/api/layout/${object}/regenerate`, { method: "POST" });
+      if (res.ok) await load();
+      setRegenConfirm(false);
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
   useEffect(() => {
     void load();
   }, [load]);
@@ -151,6 +164,27 @@ export function Builder({ object }: { object: string }) {
               </div>
             </details>
           )}
+          {regenConfirm ? (
+            <span className="flex items-center gap-2 text-[11.5px] text-ink-55">
+              Replaces this draft with a fresh high-signal layout from the CRM's fields
+              (published version untouched).
+              <button type="button" className="st-btn" onClick={() => setRegenConfirm(false)}>
+                Cancel
+              </button>
+              <button type="button" className="st-btn st-btn--primary" disabled={regenerating} onClick={regenerate}>
+                {regenerating ? "Regenerating…" : "Regenerate"}
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="st-btn whitespace-nowrap"
+              title="Rebuild this draft from the connected portal's fields (published version untouched)"
+              onClick={() => setRegenConfirm(true)}
+            >
+              ↻ Regenerate
+            </button>
+          )}
           <details className="relative">
             <summary className="st-btn cursor-pointer list-none font-mono text-[11px]">{"{ }"}</summary>
             <pre className="absolute right-0 z-20 mt-2 max-h-[420px] w-[440px] overflow-auto rounded-[10px] border border-line bg-surface p-3 text-[10.5px] leading-relaxed shadow-lg">
@@ -163,7 +197,7 @@ export function Builder({ object }: { object: string }) {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 gap-4">
+      <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto">
         <Palette
           describe={describe}
           usedFields={usedFields}

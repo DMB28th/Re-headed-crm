@@ -496,8 +496,8 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
             {
               type: "text",
               text:
-                `Rendered saved view "${match.view.name}" (${page.total ?? page.rows.length} ${config.object}; ` +
-                `filters from ${payload.provenance.crmLabel}: ${match.view.filterSummary}).` +
+                `Rendered ${match.custom ? "Cardstack list" : "saved view"} "${match.view.name}" (${page.total ?? page.rows.length} ${config.object}; ` +
+                `filters ${match.custom ? "defined in Cardstack" : `from ${payload.provenance.crmLabel}`}: ${match.view.filterSummary}).` +
                 (top ? ` First: ${describeRow(top.fields)}.` : ""),
             },
           ],

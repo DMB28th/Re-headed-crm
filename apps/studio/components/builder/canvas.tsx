@@ -133,7 +133,7 @@ export function Canvas({
   );
 
   return (
-    <section className="min-w-0 flex-1 overflow-y-auto">
+    <section className="min-w-[340px] flex-1 overflow-y-auto">
       <div className="st-card p-3">
         <div className="flex items-center justify-between">
           <span className="st-section-label">Header · always first</span>

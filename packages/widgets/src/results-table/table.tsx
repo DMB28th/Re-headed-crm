@@ -75,7 +75,10 @@ export function ResultsTable({
           <h1 className="rt-title">{payload.title}</h1>
           {payload.savedViewName && (
             <span className="cs-muted rt-view-note">
-              {payload.savedViewName} · Your saved {payload.provenance.crmLabel} view
+              {payload.savedViewName} ·{" "}
+              {payload.savedViewId?.startsWith("cl-")
+                ? "Your Cardstack list"
+                : `Your saved ${payload.provenance.crmLabel} view`}
             </span>
           )}
         </div>
@@ -132,7 +135,11 @@ export function ResultsTable({
               <>
                 {" "}
                 · filters: {payload.savedViewFilterSummary}{" "}
-                <span className="rt-crm-managed">(managed in {payload.provenance.crmLabel})</span>
+                <span className="rt-crm-managed">
+                  {payload.savedViewId?.startsWith("cl-")
+                    ? "(defined in Cardstack)"
+                    : `(managed in ${payload.provenance.crmLabel})`}
+                </span>
               </>
             )}
           </span>

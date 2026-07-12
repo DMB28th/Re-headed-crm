@@ -7,6 +7,9 @@ export function formatValue(
   locale: string,
 ): string | null {
   if (value === null || value === undefined || value === "") return null;
+  // Internal id → human label (pipeline stages, owners) before any formatting.
+  const label = meta?.valueLabels?.[String(value)];
+  if (label) return label;
   switch (meta?.type) {
     case "currency": {
       const num = Number(value);
