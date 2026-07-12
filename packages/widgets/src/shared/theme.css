@@ -289,3 +289,9 @@ body {
     min-height: 44px;
   }
 }
+
+/* Footer trust line ("Writes require confirmation") — shared by record-card and
+   home-card, so it lives in the shared bundle both import. */
+.rc-trust {
+  font-size: 11px;
+}

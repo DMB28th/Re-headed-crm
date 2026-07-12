@@ -9,10 +9,16 @@ standard (SEP-1865).
 - **design/** — high-fidelity design reference (open `design/Cardstack Designs.dc.html` in a browser; ids `1a`–`12b` map to `design/README.md`)
 - **CLAUDE.md** — working rules + current milestone
 
-## Status: M3 (Studio core)
+## Status: M4 (home card) complete
 
-Record card + results table with the full write path, saved-view resolution,
-and the Studio admin app — all against the mock adapter:
+Record card, results table, and home card with the full write path, saved-view
+resolution, and the Studio admin app — running against the **mock adapter for
+demos and live HubSpot / Salesforce** in production. HubSpot connects with a
+private-app token, Salesforce with the OAuth client-credentials flow; the
+Studio Connections page validates the token, reports scope gaps, and generates
+a starter layout. Every confirmed chat write lands in a durable audit log
+(Postgres/file), and the MCP endpoint takes an optional shared-secret + rate
+limit.
 
 ```bash
 pnpm install
@@ -51,10 +57,11 @@ Ask: *"pull up our open deals over $50k"* → results table widget → click a r
 
 | Path | What |
 |---|---|
-| `apps/mcp-server` | MCP server — streamable HTTP, stateless, per-request tenant→config→adapter resolution |
-| `apps/studio` | Admin Studio (Next.js) — M3, not started |
+| `apps/mcp-server` | MCP server — streamable HTTP, stateless, per-request tenant→config→adapter resolution; optional shared-secret + rate limit |
+| `apps/studio` | Admin Studio (Next.js) — layout builder, home-card builder, lists, connections, publish/rollback, audit log |
 | `packages/core` | Layout config schema (zod), payload contracts, server-side denylist filtering |
-| `packages/crm-adapters` | `CrmAdapter` interface + `MockCrmAdapter` (fixtures); `hubspot/`, `salesforce/` next |
+| `packages/config-store` | draft/publish/rollback config + durable audit log (Postgres via `DATABASE_URL`, file-backed otherwise) |
+| `packages/crm-adapters` | `CrmAdapter` interface + `MockCrmAdapter`, `hubspot/` (private-app token), `salesforce/` (client-credentials) |
 | `packages/widgets` | React widgets → Vite single-file HTML bundles served as `ui://` resources |
 
 ## Deploy

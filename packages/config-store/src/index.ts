@@ -4,3 +4,4 @@ export * from "./file-store.js";
 export * from "./postgres-store.js";
 export * from "./seed.js";
 export * from "./diff.js";
+export * from "./audit-log.js";

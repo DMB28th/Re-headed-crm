@@ -247,11 +247,32 @@ export default function ConnectionsPage() {
                   {hsFormOpen && (
                     <div className="mt-3 space-y-2">
                       <p className="text-[11.5px] text-ink-55">
-                        HubSpot → Settings → Integrations → Private Apps → create one with{" "}
-                        <code className="st-chip-mono bg-paper">crm.objects.*.read/write</code> +{" "}
-                        <code className="st-chip-mono bg-paper">crm.schemas.*.read</code> scopes,
-                        then paste the token. It's validated before anything is stored.
+                        HubSpot → Settings → Integrations → Private Apps → create one, then paste the
+                        token. It's validated before anything is stored.
                       </p>
+                      <div className="rounded-[8px] border border-line-soft bg-paper p-2.5 text-[11px] text-ink-55">
+                        <div className="font-medium text-ink">Least-privilege scopes</div>
+                        <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                          <li>
+                            <code className="st-chip-mono">crm.objects.&#123;deals,contacts,companies&#125;.read</code>{" "}
+                            +{" "}
+                            <code className="st-chip-mono">crm.schemas.&#123;deals,contacts,companies&#125;.read</code>{" "}
+                            — the minimum to read cards
+                          </li>
+                          <li>
+                            add the <code className="st-chip-mono">.write</code> variants only for
+                            objects reps will edit from chat
+                          </li>
+                          <li>
+                            optional: <code className="st-chip-mono">crm.objects.owners.read</code>{" "}
+                            (owner names), <code className="st-chip-mono">crm.schemas.custom.read</code>{" "}
+                            (custom objects), tickets / e-commerce for those objects
+                          </li>
+                        </ul>
+                        <div className="mt-1.5 text-ink-45">
+                          The token is stored server-side and never reaches the chat client or widget.
+                        </div>
+                      </div>
                       <div className="flex items-center gap-2">
                         <input
                           type="password"
@@ -430,7 +451,15 @@ function ScopeCoverage() {
   if (!loaded) return null;
   return (
     <div className="mt-6">
-      <h2 className="st-section-label">Scope coverage</h2>
+      <div className="flex items-center gap-2">
+        <h2 className="st-section-label">Scope coverage</h2>
+        {info.isSandbox === true && (
+          <span className="st-chip-mono bg-published text-published-ink">Sandbox</span>
+        )}
+        {info.isSandbox === false && (
+          <span className="st-chip-mono bg-drift text-drift-ink">PRODUCTION</span>
+        )}
+      </div>
       <div className="st-card mt-2 p-4">
         {info.scopeGaps.length === 0 ? (
           <div className="flex items-center gap-2 text-[12.5px]">

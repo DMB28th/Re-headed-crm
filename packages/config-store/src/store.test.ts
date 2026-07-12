@@ -131,8 +131,38 @@ describe("custom lists (view-exposures v2)", () => {
 describe("diffLayouts (publish modal, 2b)", () => {
   it("reports removed/changed entries vs the published layout", () => {
     const diff = diffLayouts(demoDealsLayout, editedDraft());
-    expect(diff.removed).toContain("Deal details · next_step");
+    expect(diff.removed).toContain("next_step");
     expect(diff.added).toHaveLength(0);
+  });
+
+  it("renaming a section is one '~ section renamed' row, not a teardown", () => {
+    const draft = structuredClone(demoDealsLayout);
+    draft.recordCard.sections[0]!.label = "Renamed section";
+    const diff = diffLayouts(demoDealsLayout, draft);
+    // No field churn — fields are keyed by api, not "section · api".
+    expect(diff.added).toHaveLength(0);
+    expect(diff.removed).toHaveLength(0);
+    // Each field in the renamed section reports "(moved: … → …)" and the section
+    // itself reports "renamed"; the story is a rename, not 2N add/remove rows.
+    expect(diff.changed.some((c) => c.includes("renamed: Deal details → Renamed section"))).toBe(
+      true,
+    );
+  });
+
+  it("a real change in a duplicate-labelled section is not swallowed", () => {
+    const published = structuredClone(demoDealsLayout);
+    // Two sections with the same label.
+    published.recordCard.sections = [
+      { label: "Details", columns: 2, fields: [{ api: "amount", editable: false }] },
+      { label: "Details", columns: 2, fields: [{ api: "dealstage", editable: false }] },
+    ];
+    const draft = structuredClone(published);
+    // Flip editability on the field in the SECOND "Details" section.
+    draft.recordCard.sections[1]!.fields[0]!.editable = true;
+    const diff = diffLayouts(published, draft);
+    expect(diff.changed.some((c) => c.includes("dealstage") && c.includes("now editable"))).toBe(
+      true,
+    );
   });
 });
 

@@ -183,3 +183,10 @@
     display: none;
   }
 }
+
+/* Title cell must be able to shrink so a long name truncates instead of
+   shoving the row's trailing content. */
+.rt-title-group {
+  min-width: 0;
+  flex: 1;
+}

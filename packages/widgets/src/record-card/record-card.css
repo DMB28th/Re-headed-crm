@@ -157,8 +157,12 @@
   gap: 10px;
 }
 
-.rc-trust {
-  font-size: 11px;
+/* .rc-trust lives in shared/theme.css — home-card reuses it and only imports
+   theme.css, so keeping it here left that bundle's trust line unstyled. */
+
+.rc-header-main {
+  min-width: 0;
+  flex: 1;
 }
 
 .rc-footer-right {

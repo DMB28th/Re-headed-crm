@@ -17,7 +17,12 @@ interface Unit {
   describeChange?: (before: string, after: string) => string;
 }
 
-type FieldFp = { editable: boolean; control: string | undefined };
+type FieldFp = {
+  editable: boolean;
+  control: string | undefined;
+  required: boolean;
+  section: string;
+};
 type RelatedFp = { columns: string[]; limit: number };
 
 function fingerprint(config: LayoutConfig): Map<string, Unit> {
@@ -32,15 +37,42 @@ function fingerprint(config: LayoutConfig): Map<string, Unit> {
     });
   }
 
+  // Sections keyed by INDEX (labels can duplicate) so a rename is one "~ section
+  // renamed" row, not a teardown, and two same-named sections don't collide.
+  sections.forEach((section, i) => {
+    map.set(`section ${i}`, {
+      fp: section.label,
+      describeChange: (b, a) => ` renamed: ${b} → ${a}`,
+    });
+  });
+
+  // Fields keyed by api (deduped by suffix if the same api appears twice). The
+  // owning section lives INSIDE the fingerprint, so moving a field between
+  // sections reads as one changed row, not add+remove.
+  const seen = new Map<string, number>();
   for (const section of sections) {
     for (const field of section.fields) {
-      map.set(`${section.label} · ${field.api}`, {
-        fp: JSON.stringify({ editable: field.editable, control: field.control } satisfies FieldFp),
+      const n = seen.get(field.api) ?? 0;
+      seen.set(field.api, n + 1);
+      const key = n === 0 ? field.api : `${field.api} #${n + 1}`;
+      map.set(key, {
+        fp: JSON.stringify({
+          editable: field.editable,
+          control: field.control,
+          required: field.required ?? false,
+          section: section.label,
+        } satisfies FieldFp),
         describeChange: (b, a) => {
           const before = JSON.parse(b) as FieldFp;
           const after = JSON.parse(a) as FieldFp;
+          if (before.section !== after.section) {
+            return ` (moved: ${before.section} → ${after.section})`;
+          }
           if (before.editable !== after.editable) {
             return after.editable ? " (now editable)" : " (now read-only)";
+          }
+          if (before.required !== after.required) {
+            return after.required ? " (now required)" : " (no longer required)";
           }
           if (before.control !== after.control) {
             return ` (control: ${before.control ?? "auto"} → ${after.control ?? "auto"})`;

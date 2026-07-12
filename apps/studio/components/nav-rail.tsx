@@ -185,6 +185,9 @@ export function NavRail() {
         <RailLink href="/home-card" active={pathname === "/home-card"}>
           Home card
         </RailLink>
+        <RailLink href="/audit" active={pathname === "/audit"}>
+          Audit log
+        </RailLink>
       </div>
 
       <div className="mt-auto">

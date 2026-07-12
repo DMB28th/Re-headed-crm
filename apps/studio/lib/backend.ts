@@ -13,7 +13,11 @@ import {
   createPostgresConfigStore,
   FileConfigStore,
   DEMO_TENANT_ID,
+  FileAuditLog,
+  createPostgresAuditLog,
+  defaultAuditPath,
   type AdminConfigStore,
+  type AuditLog,
 } from "@cardstack/config-store";
 import { createAdapterForConnection, type CrmAdapter } from "@cardstack/crm-adapters";
 
@@ -29,6 +33,15 @@ export function getStore(): Promise<AdminConfigStore> {
     ? createPostgresConfigStore(process.env.DATABASE_URL)
     : Promise.resolve(new FileConfigStore(configPath));
   return storePromise;
+}
+
+let auditPromise: Promise<AuditLog> | undefined;
+/** Same durable audit log the MCP server writes — Studio reads it here. */
+export function getAuditLog(): Promise<AuditLog> {
+  auditPromise ??= process.env.DATABASE_URL
+    ? createPostgresAuditLog(process.env.DATABASE_URL)
+    : Promise.resolve(new FileAuditLog(defaultAuditPath()));
+  return auditPromise;
 }
 
 /** The tenant's adapter per its CURRENT connection (read fresh each call). */

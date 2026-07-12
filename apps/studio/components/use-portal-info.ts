@@ -10,6 +10,8 @@ export interface PortalInfo {
   userCount: number | null;
   portalId: string | null;
   defaultCurrency: string | null;
+  /** Salesforce Organization.IsSandbox; absent for HubSpot / unknown. */
+  isSandbox?: boolean | null;
   scopeGaps: string[];
 }
 
