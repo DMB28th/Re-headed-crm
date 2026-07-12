@@ -288,3 +288,50 @@ describe("HubSpotAdapter value labels", () => {
     expect(byApi.hubspot_owner_id!.valueLabels).toEqual({ "1519": "Daniel Ben-Atar" });
   });
 });
+
+describe("HubSpotAdapter pipeline-stage fallback", () => {
+  it("fills dealstage/pipeline labels from the pipelines API when options are empty", async () => {
+    const { impl } = fetchStub([
+      (url) =>
+        url.includes("/crm/v3/pipelines/deals")
+          ? {
+              status: 200,
+              json: {
+                results: [
+                  {
+                    id: "default",
+                    label: "Sales pipeline",
+                    stages: [
+                      { id: "49614379", label: "Contract sent" },
+                      { id: "closedlost", label: "Closed lost" },
+                    ],
+                  },
+                ],
+              },
+            }
+          : undefined,
+      (url) =>
+        url.includes("/crm/v3/properties/deals")
+          ? {
+              status: 200,
+              json: {
+                results: [
+                  // Real-portal quirk: dealstage arrives with NO options.
+                  { name: "dealstage", label: "Deal Stage", type: "enumeration", fieldType: "select" },
+                  { name: "pipeline", label: "Pipeline", type: "enumeration", fieldType: "select" },
+                ],
+              },
+            }
+          : undefined,
+    ]);
+    const adapter = new HubSpotAdapter({ accessToken: "pat-test" }, impl);
+    const describe = await adapter.describeObject("deals");
+    const byApi = Object.fromEntries(describe.fields.map((f) => [f.api, f]));
+    expect(byApi.dealstage!.valueLabels).toEqual({
+      "49614379": "Contract sent",
+      closedlost: "Closed lost",
+    });
+    expect(byApi.dealstage!.values).toEqual(["49614379", "closedlost"]);
+    expect(byApi.pipeline!.valueLabels).toEqual({ default: "Sales pipeline" });
+  });
+});

@@ -159,6 +159,40 @@ export class HubSpotAdapter implements CrmAdapter {
     private readonly fetchImpl: FetchLike = fetch,
   ) {}
 
+  /**
+   * Pipeline/stage labels per object. Many portals return dealstage with NO
+   * options from the properties API — stages live in the pipelines API.
+   */
+  private pipelineCache = new Map<
+    string,
+    { stages: Record<string, string>; pipelines: Record<string, string> }
+  >();
+
+  private async ensurePipelines(
+    objectApi: string,
+  ): Promise<{ stages: Record<string, string>; pipelines: Record<string, string> }> {
+    const cached = this.pipelineCache.get(objectApi);
+    if (cached) return cached;
+    let labels = { stages: {} as Record<string, string>, pipelines: {} as Record<string, string> };
+    try {
+      const { results } = await this.request<{
+        results: { id: string; label: string; stages: { id: string; label: string }[] }[];
+      }>("GET", `/crm/v3/pipelines/${objectApi}`);
+      const multi = results.length > 1;
+      for (const pipeline of results) {
+        labels.pipelines[pipeline.id] = pipeline.label;
+        for (const stage of pipeline.stages) {
+          // Disambiguate stage names across pipelines ("Closed won · EU pipeline").
+          labels.stages[stage.id] = multi ? `${stage.label} · ${pipeline.label}` : stage.label;
+        }
+      }
+    } catch {
+      // no pipelines scope / non-pipeline object — ids stay visible, nothing breaks
+    }
+    this.pipelineCache.set(objectApi, labels);
+    return labels;
+  }
+
   /** Owner id → display name (raw ids on cards are the #1 "feels broken"). */
   private async ensureOwnerLabels(): Promise<Record<string, string>> {
     if (this.ownerLabels) return this.ownerLabels;
@@ -269,15 +303,33 @@ export class HubSpotAdapter implements CrmAdapter {
       `/crm/v3/properties/${objectApi}`,
     );
     const owners = await this.ensureOwnerLabels();
+    const pipelineInfo =
+      objectApi === "deals" || objectApi === "tickets"
+        ? await this.ensurePipelines(objectApi)
+        : { stages: {}, pipelines: {} };
     const fields: FieldDescribe[] = results
       .filter((p) => !p.hidden)
       .map((p) => {
-        const options = (p.options ?? []).filter((o) => !o.hidden);
+        let options = (p.options ?? []).filter((o) => !o.hidden);
         // Internal value → label whenever they differ (pipeline stage ids etc.),
         // plus owner-reference fields resolve to owner names.
-        const optionLabels = Object.fromEntries(
+        let optionLabels = Object.fromEntries(
           options.filter((o) => o.label && o.label !== o.value).map((o) => [o.value, o.label]),
         );
+        // Stage/pipeline properties often ship WITHOUT options — fill from the
+        // pipelines API so cards never show raw stage ids.
+        if ((p.name === "dealstage" || p.name === "hs_pipeline_stage") && Object.keys(pipelineInfo.stages).length > 0) {
+          optionLabels = { ...pipelineInfo.stages, ...optionLabels };
+          if (options.length === 0) {
+            options = Object.keys(pipelineInfo.stages).map((id) => ({ label: pipelineInfo.stages[id]!, value: id }));
+          }
+        }
+        if ((p.name === "pipeline" || p.name === "hs_pipeline") && Object.keys(pipelineInfo.pipelines).length > 0) {
+          optionLabels = { ...pipelineInfo.pipelines, ...optionLabels };
+          if (options.length === 0) {
+            options = Object.keys(pipelineInfo.pipelines).map((id) => ({ label: pipelineInfo.pipelines[id]!, value: id }));
+          }
+        }
         const valueLabels =
           p.referencedObjectType === "OWNER" ? owners : optionLabels;
         return {
