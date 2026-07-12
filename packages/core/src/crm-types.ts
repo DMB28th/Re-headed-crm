@@ -139,6 +139,8 @@ export interface FlowSummary {
 export interface RecentRecord {
   id: string;
   object: string;
+  /** Singular display label for the type pill ("Company") — never derived by string-hacking the api. */
+  objectLabel?: string;
   name: string;
   /** One-line activity note ("Contract emailed · 2d ago" without the timestamp). */
   note: string;

@@ -26,6 +26,7 @@ import {
   CrmRecordNotFoundError,
   CrmValidationError,
   type CrmAdapter,
+  type PortalInfo,
 } from "../adapter.js";
 import * as fixtures from "./fixtures.js";
 import type { FixtureRecord } from "./fixtures.js";
@@ -212,6 +213,11 @@ export class MockCrmAdapter implements CrmAdapter {
   async getConnectedUser(): Promise<string> {
     // Self-describing demo persona (feedback 2026-07-11: no unexplained names).
     return "Demo rep";
+  }
+
+  async getPortalInfo(): Promise<PortalInfo> {
+    // The demo portal's canonical numbers (the design's "38 reps").
+    return { userCount: 38, portalId: null, defaultCurrency: "USD", scopeGaps: [] };
   }
 
   // --- internals ---

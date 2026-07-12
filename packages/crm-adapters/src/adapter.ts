@@ -49,6 +49,28 @@ export interface CrmAdapter {
   refreshTokenIfNeeded(): Promise<void>;
   /** Display name of the CRM user this connection acts as (writes are attributed to them). */
   getConnectedUser(): Promise<string>;
+
+  /** Portal-level facts Studio surfaces (real counts, real currency, scope coverage). */
+  getPortalInfo(): Promise<PortalInfo>;
+}
+
+/**
+ * Live-portal facts. null = unknown/unavailable — surfaces must degrade the
+ * copy (drop the number), never invent one.
+ */
+export interface PortalInfo {
+  /** Number of CRM users/owners, for "N reps use these cards" / "Publishes to N users". */
+  userCount: number | null;
+  /** CRM portal/org id, for deep links back into the CRM. */
+  portalId: string | null;
+  /** Portal default currency code (ISO 4217), e.g. "SEK". */
+  defaultCurrency: string | null;
+  /**
+   * Human-readable capability gaps caused by missing token scopes, e.g.
+   * "Custom objects are hidden — add crm.schemas.custom.read and reconnect."
+   * Empty = full coverage as far as the adapter can tell.
+   */
+  scopeGaps: string[];
 }
 
 export class CrmObjectNotFoundError extends Error {

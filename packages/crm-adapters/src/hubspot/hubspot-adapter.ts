@@ -42,6 +42,7 @@ import {
   CrmRecordNotFoundError,
   CrmValidationError,
   type CrmAdapter,
+  type PortalInfo,
 } from "../adapter.js";
 
 export interface HubSpotCredentials {
@@ -148,6 +149,8 @@ function mapType(p: HsProperty): FieldType {
 export class HubSpotAdapter implements CrmAdapter {
   private describeCache = new Map<string, ObjectDescribe>();
   private customObjects: ObjectSummary[] | null = null;
+  /** Set when custom-object discovery hit a scope 403 — surfaced, never swallowed. */
+  customObjectsBlocked: string | null = null;
   private ownerLabels: Record<string, string> | null = null;
   /** relationship api → association endpoints, incl. dynamic custom-object rels. */
   private relTargets = new Map<string, { from: string; to: string }>(Object.entries(REL_TARGET));
@@ -236,10 +239,18 @@ export class HubSpotAdapter implements CrmAdapter {
           this.customRelationships.set(from, existing);
         }
       }
-    } catch {
-      this.customObjects = []; // missing schemas scope → core objects only
+    } catch (error) {
+      if (error instanceof Error && /missing a scope/.test(error.message)) {
+        // Definitive 403: remember WHY so Studio can say it out loud.
+        this.customObjectsBlocked =
+          "Custom objects are hidden — the private app is missing the crm.schemas.custom.read scope. Add it in HubSpot and reconnect.";
+        this.customObjects = [];
+      } else {
+        // Transient (timeout/429): do NOT cache emptiness; retry next call.
+        return [];
+      }
     }
-    return this.customObjects;
+    return this.customObjects ?? [];
   }
 
   private async request<T>(
@@ -553,6 +564,26 @@ export class HubSpotAdapter implements CrmAdapter {
     } catch {
       return "HubSpot private app";
     }
+  }
+
+  async getPortalInfo(): Promise<PortalInfo> {
+    const [owners, account] = await Promise.all([
+      this.ensureOwnerLabels(),
+      this.request<{ portalId?: number; companyCurrency?: string }>(
+        "GET",
+        "/account-info/v3/details",
+      ).catch(() => ({}) as { portalId?: number; companyCurrency?: string }),
+    ]);
+    const ownerCount = Object.keys(owners).length;
+    const scopeGaps: string[] = [];
+    await this.ensureCustomObjects();
+    if (this.customObjectsBlocked) scopeGaps.push(this.customObjectsBlocked);
+    return {
+      userCount: ownerCount > 0 ? ownerCount : null,
+      portalId: account.portalId ? String(account.portalId) : null,
+      defaultCurrency: account.companyCurrency ?? null,
+      scopeGaps,
+    };
   }
 
   /**

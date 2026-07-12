@@ -116,7 +116,9 @@ export interface HomeListTile {
   viewId: string;
   name: string;
   filterSummary: string;
-  count: number;
+  /** null = the count could not be loaded (rate limit / scope) — render "—", never a fake 0. */
+  count: number | null;
+  error?: boolean;
 }
 
 export interface HomeCardPayload {
@@ -129,9 +131,24 @@ export interface HomeCardPayload {
   provenance: WidgetProvenance;
 }
 
+/**
+ * Typed tool failure (design 1e): widgets render an actionable error card —
+ * "unauthorized" gets the re-auth treatment, everything else gets Retry via
+ * the embedded original call.
+ */
+export interface ErrorPayload {
+  kind: "error";
+  reason: "unauthorized" | "crm-unavailable" | "not-found" | "unknown";
+  /** What happened + what to do, in the CRM's vocabulary. */
+  message: string;
+  crmLabel?: string;
+  retry?: { tool: string; args: Record<string, unknown> };
+}
+
 export type WidgetPayload =
   | RecordCardPayload
   | ResultsTablePayload
   | WriteReceiptPayload
   | ViewPickerPayload
-  | HomeCardPayload;
+  | HomeCardPayload
+  | ErrorPayload;

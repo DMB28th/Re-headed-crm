@@ -41,6 +41,7 @@ import {
   CrmRecordNotFoundError,
   CrmValidationError,
   type CrmAdapter,
+  type PortalInfo,
 } from "../adapter.js";
 
 export interface SalesforceCredentials {
@@ -472,6 +473,18 @@ export class SalesforceAdapter implements CrmAdapter {
     } catch {
       return "Salesforce integration user";
     }
+  }
+
+  async getPortalInfo(): Promise<PortalInfo> {
+    const count = await this.soql<never>(
+      "SELECT COUNT() FROM User WHERE IsActive = true",
+    ).catch(() => null);
+    return {
+      userCount: count ? count.totalSize : null,
+      portalId: null,
+      defaultCurrency: null,
+      scopeGaps: [],
+    };
   }
 
   /** Connect-time validation: token grant + identity in one go. */
