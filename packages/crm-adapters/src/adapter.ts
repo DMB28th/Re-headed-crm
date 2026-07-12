@@ -66,6 +66,12 @@ export interface PortalInfo {
   /** Portal default currency code (ISO 4217), e.g. "SEK". */
   defaultCurrency: string | null;
   /**
+   * True when this connection points at a sandbox org (Salesforce
+   * Organization.IsSandbox). null = the CRM has no such concept or the
+   * adapter can't tell (HubSpot). Studio badges PRODUCTION loudly.
+   */
+  isSandbox?: boolean | null;
+  /**
    * Human-readable capability gaps caused by missing token scopes, e.g.
    * "Custom objects are hidden — add crm.schemas.custom.read and reconnect."
    * Empty = full coverage as far as the adapter can tell.
@@ -91,6 +97,20 @@ export class CrmAuthError extends Error {
   constructor(crmLabel: string) {
     super(`${crmLabel} connection expired. Reconnect to continue; unsaved edits are kept.`);
     this.name = "CrmAuthError";
+  }
+}
+
+/**
+ * The CRM's API budget is exhausted (HubSpot second 429, Salesforce
+ * REQUEST_LIMIT_EXCEEDED). Distinct from CrmAuthError so it never renders
+ * as "reconnect" — the fix is waiting, not re-authing.
+ */
+export class CrmRateLimitError extends Error {
+  constructor(crmLabel: string, detail?: string) {
+    super(
+      `${crmLabel} rate limit reached${detail ? ` (${detail})` : ""} — retry in a few minutes; the connection itself is fine.`,
+    );
+    this.name = "CrmRateLimitError";
   }
 }
 

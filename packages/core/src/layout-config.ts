@@ -9,6 +9,9 @@
  * - v1: initial schema. Keyed on (tenantId, object, audience) with a "default"
  *   audience even though v1 only ever resolves one layout per object — this is
  *   deliberate schema-prep for role-based layouts (PLAN.md V1); do not remove.
+ * - 2026-07-12: LayoutField gains optional `required` (design 2a's per-field
+ *   Required toggle, enforced in crm_update_record: a required field can't be
+ *   cleared from chat). Additive + optional — existing configs parse unchanged.
  */
 import { z } from "zod";
 
@@ -36,6 +39,8 @@ export const LayoutField = z.object({
   api: z.string().min(1),
   editable: z.boolean().default(false),
   control: FieldControl.optional(),
+  /** Can't be cleared from chat (server-enforced in crm_update_record). */
+  required: z.boolean().optional(),
 });
 export type LayoutField = z.infer<typeof LayoutField>;
 

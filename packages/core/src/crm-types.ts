@@ -41,6 +41,13 @@ export interface FieldDescribe {
    */
   valueLabels?: Record<string, string>;
   currencyCode?: string;
+  /**
+   * For stage-like picklists: the INTERNAL values that mean "closed"
+   * (HubSpot pipeline stages with metadata.isClosed, Salesforce
+   * OpportunityStage.IsClosed). Lets the server build a correct
+   * openOnly filter instead of guessing by label.
+   */
+  closedValues?: string[];
 }
 
 export interface ObjectSummary {
@@ -53,6 +60,17 @@ export interface ObjectSummary {
 export interface ObjectDescribe extends ObjectSummary {
   fields: FieldDescribe[];
   relationships: RelationshipDescribe[];
+  /**
+   * Semantic field hints, so CRM-agnostic callers (crm_search filters) never
+   * hardcode HubSpot names into Salesforce queries. Each is a field api name
+   * present in `fields`, set only when the object has that concept:
+   * stage ("dealstage"/"StageName"), amount ("amount"/"Amount"),
+   * owner ("hubspot_owner_id"/"OwnerId"), closeDate ("closedate"/"CloseDate").
+   */
+  stageField?: string;
+  amountField?: string;
+  ownerField?: string;
+  closeDateField?: string;
 }
 
 export interface RelationshipDescribe {
@@ -89,8 +107,22 @@ export interface SearchQuery {
 
 export interface FieldFilter {
   field: string;
-  op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "contains";
-  value: CrmFieldValue;
+  op:
+    | "eq"
+    | "neq"
+    | "gt"
+    | "gte"
+    | "lt"
+    | "lte"
+    | "contains"
+    | "in"
+    | "not_in"
+    | "is_empty"
+    | "not_empty";
+  /** Absent for is_empty / not_empty (they take no operand). */
+  value?: CrmFieldValue;
+  /** Operand set for in / not_in. */
+  values?: CrmFieldValue[];
 }
 
 export type FieldPatch = Record<string, CrmFieldValue>;
