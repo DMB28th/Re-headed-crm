@@ -8,8 +8,10 @@
 import { useEffect, useState } from "react";
 import {
   summarizeCustomFilters,
+  VALUELESS_LIST_OPS,
   type CustomList,
   type CustomListFilter,
+  type FilterLabels,
   type ObjectDescribe,
   type SavedView,
   type ViewExposure,
@@ -25,6 +27,8 @@ const OPS: { value: CustomListFilter["op"]; label: string }[] = [
   { value: "gte", label: "≥" },
   { value: "lt", label: "<" },
   { value: "lte", label: "≤" },
+  { value: "is_empty", label: "is empty" },
+  { value: "not_empty", label: "is not empty" },
 ];
 
 export function ViewsEditor({ object }: { object: string }) {
@@ -33,6 +37,7 @@ export function ViewsEditor({ object }: { object: string }) {
   const [exposures, setExposures] = useState<ViewExposuresConfig | null>(null);
   const [saved, setSaved] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -95,15 +100,17 @@ export function ViewsEditor({ object }: { object: string }) {
 
   const labelOf = (api: string) => describe.fields.find((f) => f.api === api)?.label ?? api;
 
+  // Field + picklist labels so summaries read "Deal Stage is Closed won", not
+  // "dealstage eq 2540864".
+  const filterLabels: FilterLabels = Object.fromEntries(
+    describe.fields.map((f) => [
+      f.api,
+      { label: f.label, ...(f.valueLabels ? { valueLabels: f.valueLabels } : {}) },
+    ]),
+  );
+
   const summarize = (list: CustomList): string =>
-    list.filters.length === 0
-      ? "All records"
-      : list.filters
-          .map(
-            (f) =>
-              `${labelOf(f.field)} ${OPS.find((o) => o.value === f.op)?.label ?? f.op} ${String(f.value)}`,
-          )
-          .join(" · ");
+    summarizeCustomFilters({ ...list, filterSummary: undefined }, filterLabels);
 
   const updateCustomList = (id: string, patch: Partial<CustomList>) => {
     const customLists = exposures.customLists.map((list) => {
@@ -272,7 +279,7 @@ export function ViewsEditor({ object }: { object: string }) {
                   </span>
                 </span>
                 <span className="text-[11.5px] text-ink-55">
-                  {summarizeCustomFilters(list)}
+                  {summarize(list)}
                   <button
                     type="button"
                     className="ml-2 text-[10.5px] text-ink-45 underline"
@@ -280,13 +287,42 @@ export function ViewsEditor({ object }: { object: string }) {
                   >
                     {isEditing ? "done" : "edit"}
                   </button>
-                  <button
-                    type="button"
-                    className="ml-2 text-[10.5px] text-drift-ink underline"
-                    onClick={() => deleteCustomList(list.id)}
-                  >
-                    delete
-                  </button>
+                  {deleteConfirm === list.id ? (
+                    <>
+                      <button
+                        type="button"
+                        className="ml-2 text-[10.5px] text-drift-ink underline"
+                        onClick={() => {
+                          deleteCustomList(list.id);
+                          setDeleteConfirm(null);
+                        }}
+                      >
+                        {(() => {
+                          const ex = exposureFor(list.id);
+                          return ex.isDefault
+                            ? "delete — reps' default ask breaks"
+                            : ex.aliases.length > 0
+                              ? `delete — "${ex.aliases[0]}" stops resolving`
+                              : "confirm delete";
+                        })()}
+                      </button>
+                      <button
+                        type="button"
+                        className="ml-1.5 text-[10.5px] text-ink-45 underline"
+                        onClick={() => setDeleteConfirm(null)}
+                      >
+                        cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="ml-2 text-[10.5px] text-drift-ink underline"
+                      onClick={() => setDeleteConfirm(list.id)}
+                    >
+                      delete
+                    </button>
+                  )}
                 </span>
                 {aliasInput}
                 {toggle}
@@ -322,6 +358,8 @@ function FilterEditor({
     onChange(filters.map((f, j) => (j === i ? { ...f, ...patch } : f)));
 
   const valueInput = (filter: CustomListFilter, i: number) => {
+    // is_empty / not_empty take no operand.
+    if (VALUELESS_LIST_OPS.includes(filter.op)) return null;
     const meta = fieldMeta(filter.field);
     if (meta?.values) {
       return (
@@ -333,7 +371,7 @@ function FilterEditor({
           <option value="">—</option>
           {meta.values.map((v) => (
             <option key={v} value={v}>
-              {v}
+              {meta.valueLabels?.[v] ?? v}
             </option>
           ))}
         </select>
@@ -371,7 +409,11 @@ function FilterEditor({
           <select
             className="st-input py-1 text-[11.5px]"
             value={filter.op}
-            onChange={(e) => update(i, { op: e.target.value as CustomListFilter["op"] })}
+            onChange={(e) => {
+              const op = e.target.value as CustomListFilter["op"];
+              // Emptiness ops carry no value; clear it so we never ship EQ "".
+              update(i, VALUELESS_LIST_OPS.includes(op) ? { op, value: undefined } : { op });
+            }}
           >
             {OPS.map((op) => (
               <option key={op.value} value={op.value}>

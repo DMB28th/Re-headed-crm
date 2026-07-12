@@ -36,6 +36,7 @@ export function Preview({ config }: { config: LayoutConfig }) {
   const [collapsed, setCollapsed] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [modelContext, setModelContext] = useState<string | null>(null);
+  const [followup, setFollowup] = useState<string | null>(null);
   const [buildError, setBuildError] = useState<string | null>(null);
 
   const configJson = JSON.stringify(config);
@@ -68,6 +69,10 @@ export function Preview({ config }: { config: LayoutConfig }) {
   const host: WidgetHost = useMemo(
     () => ({
       updateModelContext: (text) => setModelContext(text),
+      // In chat this posts a new user turn; in the builder there's no chat, so
+      // show the prompt the button WOULD send — otherwise "Log a note" and the
+      // create-related buttons look dead exactly where the admin configures them.
+      sendFollowup: (text: string) => setFollowup(text),
       callTool: async (name, args): Promise<WidgetHostResult> => {
         if (name === "crm_get_related") {
           const result = await previewCall({
@@ -215,6 +220,21 @@ export function Preview({ config }: { config: LayoutConfig }) {
         {modelContext && (
           <div className="rounded-[8px] bg-crmmeta p-2 text-crmmeta-ink">
             <strong>updateModelContext →</strong> {modelContext}
+          </div>
+        )}
+        {followup && (
+          <div className="flex items-start justify-between gap-2 rounded-[8px] bg-crmmeta p-2 text-crmmeta-ink">
+            <span>
+              <strong>sendFollowup →</strong> {followup}
+            </span>
+            <button
+              type="button"
+              className="shrink-0 opacity-70 hover:opacity-100"
+              aria-label="Dismiss followup preview"
+              onClick={() => setFollowup(null)}
+            >
+              ×
+            </button>
           </div>
         )}
       </div>

@@ -25,6 +25,7 @@ import { CSS } from "@dnd-kit/utilities";
 import Link from "next/link";
 import { useState } from "react";
 import type { FieldDescribe, LayoutConfig, LayoutField, ObjectDescribe } from "@cardstack/core";
+import { crmDisplayLabel } from "../../lib/crm-label";
 
 type SetConfig = (updater: (prev: LayoutConfig | null) => LayoutConfig | null) => void;
 
@@ -41,7 +42,7 @@ export function Canvas({
 }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const labelOf = (api: string) => describe.fields.find((f) => f.api === api)?.label ?? api;
-  const crmLabel = config.crm === "hubspot" ? "HubSpot" : "SFDC";
+  const crmLabel = crmDisplayLabel(config.crm);
   // Ghost chip / ghost section for the DragOverlay (2a mid-drag feedback).
   const [dragging, setDragging] = useState<
     { kind: "field"; api: string } | { kind: "section"; index: number } | null
@@ -98,8 +99,10 @@ export function Canvas({
       if (from < 0) return sections;
       const field = sections[from]!.fields.find((f) => f.api === activeId)!;
       sections[from]!.fields = sections[from]!.fields.filter((f) => f.api !== activeId);
-      const toSection = overId.startsWith("section-")
-        ? Number(overId.slice("section-".length))
+      // Dropping over a section card (not a chip) yields its "sec-N" sortable id →
+      // append to the end of that section. Over a chip → insert before it.
+      const toSection = overId.startsWith("sec-")
+        ? Number(overId.slice(4))
         : sections.findIndex((s) => s.fields.some((f) => f.api === overId));
       if (toSection < 0 || !sections[toSection]) return sections;
       const overIndex = sections[toSection]!.fields.findIndex((f) => f.api === overId);
@@ -175,7 +178,7 @@ export function Canvas({
           strategy={verticalListSortingStrategy}
         >
           {config.recordCard.sections.map((section, sectionIdx) => (
-            <SectionCard key={`${sectionIdx}-${section.label}`} sectionIdx={sectionIdx}>
+            <SectionCard key={`sec-${sectionIdx}`} sectionIdx={sectionIdx}>
               {(grip) => (
                 <>
               <div className="flex items-center justify-between gap-2">
@@ -233,6 +236,13 @@ export function Canvas({
                         mutateSections((sections) => {
                           const target = sections[sectionIdx]!.fields.find((f) => f.api === field.api)!;
                           target.editable = !target.editable;
+                          return sections;
+                        })
+                      }
+                      onToggleRequired={() =>
+                        mutateSections((sections) => {
+                          const target = sections[sectionIdx]!.fields.find((f) => f.api === field.api)!;
+                          target.required = !target.required;
                           return sections;
                         })
                       }
@@ -634,6 +644,7 @@ function FieldChip({
   crmLabel,
   denied,
   onToggleEditable,
+  onToggleRequired,
   onRemove,
 }: {
   field: LayoutField;
@@ -643,6 +654,7 @@ function FieldChip({
   crmLabel: string;
   denied: boolean;
   onToggleEditable: () => void;
+  onToggleRequired: () => void;
   onRemove: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -650,9 +662,18 @@ function FieldChip({
   });
   const [popoverOpen, setPopoverOpen] = useState(false);
   const crmReadOnly = describeField?.readOnly ?? false;
-  // CRM-required (3d requirements pass-through): badge + can't leave the card.
-  const required = describeField?.required ?? false;
-  const requiredTitle = `Required in ${crmLabel} — records can't be saved without it, so it can't leave the card.`;
+  // A field the layout references but the portal's schema no longer has — it
+  // renders an em dash on the card. Dot-paths (parent fields) and the
+  // synthesized display name aren't drift.
+  const drift = !describeField && !field.api.includes(".") && field.api !== "__display_name";
+  const crmRequired = describeField?.required ?? false;
+  const layoutRequired = field.required ?? false;
+  // Either CRM-required or admin-marked-required locks the field on the card and
+  // blocks clearing it from chat (server-enforced).
+  const required = crmRequired || layoutRequired;
+  const requiredTitle = crmRequired
+    ? `Required in ${crmLabel} — records can't be saved without it, so it can't leave the card.`
+    : "Marked required on this card — reps can't clear it from chat.";
 
   return (
     // While dragging, the in-list slot becomes the drop indicator: a 2px
@@ -685,7 +706,15 @@ function FieldChip({
         </span>
         {required && (
           <span className="st-chip-mono bg-draft text-draft-ink" title={requiredTitle}>
-            Required · {crmLabel}
+            {crmRequired ? `Required · ${crmLabel}` : "Required"}
+          </span>
+        )}
+        {drift && (
+          <span
+            className="st-chip-mono bg-drift text-drift-ink"
+            title={`Not in ${crmLabel}'s schema — this field renders as an em dash. Remove it?`}
+          >
+            Not in {crmLabel}
           </span>
         )}
         {denied && <span className="st-chip-mono bg-drift text-drift-ink">denylisted</span>}
@@ -730,34 +759,67 @@ function FieldChip({
                 {describeField?.type ?? "unknown"}
               </span>
               {required && (
-                <span className="st-chip-mono bg-draft text-draft-ink">Required · {crmLabel}</span>
+                <span className="st-chip-mono bg-draft text-draft-ink">
+                  {crmRequired ? `Required · ${crmLabel}` : "Required"}
+                </span>
               )}
+              {drift && <span className="st-chip-mono bg-drift text-drift-ink">Not in {crmLabel}</span>}
             </div>
-            <p className="mt-2 text-[11.5px] leading-snug text-ink-55">
-              {describeField?.description ||
-                `No description in ${crmLabel} — the model, rep tooltips and coverage all read this metadata.`}
-            </p>
+            {drift ? (
+              <p className="mt-2 text-[11.5px] leading-snug text-drift-ink">
+                This field isn't in {crmLabel}'s schema — the card shows an em dash for it. Remove it
+                with the × on the chip.
+              </p>
+            ) : (
+              <p className="mt-2 text-[11.5px] leading-snug text-ink-55">
+                {describeField?.description ||
+                  `No description in ${crmLabel} — the model, rep tooltips and coverage all read this metadata.`}
+              </p>
+            )}
             {required && (
               <p className="mt-1.5 text-[11px] text-draft-ink">Can't be saved empty from chat.</p>
             )}
             {crmReadOnly ? (
               <p className="mt-2 text-[11px] text-ink-45">Read-only · {crmLabel} field security.</p>
             ) : (
-              <div className="mt-2.5 flex items-center justify-between">
-                <span className="text-[12px]">Reps can edit</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={field.editable}
-                  aria-label={`Reps can edit ${label}`}
-                  onClick={onToggleEditable}
-                  className={`h-5 w-9 rounded-full transition-colors ${field.editable ? "bg-accent" : "bg-line"}`}
-                >
-                  <span
-                    className={`block h-4 w-4 rounded-full bg-white transition-transform ${field.editable ? "translate-x-4" : "translate-x-0.5"}`}
-                  />
-                </button>
-              </div>
+              <>
+                <div className="mt-2.5 flex items-center justify-between">
+                  <span className="text-[12px]">Reps can edit</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={field.editable}
+                    aria-label={`Reps can edit ${label}`}
+                    onClick={onToggleEditable}
+                    className={`h-5 w-9 rounded-full transition-colors ${field.editable ? "bg-accent" : "bg-line"}`}
+                  >
+                    <span
+                      className={`block h-4 w-4 rounded-full bg-white transition-transform ${field.editable ? "translate-x-4" : "translate-x-0.5"}`}
+                    />
+                  </button>
+                </div>
+                {/* Admin-marked required (enforced server-side). Hidden when the
+                    CRM already requires it — that's non-negotiable, not a toggle. */}
+                {field.editable && !crmRequired && (
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-[12px]">
+                      Required — can't be cleared from chat
+                    </span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={layoutRequired}
+                      aria-label={`Required from chat: ${label}`}
+                      onClick={onToggleRequired}
+                      className={`h-5 w-9 rounded-full transition-colors ${layoutRequired ? "bg-accent" : "bg-line"}`}
+                    >
+                      <span
+                        className={`block h-4 w-4 rounded-full bg-white transition-transform ${layoutRequired ? "translate-x-4" : "translate-x-0.5"}`}
+                      />
+                    </button>
+                  </div>
+                )}
+              </>
             )}
             <Link
               href={`/objects/${object}/permissions`}

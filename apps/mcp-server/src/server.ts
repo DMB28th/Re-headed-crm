@@ -781,12 +781,14 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
 
         // Required fields (design 2a) can't be cleared from chat — enforcement,
         // not just a badge. A null/"" on a required field refuses the whole call.
-        const requiredApis = new Set(
-          config.recordCard.sections
+        // Both admin-marked (layout) and CRM-required (describe) count.
+        const requiredApis = new Set([
+          ...config.recordCard.sections
             .flatMap((s) => s.fields)
             .filter((f) => f.required)
             .map((f) => f.api),
-        );
+          ...describe.fields.filter((f) => f.required).map((f) => f.api),
+        ]);
         const cleared = Object.keys(patch).filter(
           (field) => requiredApis.has(field) && (patch[field] === null || patch[field] === ""),
         );

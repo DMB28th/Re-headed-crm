@@ -11,6 +11,9 @@
  *   Cardstack-managed filters. `version` stays literal 1 (additive, old configs
  *   parse unchanged); custom list ids use the reserved "cl-" prefix and get an
  *   exposure entry in `views` like any CRM view.
+ * - 2026-07-12: CustomListFilter.op gains "is_empty" | "not_empty" (data-quality
+ *   lists: "deals with no amount"); these ops take no value, so `value` is now
+ *   optional. Additive + optional — old configs parse unchanged.
  */
 import { z } from "zod";
 
@@ -28,10 +31,14 @@ export type ViewExposure = z.infer<typeof ViewExposure>;
 
 export const CustomListFilter = z.object({
   field: z.string().min(1),
-  op: z.enum(["eq", "neq", "gt", "gte", "lt", "lte", "contains"]),
-  value: z.union([z.string(), z.number(), z.boolean(), z.null()]),
+  op: z.enum(["eq", "neq", "gt", "gte", "lt", "lte", "contains", "is_empty", "not_empty"]),
+  /** Absent for is_empty / not_empty — those ops take no operand. */
+  value: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
 });
 export type CustomListFilter = z.infer<typeof CustomListFilter>;
+
+/** Ops that take no value input. */
+export const VALUELESS_LIST_OPS: CustomListFilter["op"][] = ["is_empty", "not_empty"];
 
 /** Admin-defined list. Filters live in Cardstack (not the CRM) and are ANDed. */
 export const CustomList = z.object({
@@ -54,9 +61,43 @@ export const ViewExposuresConfig = z.object({
 });
 export type ViewExposuresConfig = z.infer<typeof ViewExposuresConfig>;
 
-/** Fallback summary when a custom list has no precomputed one. */
-export function summarizeCustomFilters(list: CustomList): string {
-  if (list.filterSummary) return list.filterSummary;
+/** Field label + value-label lookup, so summaries read in human terms. */
+export type FilterLabels = Record<
+  string,
+  { label?: string; valueLabels?: Record<string, string> }
+>;
+
+const OP_PHRASE: Record<CustomListFilter["op"], string> = {
+  eq: "is",
+  neq: "is not",
+  gt: ">",
+  gte: "≥",
+  lt: "<",
+  lte: "≤",
+  contains: "contains",
+  is_empty: "is empty",
+  not_empty: "is not empty",
+};
+
+/**
+ * Human summary of a list's filters. Pass `labels` (from the object describe) to
+ * resolve field api names and picklist ids to labels ("Deal Stage is Closed won"
+ * instead of "dealstage eq 2540864"); without it, falls back to raw values so
+ * existing zero-arg callers keep working.
+ */
+export function summarizeCustomFilters(list: CustomList, labels?: FilterLabels): string {
+  if (!labels && list.filterSummary) return list.filterSummary;
   if (list.filters.length === 0) return "All records";
-  return list.filters.map((f) => `${f.field} ${f.op} ${String(f.value)}`).join(" · ");
+  return list.filters
+    .map((f) => {
+      const meta = labels?.[f.field];
+      const fieldLabel = meta?.label ?? f.field;
+      const phrase = OP_PHRASE[f.op] ?? f.op;
+      if (VALUELESS_LIST_OPS.includes(f.op)) return `${fieldLabel} ${phrase}`;
+      const raw = f.value;
+      const valueLabel =
+        raw !== null && raw !== undefined ? (meta?.valueLabels?.[String(raw)] ?? String(raw)) : "";
+      return `${fieldLabel} ${phrase} ${valueLabel}`.trim();
+    })
+    .join(" · ");
 }
