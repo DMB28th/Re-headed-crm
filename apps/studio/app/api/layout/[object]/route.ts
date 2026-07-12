@@ -11,13 +11,22 @@ export async function GET(_req: Request, { params }: Params) {
     const store = await getStore();
     const adapter = await getAdapter();
     const record = await store.getLayoutRecord(TENANT_ID, object);
-    const describe = await adapter.describeObject(object);
+    const full = await adapter.describeObject(object);
     // Related-object describes keyed by relationship api — the related-list
-    // picker (3b) needs the target's fields for column choices.
+    // picker (3b) needs the target's fields for column choices. Targets the
+    // token can't describe (e.g. tickets without the tickets scope) are
+    // OPTIONAL: drop the relationship instead of failing the whole builder.
     const relatedDescribes: Record<string, unknown> = {};
-    for (const rel of describe.relationships) {
-      relatedDescribes[rel.api] = await adapter.describeObject(rel.relatedObject);
+    const relationships = [];
+    for (const rel of full.relationships) {
+      try {
+        relatedDescribes[rel.api] = await adapter.describeObject(rel.relatedObject);
+        relationships.push(rel);
+      } catch {
+        // missing scope / undescribable target — this related list is simply not offered
+      }
     }
+    const describe = { ...full, relationships };
     const diff = record.draft ? diffLayouts(record.published, record.draft) : null;
     return NextResponse.json({ record, describe, relatedDescribes, diff });
   } catch (error) {

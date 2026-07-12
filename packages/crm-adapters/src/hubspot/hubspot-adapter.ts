@@ -207,7 +207,9 @@ export class HubSpotAdapter implements CrmAdapter {
       // Distinct from expiry: the token works but lacks a scope for THIS call.
       throw new Error(
         `HubSpot denied ${method} ${path} (403) — the private app is missing a scope. ` +
-          "Check crm.objects.{deals,contacts,companies}.read/write and crm.schemas.*.read.",
+          "Core objects need crm.objects.{deals,contacts,companies}.read/write and " +
+          "crm.schemas.*.read; tickets need the tickets scope, line items e-commerce, " +
+          "custom objects crm.objects.custom.read.",
       );
     }
     if (res.status === 404) throw new CrmRecordNotFoundError("hubspot resource", path);

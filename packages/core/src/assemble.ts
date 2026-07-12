@@ -93,7 +93,11 @@ export async function buildRecordCardPayload(args: {
 
   const related: Record<string, RecordPage> = {};
   for (const rel of config.recordCard.relatedLists) {
-    const page = await source.getRelated(args.record.id, rel);
+    // One broken related list (missing scope, dropped association) degrades
+    // its own section to empty — it must never sink the whole card.
+    const page = await source
+      .getRelated(args.record.id, rel)
+      .catch((): RecordPage => ({ rows: [], hasMore: false, total: 0 }));
     related[rel.relationship] = filterPage(page, new Set(rel.columns));
   }
 
