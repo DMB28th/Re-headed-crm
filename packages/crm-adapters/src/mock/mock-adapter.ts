@@ -283,6 +283,12 @@ export class MockCrmAdapter implements CrmAdapter {
         return value !== expected;
       case "contains":
         return String(value).toLowerCase().includes(String(expected).toLowerCase());
+      case "not_contains":
+        return !String(value).toLowerCase().includes(String(expected).toLowerCase());
+      case "starts_with":
+        return String(value).toLowerCase().startsWith(String(expected).toLowerCase());
+      case "ends_with":
+        return String(value).toLowerCase().endsWith(String(expected).toLowerCase());
       case "gt":
         return compareValues(value, expected) > 0;
       case "gte":

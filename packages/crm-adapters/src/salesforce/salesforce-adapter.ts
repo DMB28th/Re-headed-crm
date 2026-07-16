@@ -350,6 +350,17 @@ export class SalesforceAdapter implements CrmAdapter {
         case "contains":
           clauses.push(`${f.field} LIKE '%${soqlLikeEscape(String(f.value ?? ""))}%'`);
           break;
+        case "not_contains":
+          clauses.push(
+            `(NOT ${f.field} LIKE '%${soqlLikeEscape(String(f.value ?? ""))}%')`,
+          );
+          break;
+        case "starts_with":
+          clauses.push(`${f.field} LIKE '${soqlLikeEscape(String(f.value ?? ""))}%'`);
+          break;
+        case "ends_with":
+          clauses.push(`${f.field} LIKE '%${soqlLikeEscape(String(f.value ?? ""))}'`);
+          break;
         case "in":
         case "not_in": {
           const list = (f.values ?? []).map((v) => soqlLiteral(v, typeOf(f.field))).join(", ");

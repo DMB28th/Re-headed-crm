@@ -4,8 +4,11 @@
  * - CRM saved views sync read-only — filters are managed in the CRM.
  * - Cardstack lists are admin-defined HERE (name + filters) and run through
  *   the adapter's search. Both expose/alias/default the same way.
+ *
+ * Condition builder UI leans on Momentum.io's field · operator · value rows
+ * (AND between conditions, chip values for IN / is-any-of).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import {
   summarizeCustomFilters,
   VALUELESS_LIST_OPS,
@@ -20,18 +23,21 @@ import {
 } from "@cardstack/core";
 import { LoadFailed } from "./load-failed";
 
-const OPS: { value: CustomListFilter["op"]; label: string }[] = [
-  { value: "eq", label: "is" },
-  { value: "neq", label: "is not" },
-  { value: "contains", label: "contains" },
-  { value: "gt", label: ">" },
-  { value: "gte", label: "≥" },
-  { value: "lt", label: "<" },
-  { value: "lte", label: "≤" },
-  { value: "in", label: "is any of" },
-  { value: "not_in", label: "is none of" },
-  { value: "is_empty", label: "is empty" },
-  { value: "not_empty", label: "is not empty" },
+const OPS: { value: CustomListFilter["op"]; label: string; group: string }[] = [
+  { value: "eq", label: "is", group: "Match" },
+  { value: "neq", label: "is not", group: "Match" },
+  { value: "contains", label: "contains", group: "Text" },
+  { value: "not_contains", label: "does not contain", group: "Text" },
+  { value: "starts_with", label: "starts with", group: "Text" },
+  { value: "ends_with", label: "ends with", group: "Text" },
+  { value: "in", label: "is any of (IN)", group: "Set" },
+  { value: "not_in", label: "is none of", group: "Set" },
+  { value: "gt", label: "greater than", group: "Compare" },
+  { value: "gte", label: "greater or equal", group: "Compare" },
+  { value: "lt", label: "less than", group: "Compare" },
+  { value: "lte", label: "less or equal", group: "Compare" },
+  { value: "is_empty", label: "is empty", group: "Empty" },
+  { value: "not_empty", label: "is not empty", group: "Empty" },
 ];
 
 interface ListTemplate {
@@ -338,9 +344,14 @@ export function ViewsEditor({ object }: { object: string }) {
         })}
       </div>
 
-      <div className="mt-6 flex items-center justify-between">
-        <h2 className="st-section-label">Cardstack lists</h2>
-        <button type="button" className="st-btn" onClick={addCustomList}>
+      <div className="mt-6 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="st-section-label">Cardstack lists</h2>
+          <p className="mt-1 text-[12px] text-ink-45">
+            Build conditions like Momentum — field, operator, value — then expose them to chat.
+          </p>
+        </div>
+        <button type="button" className="st-btn st-btn--primary shrink-0" onClick={addCustomList}>
           + New list
         </button>
       </div>
@@ -451,7 +462,7 @@ export function ViewsEditor({ object }: { object: string }) {
                 {toggle}
               </div>
               {isEditing && (
-                <FilterEditor
+                <ConditionBuilder
                   describe={describe}
                   filters={list.filters}
                   onChange={(filters) => updateCustomList(list.id, { filters })}
@@ -465,8 +476,8 @@ export function ViewsEditor({ object }: { object: string }) {
   );
 }
 
-/** Filter rows: field / op / value. Values type by the field's describe. */
-function FilterEditor({
+/** Momentum-style condition builder: field · operator · value, AND between rows. */
+function ConditionBuilder({
   describe,
   filters,
   onChange,
@@ -481,60 +492,30 @@ function FilterEditor({
     onChange(filters.map((f, j) => (j === i ? { ...f, ...patch } : f)));
 
   const valueInput = (filter: CustomListFilter, i: number) => {
-    // is_empty / not_empty take no operand.
-    if (VALUELESS_LIST_OPS.includes(filter.op)) return null;
-    const meta = fieldMeta(filter.field);
-    // in / not_in: pick a SET of values (a scrollable checkbox list for
-    // picklists; comma-separated text otherwise).
-    if (MULTI_VALUE_LIST_OPS.includes(filter.op)) {
-      const selected = new Set((filter.values ?? []).map(String));
-      if (meta?.values) {
-        return (
-          <div className="max-h-[132px] w-[220px] shrink-0 overflow-y-auto rounded-[8px] border border-line bg-surface p-1.5">
-            {meta.values.map((v) => (
-              <label key={v} className="flex items-center gap-1.5 px-1 py-0.5 text-[11.5px]">
-                <input
-                  type="checkbox"
-                  checked={selected.has(v)}
-                  onChange={(e) => {
-                    const next = new Set(selected);
-                    if (e.target.checked) next.add(v);
-                    else next.delete(v);
-                    update(i, { values: [...next] });
-                  }}
-                />
-                <span className="truncate" title={meta.valueLabels?.[v] ?? v}>
-                  {meta.valueLabels?.[v] ?? v}
-                </span>
-              </label>
-            ))}
-          </div>
-        );
-      }
+    if (VALUELESS_LIST_OPS.includes(filter.op)) {
       return (
-        <input
-          className="st-input w-[200px] shrink-0 py-1 text-[11.5px]"
-          placeholder="value1, value2, …"
-          defaultValue={(filter.values ?? []).join(", ")}
-          onBlur={(e) =>
-            update(i, {
-              values: e.target.value
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean),
-            })
-          }
+        <span className="text-[11.5px] text-ink-45 italic">no value needed</span>
+      );
+    }
+    const meta = fieldMeta(filter.field);
+    if (MULTI_VALUE_LIST_OPS.includes(filter.op)) {
+      return (
+        <MultiValueInput
+          values={(filter.values ?? []).map(String)}
+          options={meta?.values}
+          valueLabels={meta?.valueLabels}
+          onChange={(values) => update(i, { values })}
         />
       );
     }
     if (meta?.values) {
       return (
         <select
-          className="st-input w-[180px] shrink-0 py-1 text-[11.5px]"
+          className="st-input min-w-[160px] flex-1 py-1.5 text-[12.5px]"
           value={String(filter.value ?? "")}
           onChange={(e) => update(i, { value: e.target.value })}
         >
-          <option value="">—</option>
+          <option value="">Select value…</option>
           {meta.values.map((v) => (
             <option key={v} value={v}>
               {meta.valueLabels?.[v] ?? v}
@@ -546,10 +527,16 @@ function FilterEditor({
     const numeric = meta?.type === "number" || meta?.type === "currency";
     return (
       <input
-        className="st-input w-[140px] shrink-0 py-1 text-[11.5px]"
+        className="st-input min-w-[160px] flex-1 py-1.5 text-[12.5px]"
         type={numeric ? "number" : "text"}
-        placeholder={meta?.type === "date" ? "YYYY-MM-DD" : "value"}
-        defaultValue={filter.value === null ? "" : String(filter.value)}
+        placeholder={
+          meta?.type === "date"
+            ? "YYYY-MM-DD"
+            : filter.op === "contains" || filter.op === "not_contains"
+              ? "text…"
+              : "value"
+        }
+        defaultValue={filter.value === null || filter.value === undefined ? "" : String(filter.value)}
         onBlur={(e) =>
           update(i, { value: numeric ? Number(e.target.value) : e.target.value })
         }
@@ -558,52 +545,86 @@ function FilterEditor({
   };
 
   return (
-    <div className="space-y-2 border-t border-line-soft bg-paper px-4 py-3">
-      {filters.map((filter, i) => (
-        <div key={i} className="flex flex-wrap items-center gap-2">
-          <select
-            className="st-input min-w-0 max-w-[220px] flex-1 py-1 text-[11.5px]"
-            value={filter.field}
-            onChange={(e) => update(i, { field: e.target.value, value: "" })}
-          >
-            {describe.fields.map((f) => (
-              <option key={f.api} value={f.api}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-          <select
-            className="st-input w-[130px] shrink-0 py-1 text-[11.5px]"
-            value={filter.op}
-            onChange={(e) => {
-              const op = e.target.value as CustomListFilter["op"];
-              // Reset the operand to the shape the new op expects: none for
-              // empties, a set for in/not_in, a single value otherwise.
-              if (VALUELESS_LIST_OPS.includes(op)) update(i, { op, value: undefined, values: undefined });
-              else if (MULTI_VALUE_LIST_OPS.includes(op)) update(i, { op, value: undefined, values: [] });
-              else update(i, { op, values: undefined });
-            }}
-          >
-            {OPS.map((op) => (
-              <option key={op.value} value={op.value}>
-                {op.label}
-              </option>
-            ))}
-          </select>
-          {valueInput(filter, i)}
-          <button
-            type="button"
-            className="text-ink-45 hover:text-drift-ink"
-            aria-label="Remove filter"
-            onClick={() => onChange(filters.filter((_, j) => j !== i))}
-          >
-            ×
-          </button>
+    <div className="border-t border-line-soft bg-[linear-gradient(180deg,#fbfbfa_0%,#f6f6f4_100%)] px-4 py-4">
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <div>
+          <div className="text-[13px] font-semibold tracking-[-0.01em]">Match records where</div>
+          <div className="mt-0.5 text-[11.5px] text-ink-45">
+            Conditions are ANDed · applied on the next ask
+          </div>
         </div>
-      ))}
+      </div>
+
+      {filters.length === 0 && (
+        <div className="mb-3 rounded-[10px] border border-dashed border-line bg-surface/70 px-3 py-3 text-[12.5px] text-ink-45">
+          No conditions yet — every record matches. Add a condition to narrow the list.
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1.5">
+        {filters.map((filter, i) => (
+          <div key={i}>
+            {i > 0 && (
+              <div className="flex items-center gap-2 py-1 pl-1">
+                <span className="st-chip-mono bg-accent text-white">AND</span>
+                <span className="h-px flex-1 bg-line-soft" />
+              </div>
+            )}
+            <div className="flex flex-wrap items-start gap-2 rounded-[12px] border border-line bg-surface px-3 py-2.5 shadow-[0_1px_0_rgba(20,24,40,0.03)]">
+              <select
+                className="st-input min-w-[140px] max-w-[220px] flex-[1.2] py-1.5 text-[12.5px] font-medium"
+                value={filter.field}
+                onChange={(e) =>
+                  update(i, { field: e.target.value, value: "", values: undefined })
+                }
+              >
+                {describe.fields.map((f) => (
+                  <option key={f.api} value={f.api}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="st-input w-[168px] shrink-0 py-1.5 text-[12.5px]"
+                value={filter.op}
+                onChange={(e) => {
+                  const op = e.target.value as CustomListFilter["op"];
+                  if (VALUELESS_LIST_OPS.includes(op)) {
+                    update(i, { op, value: undefined, values: undefined });
+                  } else if (MULTI_VALUE_LIST_OPS.includes(op)) {
+                    update(i, { op, value: undefined, values: [] });
+                  } else {
+                    update(i, { op, values: undefined });
+                  }
+                }}
+              >
+                {(["Match", "Text", "Set", "Compare", "Empty"] as const).map((group) => (
+                  <optgroup key={group} label={group}>
+                    {OPS.filter((op) => op.group === group).map((op) => (
+                      <option key={op.value} value={op.value}>
+                        {op.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <div className="min-w-[180px] flex-[1.6]">{valueInput(filter, i)}</div>
+              <button
+                type="button"
+                className="mt-1 rounded-[8px] px-2 py-1 text-[14px] leading-none text-ink-45 hover:bg-drift hover:text-drift-ink"
+                aria-label="Remove condition"
+                onClick={() => onChange(filters.filter((_, j) => j !== i))}
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
       <button
         type="button"
-        className="rounded-[8px] border border-dashed border-line px-2.5 py-1 text-[11.5px] text-ink-45 hover:text-ink"
+        className="mt-3 rounded-[9px] border border-dashed border-line bg-surface px-3 py-1.5 text-[12.5px] font-medium text-ink-55 hover:border-accent hover:text-ink"
         onClick={() =>
           onChange([
             ...filters,
@@ -611,9 +632,106 @@ function FilterEditor({
           ])
         }
       >
-        + Add filter
+        + Add condition
       </button>
-      <span className="ml-3 text-[11px] text-ink-45">Filters are ANDed · applied on the next ask</span>
+    </div>
+  );
+}
+
+/** Chip-based multi-value input for IN / is-any-of (and is-none-of). */
+function MultiValueInput({
+  values,
+  options,
+  valueLabels,
+  onChange,
+}: {
+  values: string[];
+  options?: string[];
+  valueLabels?: Record<string, string>;
+  onChange: (values: string[]) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const selected = new Set(values);
+
+  const add = (raw: string) => {
+    const next = raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (next.length === 0) return;
+    const merged = [...values];
+    for (const v of next) {
+      if (!merged.includes(v)) merged.push(v);
+    }
+    onChange(merged);
+    setDraft("");
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      add(draft);
+    } else if (e.key === "Backspace" && draft === "" && values.length > 0) {
+      onChange(values.slice(0, -1));
+    }
+  };
+
+  return (
+    <div className="flex w-full flex-col gap-1.5">
+      <div className="flex min-h-[36px] flex-wrap items-center gap-1.5 rounded-[9px] border border-line bg-paper px-2 py-1.5 focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(47,53,80,0.14)]">
+        {values.map((v) => (
+          <span
+            key={v}
+            className="inline-flex max-w-full items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[11.5px] text-accent"
+          >
+            <span className="truncate">{valueLabels?.[v] ?? v}</span>
+            <button
+              type="button"
+              className="text-ink-45 hover:text-drift-ink"
+              aria-label={`Remove ${valueLabels?.[v] ?? v}`}
+              onClick={() => onChange(values.filter((x) => x !== v))}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        {!options && (
+          <input
+            className="min-w-[120px] flex-1 bg-transparent py-0.5 text-[12.5px] outline-none placeholder:text-ink-45"
+            placeholder={values.length === 0 ? "Type a value, Enter to add…" : "Add another…"}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={onKeyDown}
+            onBlur={() => add(draft)}
+          />
+        )}
+        {options && values.length === 0 && (
+          <span className="text-[11.5px] text-ink-45">Pick values below</span>
+        )}
+      </div>
+      {options && (
+        <div className="max-h-[140px] overflow-y-auto rounded-[9px] border border-line-soft bg-surface p-1.5">
+          {options.map((v) => {
+            const on = selected.has(v);
+            return (
+              <button
+                key={v}
+                type="button"
+                className={`flex w-full items-center justify-between rounded-[7px] px-2 py-1 text-left text-[11.5px] ${
+                  on ? "bg-accent/10 text-accent" : "hover:bg-paper"
+                }`}
+                onClick={() => {
+                  if (on) onChange(values.filter((x) => x !== v));
+                  else onChange([...values, v]);
+                }}
+              >
+                <span className="truncate">{valueLabels?.[v] ?? v}</span>
+                <span className="font-mono text-[10px] text-ink-45">{on ? "IN" : "+"}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

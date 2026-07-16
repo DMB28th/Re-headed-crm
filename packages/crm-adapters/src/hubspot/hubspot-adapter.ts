@@ -124,6 +124,7 @@ const SEARCH_OPS: Record<string, string> = {
   lt: "LT",
   lte: "LTE",
   contains: "CONTAINS_TOKEN",
+  not_contains: "NOT_CONTAINS_TOKEN",
 };
 
 interface HsProperty {
@@ -559,6 +560,21 @@ export class HubSpotAdapter implements CrmAdapter {
         return {
           propertyName: f.field,
           operator: f.op === "is_empty" ? "NOT_HAS_PROPERTY" : "HAS_PROPERTY",
+        };
+      }
+      // HubSpot has no native starts/ends — approximate with token wildcards.
+      if (f.op === "starts_with") {
+        return {
+          propertyName: f.field,
+          operator: "CONTAINS_TOKEN",
+          value: `${String(f.value ?? "")}*`,
+        };
+      }
+      if (f.op === "ends_with") {
+        return {
+          propertyName: f.field,
+          operator: "CONTAINS_TOKEN",
+          value: `*${String(f.value ?? "")}`,
         };
       }
       return {

@@ -18,6 +18,9 @@
  *   `values` array operand (one-click "Open deals" = stage not_in closedValues,
  *   instead of eleven neq rows). Additive + optional — old configs parse
  *   unchanged.
+ * - 2026-07-16: CustomListFilter.op gains "not_contains" | "starts_with" |
+ *   "ends_with" (Momentum-style string filters). Additive — old configs parse
+ *   unchanged.
  */
 import { z } from "zod";
 
@@ -43,12 +46,15 @@ export const CustomListFilter = z.object({
     "lt",
     "lte",
     "contains",
+    "not_contains",
+    "starts_with",
+    "ends_with",
     "in",
     "not_in",
     "is_empty",
     "not_empty",
   ]),
-  /** Single operand for eq/neq/gt/gte/lt/lte/contains. Absent for empties. */
+  /** Single operand for scalar ops. Absent for empties. */
   value: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
   /** Operand set for in / not_in (e.g. "stage is any of the closed stages"). */
   values: z.array(z.union([z.string(), z.number(), z.boolean()])).optional(),
@@ -95,6 +101,9 @@ const OP_PHRASE: Record<CustomListFilter["op"], string> = {
   lt: "<",
   lte: "≤",
   contains: "contains",
+  not_contains: "does not contain",
+  starts_with: "starts with",
+  ends_with: "ends with",
   in: "is any of",
   not_in: "is none of",
   is_empty: "is empty",
