@@ -36,6 +36,7 @@ import {
 } from "@cardstack/crm-adapters";
 import { getWidgetHtml, type WidgetName } from "@cardstack/widgets";
 import type { RunningUser } from "@cardstack/auth";
+import { isMeOwnerAsk, meFilterId } from "@cardstack/auth";
 import { DEMO_TENANT_ID, InMemoryConfigStore, type ConfigStore } from "./config/store.js";
 import type { PreferenceStore } from "./config/preferences.js";
 import type { AuditLog } from "./audit.js";
@@ -269,13 +270,17 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       description:
         "Search CRM records with ad-hoc filters and render an interactive results table. " +
         "Use openOnly to exclude closed/won/lost records; minAmount/maxAmount filter on the amount field. " +
-        "When the ask names a saved view (or is a broad ask like \"my deals\"), prefer crm_list_view.",
+        "When the ask names a saved view (or is a broad ask like \"my deals\"), prefer crm_list_view. " +
+        "For ad-hoc ownership, pass owner=\"me\" — the server substitutes the CRM user on this MCP token.",
       inputSchema: {
         object: z.string().default("deals").describe("Object API name, e.g. \"deals\""),
         query: z.string().optional().describe("Free-text search on record names"),
         stage: z.string().optional().describe("Stage filter — a stage LABEL or internal value; resolved either way"),
         openOnly: z.boolean().optional().describe("Only records not closed (won or lost)"),
-        owner: z.string().optional().describe("Owner name or id, to scope to a person's records"),
+        owner: z
+          .string()
+          .optional()
+          .describe('Owner name, id, or "me" / "$me" for the authenticated CRM user on this MCP token'),
         closingAfter: z.string().optional().describe("ISO date — only records with a close date on/after this"),
         closingBefore: z.string().optional().describe("ISO date — only records with a close date on/before this"),
         minAmount: z.number().optional(),
@@ -330,7 +335,15 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           }
         }
         if (args.owner && ownerField) {
-          filters.push({ field: ownerField, op: "eq", value: resolveOwnerValue(args.owner) });
+          const ownerValue = isMeOwnerAsk(args.owner)
+            ? meFilterId(runningUser)
+            : resolveOwnerValue(args.owner);
+          if (!ownerValue) {
+            throw new Error(
+              'owner=me requires a CRM user link — sign into Studio with HubSpot/Salesforce SSO and mint a new MCP token.',
+            );
+          }
+          filters.push({ field: ownerField, op: "eq", value: ownerValue });
         }
         if (args.minAmount !== undefined && amountField) {
           filters.push({ field: amountField, op: "gte", value: args.minAmount });
@@ -669,13 +682,16 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         }
 
         const recentBlock = homeCard.blocks.find((b) => b.type === "recent");
+        // Prefer the linked CRM user id for "me"; fall back to literal "me"
+        // (adapters treat unknown scope as unscoped / integration-user).
+        const meScope = meFilterId(runningUser) ?? "me";
         // Missing tasks/recents scopes degrade those blocks, not the whole card.
         const recent = recentBlock
-          ? await adapter.listRecentRecords("me", recentBlock.limit).catch(() => [])
+          ? await adapter.listRecentRecords(meScope, recentBlock.limit).catch(() => [])
           : [];
         const followupsBlock = homeCard.blocks.find((b) => b.type === "followups");
         const allTasks = followupsBlock
-          ? (await adapter.listTasks("me").catch(() => ({ rows: [], hasMore: false }))).rows
+          ? (await adapter.listTasks(meScope).catch(() => ({ rows: [], hasMore: false }))).rows
           : [];
         // Slice to the block's limit BEFORE building payload and summary, so the
         // model never narrates "20 follow-ups" over a card showing 5.

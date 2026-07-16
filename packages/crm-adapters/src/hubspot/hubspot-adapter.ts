@@ -245,11 +245,44 @@ export class HubSpotAdapter implements CrmAdapter {
     archived: boolean,
     after?: string,
   ): Promise<{
-    results: { id: string; firstName?: string; lastName?: string; email?: string }[];
+    results: {
+      id: string;
+      userId?: number | string;
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+    }[];
     paging?: { next?: { after?: string } };
   }> {
     const params = `limit=100${archived ? "&archived=true" : ""}${after ? `&after=${after}` : ""}`;
     return this.request("GET", `/crm/v3/owners?${params}`);
+  }
+
+  /**
+   * Map a HubSpot user id (SSO accountId) → owner id used in hubspot_owner_id.
+   * Returns null when owners can't be read or the user isn't an owner.
+   */
+  async resolveOwnerIdForUserId(hubspotUserId: string): Promise<string | null> {
+    const target = String(hubspotUserId);
+    const OWNER_CAP = 1000;
+    const scan = async (archived: boolean): Promise<string | null> => {
+      let after: string | undefined;
+      let fetched = 0;
+      do {
+        const { results, paging } = await this.fetchOwnersPage(archived, after);
+        for (const o of results) {
+          if (o.userId != null && String(o.userId) === target) return o.id;
+        }
+        fetched += results.length;
+        after = paging?.next?.after;
+      } while (after && fetched < OWNER_CAP);
+      return null;
+    };
+    try {
+      return (await scan(false)) ?? (await scan(true).catch(() => null));
+    } catch {
+      return null;
+    }
   }
 
   /** Owner id → display name (raw ids on cards are the #1 "feels broken"). */
@@ -770,25 +803,34 @@ export class HubSpotAdapter implements CrmAdapter {
     };
   }
 
-  async listTasks(): Promise<TaskPage> {
+  async listTasks(userScope?: string): Promise<TaskPage> {
+    const filters: { propertyName: string; operator: string; values?: string[]; value?: string }[] = [
+      {
+        propertyName: "hs_task_status",
+        operator: "IN",
+        values: ["NOT_STARTED", "IN_PROGRESS", "WAITING"],
+      },
+    ];
+    // HubSpot tasks use hubspot_owner_id when scoped to a concrete owner id.
+    if (userScope && userScope !== "me" && userScope !== "all") {
+      filters.push({
+        propertyName: "hubspot_owner_id",
+        operator: "EQ",
+        value: userScope,
+      });
+    }
     const data = await this.request<{
       results: { id: string; properties: Record<string, string | null> }[];
       paging?: { next?: { after?: string } };
     }>("POST", "/crm/v3/objects/tasks/search", {
-      // IN on the open statuses, not NEQ COMPLETED: DEFERRED (and any custom
-      // terminal status) must not show up as an open follow-up.
-      filterGroups: [
-        {
-          filters: [
-            {
-              propertyName: "hs_task_status",
-              operator: "IN",
-              values: ["NOT_STARTED", "IN_PROGRESS", "WAITING"],
-            },
-          ],
-        },
+      filterGroups: [{ filters }],
+      properties: [
+        "hs_task_subject",
+        "hs_timestamp",
+        "hs_task_status",
+        "hs_task_priority",
+        "hubspot_owner_id",
       ],
-      properties: ["hs_task_subject", "hs_timestamp", "hs_task_status", "hs_task_priority"],
       sorts: [{ propertyName: "hs_timestamp", direction: "ASCENDING" }],
       limit: 20,
     });

@@ -43,6 +43,8 @@ function TeamInner({ authEnabled }: { authEnabled: boolean }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [tokens, setTokens] = useState<McpToken[]>([]);
+  const [crmHint, setCrmHint] = useState<string | null>(null);
+  const [crmLinked, setCrmLinked] = useState(false);
   const [newOrgName, setNewOrgName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"admin" | "member">("member");
@@ -73,6 +75,15 @@ function TeamInner({ authEnabled }: { authEnabled: boolean }) {
       if (tokRes.ok) {
         const body = (await tokRes.json()) as { tokens: McpToken[] };
         setTokens(body.tokens);
+      }
+      const linkRes = await fetch("/api/team/crm-link");
+      if (linkRes.ok) {
+        const body = (await linkRes.json()) as {
+          hint?: string;
+          link?: { crmUserId?: string } | null;
+        };
+        setCrmHint(body.hint ?? null);
+        setCrmLinked(Boolean(body.link?.crmUserId));
       }
     } else {
       setMembers([]);
@@ -331,8 +342,20 @@ function TeamInner({ authEnabled }: { authEnabled: boolean }) {
             <div className="st-section-label">MCP tokens</div>
             <p className="text-[12.5px] text-ink-55">
               Chat hosts authenticate with a bearer token. Each token carries your user identity
-              into the MCP server (audit + &quot;Written as&quot; provenance).
+              into the MCP server (audit + &quot;Written as&quot; provenance
+              {crmLinked ? " + CRM $me filters" : ""}).
             </p>
+            {crmHint && (
+              <div
+                className={`rounded-[10px] px-3 py-2 text-[12px] ${
+                  crmLinked
+                    ? "border border-line bg-published text-published-ink"
+                    : "border border-line bg-draft text-draft-ink"
+                }`}
+              >
+                {crmHint}
+              </div>
+            )}
             <ul className="flex flex-col gap-1.5">
               {tokens.map((t) => (
                 <li

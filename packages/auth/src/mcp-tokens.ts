@@ -4,13 +4,22 @@
  * Chat hosts (Claude, ChatGPT, Copilot) cannot use Studio session cookies.
  * Admins mint a token in Studio → My team; the host sends
  * `Authorization: Bearer cs_live_…` on every /mcp request. The MCP server
- * hashes the bearer, looks up the row, and resolves tenantId + RunningUser.
+ * hashes the bearer, looks up the row, and resolves tenantId + RunningUser
+ * (including CRM user variables when linked via SSO).
  *
  * Migration notes:
  * - 2026-07-16: initial table. CREATE TABLE IF NOT EXISTS — safe on live DBs.
+ * - 2026-07-16: crm_user_id / crm_owner_id / crm stamped at mint from
+ *   user_crm_links so "my deals" resolves without a join on every request.
  */
 import { createHash, randomBytes } from "node:crypto";
-import type { MemberRole, McpTokenRecord, ResolvedMcpAuth, RunningUser } from "./types.js";
+import type {
+  CrmKind,
+  MemberRole,
+  McpTokenRecord,
+  ResolvedMcpAuth,
+  RunningUser,
+} from "./types.js";
 
 export interface SqlSession {
   query(text: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -27,12 +36,18 @@ CREATE TABLE IF NOT EXISTS mcp_tokens (
   role         text NOT NULL CHECK (role IN ('owner','admin','member')),
   user_email   text,
   user_name    text NOT NULL,
+  crm_user_id  text,
+  crm_owner_id text,
+  crm          text,
   created_at   timestamptz NOT NULL DEFAULT now(),
   last_used_at timestamptz,
   revoked_at   timestamptz
 );
 CREATE INDEX IF NOT EXISTS mcp_tokens_tenant_idx ON mcp_tokens (tenant_id);
 CREATE INDEX IF NOT EXISTS mcp_tokens_hash_idx ON mcp_tokens (token_hash);
+ALTER TABLE mcp_tokens ADD COLUMN IF NOT EXISTS crm_user_id text;
+ALTER TABLE mcp_tokens ADD COLUMN IF NOT EXISTS crm_owner_id text;
+ALTER TABLE mcp_tokens ADD COLUMN IF NOT EXISTS crm text;
 `;
 
 function hashToken(raw: string): string {
@@ -44,7 +59,7 @@ function newId(prefix: string): string {
 }
 
 function rowToRecord(row: Record<string, unknown>): McpTokenRecord {
-  return {
+  const record: McpTokenRecord = {
     id: String(row.id),
     tenantId: String(row.tenant_id),
     userId: String(row.user_id),
@@ -56,6 +71,10 @@ function rowToRecord(row: Record<string, unknown>): McpTokenRecord {
     lastUsedAt: row.last_used_at ? new Date(String(row.last_used_at)).toISOString() : null,
     revokedAt: row.revoked_at ? new Date(String(row.revoked_at)).toISOString() : null,
   };
+  if (row.crm_user_id) record.crmUserId = String(row.crm_user_id);
+  if (row.crm_owner_id) record.crmOwnerId = String(row.crm_owner_id);
+  if (row.crm === "hubspot" || row.crm === "salesforce") record.crm = row.crm;
+  return record;
 }
 
 export class McpTokenStore {
@@ -82,6 +101,9 @@ export class McpTokenStore {
     role: MemberRole;
     userEmail?: string;
     userName: string;
+    crmUserId?: string;
+    crmOwnerId?: string;
+    crm?: CrmKind;
   }): Promise<{ record: McpTokenRecord; rawToken: string }> {
     await this.ready;
     const id = newId("tok");
@@ -90,8 +112,9 @@ export class McpTokenStore {
     const tokenPrefix = `${rawToken.slice(0, 12)}…`;
     await this.sql.query(
       `INSERT INTO mcp_tokens
-         (id, tenant_id, user_id, label, token_hash, token_prefix, role, user_email, user_name)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+         (id, tenant_id, user_id, label, token_hash, token_prefix, role, user_email, user_name,
+          crm_user_id, crm_owner_id, crm)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
       [
         id,
         input.tenantId,
@@ -102,6 +125,9 @@ export class McpTokenStore {
         input.role,
         input.userEmail ?? null,
         input.userName,
+        input.crmUserId ?? null,
+        input.crmOwnerId ?? null,
+        input.crm ?? null,
       ],
     );
     const { rows } = await this.sql.query(`SELECT * FROM mcp_tokens WHERE id = $1`, [id]);
@@ -149,6 +175,9 @@ export class McpTokenStore {
       authMethod: "mcp_token",
     };
     if (row.user_email) user.email = String(row.user_email);
+    if (row.crm_user_id) user.crmUserId = String(row.crm_user_id);
+    if (row.crm_owner_id) user.crmOwnerId = String(row.crm_owner_id);
+    if (row.crm === "hubspot" || row.crm === "salesforce") user.crm = row.crm;
     return { tenantId: String(row.tenant_id), user, tokenId: String(row.id) };
   }
 }
@@ -160,6 +189,9 @@ export function demoRunningUser(method: "shared_secret" | "demo" = "demo"): Runn
     displayName: method === "shared_secret" ? "Shared-secret client" : "Demo rep",
     role: "system",
     authMethod: method,
+    // Mock portal owner label — "my deals" filters to Demo rep's records.
+    crmUserId: "Demo rep",
+    crmOwnerId: "Demo rep",
   };
 }
 

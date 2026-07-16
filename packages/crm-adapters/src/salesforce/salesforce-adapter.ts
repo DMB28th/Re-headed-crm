@@ -493,9 +493,14 @@ export class SalesforceAdapter implements CrmAdapter {
     };
   }
 
-  async listTasks(): Promise<TaskPage> {
-    // Client-credentials runs as the integration user; its open tasks are the
-    // v1 "me" scope. Per-rep scoping arrives with the three-legged flow (M7).
+  async listTasks(userScope?: string): Promise<TaskPage> {
+    // Client-credentials runs as the integration user; without a concrete
+    // OwnerId scope we return that user's open tasks. Per-rep three-legged
+    // OAuth (user_crm_tokens) makes /recent + OwnerId filters native.
+    const ownerClause =
+      userScope && userScope !== "me" && userScope !== "all"
+        ? ` AND OwnerId = '${soqlEscape(userScope)}'`
+        : "";
     const { records } = await this.soql<{
       Id: string;
       Subject: string | null;
@@ -503,7 +508,7 @@ export class SalesforceAdapter implements CrmAdapter {
       What?: { Name?: string } | null;
       WhatId?: string | null;
     }>(
-      "SELECT Id, Subject, ActivityDate, WhatId, What.Name FROM Task WHERE IsClosed = false ORDER BY ActivityDate ASC NULLS LAST LIMIT 20",
+      `SELECT Id, Subject, ActivityDate, WhatId, What.Name FROM Task WHERE IsClosed = false${ownerClause} ORDER BY ActivityDate ASC NULLS LAST LIMIT 20`,
     );
     return {
       rows: records.map((t) => ({

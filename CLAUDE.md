@@ -48,8 +48,11 @@ still in-memory — move them to Postgres alongside multi-tenant auth (M7).
 **Auth foundation (partial M7):** `@cardstack/auth` MCP tokens; Studio
 better-auth SSO (Google/HubSpot/Salesforce) + organizations (= accounts);
 `/login`, `/team`, logout; MCP `Bearer cs_live_…` → tenant + RunningUser.
-Still open: MCP OAuth 2.1 registry metadata, CRM token encryption (KMS),
-preferences → Postgres.
+CRM user variables: HubSpot/SF SSO → `user_crm_links` → stamped on MCP tokens
+as `crmUserId`/`crmOwnerId`; `owner=me` and home-card scope use `$me`.
+Per-rep CRM OAuth tokens scaffolded in `user_crm_tokens` (encryption + connect
+UI next). Still open: MCP OAuth 2.1 registry metadata, CRM token encryption
+(KMS), preferences → Postgres.
 
 ## Hard rules
 

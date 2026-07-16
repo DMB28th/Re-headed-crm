@@ -70,7 +70,8 @@ export class MockCrmAdapter implements CrmAdapter {
       if (stage && !stage.closedValues) stage.closedValues = ["Closed won", "Closed lost"];
     }
     if (has("amount")) out.amountField = "amount";
-    if (has("owner")) out.ownerField = "owner";
+    if (has("deal_owner")) out.ownerField = "deal_owner";
+    else if (has("owner")) out.ownerField = "owner";
     if (has("closedate")) out.closeDateField = "closedate";
     return out;
   }
@@ -196,12 +197,36 @@ export class MockCrmAdapter implements CrmAdapter {
     return this.search(view.object, { ...query, ...(cursor ? { cursor } : {}) });
   }
 
-  async listTasks(_userScope: string): Promise<TaskPage> {
-    return { rows: clone(this.tasks.filter((t) => t.status === "open")), hasMore: false };
+  async listTasks(userScope: string): Promise<TaskPage> {
+    const open = this.tasks.filter((t) => t.status === "open");
+    // Scope "me" / Demo rep → tasks on deals owned by Demo rep.
+    if (userScope && userScope !== "me" && userScope !== "all") {
+      const deals = this.table("deals");
+      const mine = new Set(
+        deals
+          .filter((d) => String(d.fields.deal_owner ?? "") === userScope)
+          .map((d) => d.id),
+      );
+      return {
+        rows: clone(open.filter((t) => t.relatedRecordId && mine.has(t.relatedRecordId))),
+        hasMore: false,
+      };
+    }
+    return { rows: clone(open), hasMore: false };
   }
 
-  async listRecentRecords(_userScope: string, limit: number): Promise<RecentRecord[]> {
-    return clone(fixtures.RECENT_RECORDS)
+  async listRecentRecords(userScope: string, limit: number): Promise<RecentRecord[]> {
+    let rows = clone(fixtures.RECENT_RECORDS);
+    if (userScope && userScope !== "me" && userScope !== "all") {
+      const deals = this.table("deals");
+      const mine = new Set(
+        deals
+          .filter((d) => String(d.fields.deal_owner ?? "") === userScope)
+          .map((d) => d.id),
+      );
+      rows = rows.filter((r) => r.object !== "deals" || mine.has(r.id));
+    }
+    return rows
       .slice(0, limit)
       .map((r) => ({ ...r, objectLabel: fixtures.OBJECTS[r.object]?.label ?? r.object }));
   }
