@@ -128,9 +128,17 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     return adapter.getViewRows(entry.view.id, cursor);
   };
 
+  // Resilience: one object's unreadable exposures (e.g. a config written by a
+  // newer schema than this process knows) must degrade THAT object's views, not
+  // 502 every tool by throwing out of server creation.
   const allExposedViews: ExposedView[] = (
     await Promise.all(
-      (await configStore.listConfiguredObjects(tenantId)).map((o) => exposedViewsFor(o)),
+      (await configStore.listConfiguredObjects(tenantId)).map((o) =>
+        exposedViewsFor(o).catch((error) => {
+          console.error(`exposedViewsFor(${o}) failed; skipping its views:`, error);
+          return [] as ExposedView[];
+        }),
+      ),
     )
   ).flat();
 
