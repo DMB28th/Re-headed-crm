@@ -16,6 +16,8 @@ export async function GET() {
     const connection = await (await getStore()).getConnection(TENANT_ID);
     await syncCrmLinksForUser(session.user.id, TENANT_ID, session.user.email);
     const link = await getCrmLinkForTenant(session.user.id, TENANT_ID, connection.crm);
+    const me = link?.crmOwnerId ?? link?.crmUserId ?? null;
+    const user = link?.crmUserId ?? null;
     return NextResponse.json({
       authEnabled: true,
       workspaceCrm: connection.crm,
@@ -29,11 +31,22 @@ export async function GET() {
             matchesWorkspace: link.crm === connection.crm,
           }
         : null,
+      /** Resolved CRM user variables stamped onto new MCP tokens. */
+      variables: {
+        $me: me,
+        $user: user,
+        ownerId: link?.crmOwnerId ?? null,
+        userId: link?.crmUserId ?? null,
+        email: link?.crmEmail ?? null,
+        crm: link?.crm ?? null,
+      },
       hint: link
         ? link.crm === connection.crm
-          ? "MCP tokens will carry this CRM identity — \"my deals\" filters as you."
+          ? me
+            ? `$me → ${me}. Mint (or remint) an MCP token so chat hosts use it.`
+            : "CRM link exists but $me is empty — reconnect HubSpot as me."
           : `You signed in with ${link.crm}, but this workspace is connected to ${connection.crm}. Sign in with ${connection.crm} SSO to bind $me.`
-        : "Sign in with HubSpot or Salesforce SSO (or link later) so \"my deals\" knows which CRM user you are.",
+        : "Connect HubSpot as me (or sign in with HubSpot/Salesforce SSO) so $me / $user resolve.",
     });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 400 });

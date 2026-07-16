@@ -21,8 +21,20 @@ type McpToken = {
   label: string;
   tokenPrefix: string;
   role: string;
+  crmUserId?: string | null;
+  crmOwnerId?: string | null;
+  crm?: string | null;
   createdAt: string;
   lastUsedAt: string | null;
+};
+
+type CrmVariables = {
+  $me: string | null;
+  $user: string | null;
+  ownerId: string | null;
+  userId: string | null;
+  email: string | null;
+  crm: string | null;
 };
 
 function slugify(name: string): string {
@@ -45,9 +57,11 @@ function TeamInner({ authEnabled }: { authEnabled: boolean }) {
   const [tokens, setTokens] = useState<McpToken[]>([]);
   const [crmHint, setCrmHint] = useState<string | null>(null);
   const [crmLinked, setCrmLinked] = useState(false);
+  const [crmVariables, setCrmVariables] = useState<CrmVariables | null>(null);
   const [hubspotRep, setHubspotRep] = useState<{
     connected: boolean;
     appConfigured?: boolean;
+    crmUserId?: string | null;
     crmOwnerId?: string | null;
     portalId?: string | null;
     matchesWorkspace?: boolean | null;
@@ -98,9 +112,11 @@ function TeamInner({ authEnabled }: { authEnabled: boolean }) {
         const body = (await linkRes.json()) as {
           hint?: string;
           link?: { crmUserId?: string } | null;
+          variables?: CrmVariables;
         };
         setCrmHint(body.hint ?? null);
         setCrmLinked(Boolean(body.link?.crmUserId));
+        setCrmVariables(body.variables ?? null);
       }
       const oauthRes = await fetch("/api/team/crm-oauth");
       if (oauthRes.ok) {
@@ -114,6 +130,7 @@ function TeamInner({ authEnabled }: { authEnabled: boolean }) {
           };
           hubspot?: {
             connected: boolean;
+            crmUserId?: string | null;
             crmOwnerId?: string | null;
             portalId?: string | null;
             matchesWorkspace?: boolean | null;
@@ -122,6 +139,7 @@ function TeamInner({ authEnabled }: { authEnabled: boolean }) {
         setHubspotRep({
           connected: Boolean(body.hubspot?.connected),
           appConfigured: body.appConfigured,
+          crmUserId: body.hubspot?.crmUserId ?? null,
           crmOwnerId: body.hubspot?.crmOwnerId ?? null,
           portalId: body.hubspot?.portalId ?? null,
           matchesWorkspace: body.hubspot?.matchesWorkspace ?? null,
@@ -132,6 +150,10 @@ function TeamInner({ authEnabled }: { authEnabled: boolean }) {
       setMembers([]);
       setInvitations([]);
       setTokens([]);
+      setCrmVariables(null);
+      setCrmLinked(false);
+      setCrmHint(null);
+      setHubspotRep(null);
     }
   }, [authEnabled]);
 
@@ -513,11 +535,81 @@ function TeamInner({ authEnabled }: { authEnabled: boolean }) {
           </section>
 
           <section className="st-card p-4 flex flex-col gap-3">
+            <div className="st-section-label">CRM user variables</div>
+            <p className="text-[12.5px] text-ink-55">
+              Resolved for you in this workspace. Chat prompts like{" "}
+              <code className="font-mono text-[11px]">owner=me</code> /{" "}
+              <code className="font-mono text-[11px]">$me</code> use these values — but only after
+              they&apos;re stamped onto an MCP token at mint time.
+            </p>
+            {(() => {
+              const me =
+                crmVariables?.$me ??
+                hubspotRep?.crmOwnerId ??
+                hubspotRep?.crmUserId ??
+                null;
+              const user = crmVariables?.$user ?? hubspotRep?.crmUserId ?? null;
+              const email = crmVariables?.email ?? null;
+              if (!me && !user) {
+                return (
+                  <div className="rounded-[10px] border border-line bg-draft px-3 py-2 text-[12px] text-draft-ink">
+                    {crmHint ??
+                      "$me / $user are empty. Connect HubSpot as me above, then mint a token."}
+                  </div>
+                );
+              }
+              return (
+                <div className="rounded-[10px] border border-line bg-published px-3 py-3">
+                  <dl className="grid gap-2 sm:grid-cols-2">
+                    <div>
+                      <dt className="font-mono text-[11px] text-ink-45">$me</dt>
+                      <dd className="font-mono text-[14px] font-medium text-published-ink">
+                        {me ?? "—"}
+                      </dd>
+                      <dd className="text-[11px] text-ink-45">
+                        owner filter (hubspot_owner_id)
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="font-mono text-[11px] text-ink-45">$user</dt>
+                      <dd className="font-mono text-[14px] font-medium text-published-ink">
+                        {user ?? "—"}
+                      </dd>
+                      <dd className="text-[11px] text-ink-45">CRM login user id</dd>
+                    </div>
+                    {email && (
+                      <div className="sm:col-span-2">
+                        <dt className="font-mono text-[11px] text-ink-45">email</dt>
+                        <dd className="text-[13px] text-published-ink">{email}</dd>
+                      </div>
+                    )}
+                    {hubspotRep?.workspace?.portalId && (
+                      <div className="sm:col-span-2">
+                        <dt className="font-mono text-[11px] text-ink-45">portal</dt>
+                        <dd className="font-mono text-[13px] text-published-ink">
+                          {hubspotRep.workspace.portalId}
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              );
+            })()}
+            {(crmVariables?.$me || hubspotRep?.crmOwnerId) &&
+              tokens.some((t) => !(t.crmOwnerId || t.crmUserId)) && (
+                <div className="rounded-[10px] border border-line bg-draft px-3 py-2 text-[12px] text-draft-ink">
+                  You have MCP tokens minted before this link — they do not carry $me yet.
+                  Revoke and mint a new token below.
+                </div>
+              )}
+          </section>
+
+          <section className="st-card p-4 flex flex-col gap-3">
             <div className="st-section-label">MCP tokens</div>
             <p className="text-[12.5px] text-ink-55">
               Chat hosts authenticate with a bearer token. Each token carries your user identity
               into the MCP server (audit + &quot;Written as&quot; provenance
-              {crmLinked ? " + CRM $me filters" : ""}).
+              {crmLinked ? " + CRM $me / $user" : ""}).
             </p>
             {crmHint && (
               <div
@@ -531,25 +623,33 @@ function TeamInner({ authEnabled }: { authEnabled: boolean }) {
               </div>
             )}
             <ul className="flex flex-col gap-1.5">
-              {tokens.map((t) => (
-                <li
-                  key={t.id}
-                  className="flex items-center justify-between rounded-[10px] bg-paper px-3 py-2"
-                >
-                  <div>
-                    <div className="text-[13px] font-medium">{t.label}</div>
-                    <div className="font-mono text-[11px] text-ink-45">{t.tokenPrefix}</div>
-                  </div>
-                  <button
-                    type="button"
-                    className="st-btn text-[12px]"
-                    disabled={busy !== null}
-                    onClick={() => void revokeToken(t.id)}
+              {tokens.map((t) => {
+                const tokenMe = t.crmOwnerId ?? t.crmUserId ?? null;
+                return (
+                  <li
+                    key={t.id}
+                    className="flex items-center justify-between rounded-[10px] bg-paper px-3 py-2"
                   >
-                    Revoke
-                  </button>
-                </li>
-              ))}
+                    <div>
+                      <div className="text-[13px] font-medium">{t.label}</div>
+                      <div className="font-mono text-[11px] text-ink-45">{t.tokenPrefix}</div>
+                      <div className="font-mono text-[11px] text-ink-45 mt-0.5">
+                        {tokenMe
+                          ? `$me ${tokenMe}${t.crmUserId && t.crmUserId !== tokenMe ? ` · $user ${t.crmUserId}` : ""}`
+                          : "$me not stamped — remint"}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="st-btn text-[12px]"
+                      disabled={busy !== null}
+                      onClick={() => void revokeToken(t.id)}
+                    >
+                      Revoke
+                    </button>
+                  </li>
+                );
+              })}
               {tokens.length === 0 && (
                 <p className="text-[12.5px] text-ink-45">No tokens yet.</p>
               )}
