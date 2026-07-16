@@ -88,6 +88,13 @@ export interface AdminConfigStore extends ConfigStore {
   publishHomeCard(config: HomeCardConfig): Promise<HomeCardConfig>;
   listPublishes(tenantId: string): Promise<PublishEvent[]>;
   setConnection(state: ConnectionState): Promise<void>;
+  /**
+   * Remove an object's Cardstack config entirely — every audience's layout
+   * (draft + published + history), its view exposures / custom lists, and its
+   * publish events. The object and its records in the CRM are NOT touched; it
+   * simply returns to "available to add". Idempotent.
+   */
+  removeObject(tenantId: string, object: string): Promise<void>;
 }
 
 export const layoutKey = (tenantId: string, object: string, audience = "default"): string =>

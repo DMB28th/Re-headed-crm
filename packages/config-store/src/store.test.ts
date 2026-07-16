@@ -69,6 +69,31 @@ describe("publish lifecycle", () => {
   });
 });
 
+describe("removeObject", () => {
+  it("drops layout, exposures and publish history but leaves other objects", async () => {
+    const store = new InMemoryConfigStore();
+    // Deals is seeded published; give it exposures + a publish event, then remove.
+    await store.saveDraft(editedDraft());
+    await store.publish(DEMO_TENANT_ID, "deals");
+    expect(await store.listConfiguredObjects(DEMO_TENANT_ID)).toContain("deals");
+
+    await store.removeObject(DEMO_TENANT_ID, "deals");
+
+    expect(await store.getLayout(DEMO_TENANT_ID, "deals")).toBeFalsy();
+    const record = await store.getLayoutRecord(DEMO_TENANT_ID, "deals");
+    expect(record.draft).toBeNull();
+    expect(record.published).toBeNull();
+    expect(await store.listConfiguredObjects(DEMO_TENANT_ID)).not.toContain("deals");
+    expect(await store.getCustomLists(DEMO_TENANT_ID, "deals")).toEqual([]);
+    expect((await store.listPublishes(DEMO_TENANT_ID)).some((p) => p.object === "deals")).toBe(false);
+  });
+
+  it("is idempotent for an object that was never configured", async () => {
+    const store = new InMemoryConfigStore();
+    await expect(store.removeObject(DEMO_TENANT_ID, "never_configured")).resolves.toBeUndefined();
+  });
+});
+
 describe("home card publish", () => {
   it("bumps revision from current and logs the event", async () => {
     const store = new InMemoryConfigStore();

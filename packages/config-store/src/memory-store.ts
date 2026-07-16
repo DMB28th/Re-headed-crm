@@ -133,6 +133,21 @@ export abstract class BaseConfigStore implements AdminConfigStore {
     }
   }
 
+  async removeObject(tenantId: string, object: string): Promise<void> {
+    const state = await this.load();
+    // Layouts are keyed `${tenant}::${object}::${audience}` — drop every audience.
+    const layoutPrefix = `${tenantId}::${object}::`;
+    for (const key of Object.keys(state.layouts)) {
+      if (key.startsWith(layoutPrefix)) delete state.layouts[key];
+    }
+    delete state.viewExposures[exposureKey(tenantId, object)];
+    // Publish history for this object no longer has a card to point at.
+    state.publishes = state.publishes.filter(
+      (p) => !(p.tenantId === tenantId && p.object === object),
+    );
+    await this.save(state);
+  }
+
   async publish(tenantId: string, object: string, audience = "default"): Promise<LayoutConfig> {
     const state = await this.load();
     const key = layoutKey(tenantId, object, audience);

@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import {
   summarizeCustomFilters,
   VALUELESS_LIST_OPS,
+  MULTI_VALUE_LIST_OPS,
   type CustomList,
   type CustomListFilter,
   type FilterLabels,
@@ -27,9 +28,88 @@ const OPS: { value: CustomListFilter["op"]; label: string }[] = [
   { value: "gte", label: "≥" },
   { value: "lt", label: "<" },
   { value: "lte", label: "≤" },
+  { value: "in", label: "is any of" },
+  { value: "not_in", label: "is none of" },
   { value: "is_empty", label: "is empty" },
   { value: "not_empty", label: "is not empty" },
 ];
+
+interface ListTemplate {
+  key: string;
+  name: string;
+  aliases: string[];
+  filters: CustomListFilter[];
+  summary: string;
+}
+
+/**
+ * One-click list templates derived from the object's own describe — the
+ * practical way to rebuild HubSpot object VIEWS (which have no public API) as
+ * Cardstack lists. Each only appears when the object actually has that concept
+ * (stage/amount/owner/close-date), so it works for any CRM object.
+ */
+function templatesFor(describe: ObjectDescribe): ListTemplate[] {
+  const plural = describe.labelPlural.toLowerCase();
+  const labelOf = (api: string) => describe.fields.find((f) => f.api === api)?.label ?? api;
+  const out: ListTemplate[] = [];
+  const stage = describe.stageField;
+  const stageMeta = stage ? describe.fields.find((f) => f.api === stage) : undefined;
+  const closed = stageMeta?.closedValues ?? [];
+  if (stage && closed.length > 0) {
+    out.push({
+      key: "open",
+      name: `Open ${plural}`,
+      aliases: [`open ${plural}`, "open pipeline"],
+      filters: [{ field: stage, op: "not_in", values: closed }],
+      summary: `${labelOf(stage)} is not closed`,
+    });
+    out.push({
+      key: "closed",
+      name: `Closed ${plural}`,
+      aliases: [`closed ${plural}`],
+      filters: [{ field: stage, op: "in", values: closed }],
+      summary: `${labelOf(stage)} is closed`,
+    });
+  }
+  if (describe.amountField) {
+    const a = describe.amountField;
+    out.push({
+      key: "large",
+      name: `Large ${plural} (50k+)`,
+      aliases: [`large ${plural}`, `big ${plural}`],
+      filters: [{ field: a, op: "gte", value: 50000 }],
+      summary: `${labelOf(a)} ≥ 50,000`,
+    });
+    out.push({
+      key: "no-amount",
+      name: `${describe.labelPlural} with no amount`,
+      aliases: [`${plural} missing amount`],
+      filters: [{ field: a, op: "is_empty" }],
+      summary: `${labelOf(a)} is empty`,
+    });
+  }
+  if (describe.ownerField) {
+    const o = describe.ownerField;
+    out.push({
+      key: "no-owner",
+      name: `Unassigned ${plural}`,
+      aliases: [`unassigned ${plural}`, `${plural} with no owner`],
+      filters: [{ field: o, op: "is_empty" }],
+      summary: `${labelOf(o)} is empty`,
+    });
+  }
+  if (describe.closeDateField) {
+    const c = describe.closeDateField;
+    out.push({
+      key: "no-closedate",
+      name: `${describe.labelPlural} with no close date`,
+      aliases: [`${plural} missing close date`],
+      filters: [{ field: c, op: "is_empty" }],
+      summary: `${labelOf(c)} is empty`,
+    });
+  }
+  return out;
+}
 
 export function ViewsEditor({ object }: { object: string }) {
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
@@ -134,6 +214,16 @@ export function ViewsEditor({ object }: { object: string }) {
       ...exposures,
       customLists: [...exposures.customLists, list],
       views: [...exposures.views, { viewId: id, exposed: true, aliases: [], isDefault: false }],
+    });
+  };
+
+  const addFromTemplate = (t: ListTemplate) => {
+    const id = `cl-${t.key}-${Date.now().toString(36)}`;
+    const list: CustomList = { id, name: t.name, filters: t.filters, filterSummary: t.summary };
+    void save({
+      ...exposures,
+      customLists: [...exposures.customLists, list],
+      views: [...exposures.views, { viewId: id, exposed: true, aliases: t.aliases, isDefault: false }],
     });
   };
 
@@ -254,6 +344,36 @@ export function ViewsEditor({ object }: { object: string }) {
           + New list
         </button>
       </div>
+
+      {/* One-click templates: rebuild common CRM views (which HubSpot doesn't
+          expose via API) as Cardstack lists, with filters from real metadata. */}
+      {(() => {
+        const templates = templatesFor(describe).filter(
+          (t) => !exposures.customLists.some((l) => l.name === t.name),
+        );
+        if (templates.length === 0) return null;
+        return (
+          <div className="mt-2 rounded-[10px] border border-line-soft bg-paper px-3 py-2.5">
+            <div className="text-[11px] text-ink-45">
+              Quick add — one-click lists built from this object's fields (edit or delete after):
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {templates.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  className="rounded-[8px] border border-dashed border-line px-2.5 py-1 text-[11.5px] text-ink-55 hover:border-accent hover:text-ink"
+                  title={t.summary}
+                  onClick={() => addFromTemplate(t)}
+                >
+                  + {t.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       <div className="st-card mt-2 overflow-hidden">
         {exposures.customLists.length === 0 && (
           <div className="px-4 py-3 text-[12.5px] text-ink-45">
@@ -364,6 +484,49 @@ function FilterEditor({
     // is_empty / not_empty take no operand.
     if (VALUELESS_LIST_OPS.includes(filter.op)) return null;
     const meta = fieldMeta(filter.field);
+    // in / not_in: pick a SET of values (a scrollable checkbox list for
+    // picklists; comma-separated text otherwise).
+    if (MULTI_VALUE_LIST_OPS.includes(filter.op)) {
+      const selected = new Set((filter.values ?? []).map(String));
+      if (meta?.values) {
+        return (
+          <div className="max-h-[132px] w-[220px] shrink-0 overflow-y-auto rounded-[8px] border border-line bg-surface p-1.5">
+            {meta.values.map((v) => (
+              <label key={v} className="flex items-center gap-1.5 px-1 py-0.5 text-[11.5px]">
+                <input
+                  type="checkbox"
+                  checked={selected.has(v)}
+                  onChange={(e) => {
+                    const next = new Set(selected);
+                    if (e.target.checked) next.add(v);
+                    else next.delete(v);
+                    update(i, { values: [...next] });
+                  }}
+                />
+                <span className="truncate" title={meta.valueLabels?.[v] ?? v}>
+                  {meta.valueLabels?.[v] ?? v}
+                </span>
+              </label>
+            ))}
+          </div>
+        );
+      }
+      return (
+        <input
+          className="st-input w-[200px] shrink-0 py-1 text-[11.5px]"
+          placeholder="value1, value2, …"
+          defaultValue={(filter.values ?? []).join(", ")}
+          onBlur={(e) =>
+            update(i, {
+              values: e.target.value
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean),
+            })
+          }
+        />
+      );
+    }
     if (meta?.values) {
       return (
         <select
@@ -414,8 +577,11 @@ function FilterEditor({
             value={filter.op}
             onChange={(e) => {
               const op = e.target.value as CustomListFilter["op"];
-              // Emptiness ops carry no value; clear it so we never ship EQ "".
-              update(i, VALUELESS_LIST_OPS.includes(op) ? { op, value: undefined } : { op });
+              // Reset the operand to the shape the new op expects: none for
+              // empties, a set for in/not_in, a single value otherwise.
+              if (VALUELESS_LIST_OPS.includes(op)) update(i, { op, value: undefined, values: undefined });
+              else if (MULTI_VALUE_LIST_OPS.includes(op)) update(i, { op, value: undefined, values: [] });
+              else update(i, { op, values: undefined });
             }}
           >
             {OPS.map((op) => (

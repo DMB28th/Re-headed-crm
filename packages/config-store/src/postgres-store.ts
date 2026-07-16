@@ -222,6 +222,30 @@ export class PostgresConfigStore implements AdminConfigStore {
     );
   }
 
+  async removeObject(tenantId: string, object: string): Promise<void> {
+    await this.ready;
+    await this.sql.query("BEGIN");
+    try {
+      // All audiences + statuses (draft/published), exposures, and publish log.
+      await this.sql.query("DELETE FROM layout_configs WHERE tenant_id=$1 AND object=$2", [
+        tenantId,
+        object,
+      ]);
+      await this.sql.query("DELETE FROM view_exposures WHERE tenant_id=$1 AND object=$2", [
+        tenantId,
+        object,
+      ]);
+      await this.sql.query("DELETE FROM publish_events WHERE tenant_id=$1 AND object=$2", [
+        tenantId,
+        object,
+      ]);
+      await this.sql.query("COMMIT");
+    } catch (error) {
+      await this.sql.query("ROLLBACK");
+      throw error;
+    }
+  }
+
   async publish(tenantId: string, object: string, audience = "default"): Promise<LayoutConfig> {
     await this.ready;
     await this.sql.query("BEGIN");

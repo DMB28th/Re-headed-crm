@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { getAdapter, getStore, TENANT_ID } from "../../../lib/backend";
 import { NoConnection } from "../../../components/no-connection";
+import { RemoveObjectZone } from "../../../components/remove-object-zone";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +97,8 @@ export default async function ObjectHubPage({
           </Link>
         ))}
       </div>
+
+      <RemoveObjectZone object={object} label={label} />
     </div>
   );
 }

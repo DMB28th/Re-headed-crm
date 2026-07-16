@@ -14,6 +14,10 @@
  * - 2026-07-12: CustomListFilter.op gains "is_empty" | "not_empty" (data-quality
  *   lists: "deals with no amount"); these ops take no value, so `value` is now
  *   optional. Additive + optional — old configs parse unchanged.
+ * - 2026-07-12b: CustomListFilter.op gains "in" | "not_in" with a new optional
+ *   `values` array operand (one-click "Open deals" = stage not_in closedValues,
+ *   instead of eleven neq rows). Additive + optional — old configs parse
+ *   unchanged.
  */
 import { z } from "zod";
 
@@ -31,14 +35,30 @@ export type ViewExposure = z.infer<typeof ViewExposure>;
 
 export const CustomListFilter = z.object({
   field: z.string().min(1),
-  op: z.enum(["eq", "neq", "gt", "gte", "lt", "lte", "contains", "is_empty", "not_empty"]),
-  /** Absent for is_empty / not_empty — those ops take no operand. */
+  op: z.enum([
+    "eq",
+    "neq",
+    "gt",
+    "gte",
+    "lt",
+    "lte",
+    "contains",
+    "in",
+    "not_in",
+    "is_empty",
+    "not_empty",
+  ]),
+  /** Single operand for eq/neq/gt/gte/lt/lte/contains. Absent for empties. */
   value: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
+  /** Operand set for in / not_in (e.g. "stage is any of the closed stages"). */
+  values: z.array(z.union([z.string(), z.number(), z.boolean()])).optional(),
 });
 export type CustomListFilter = z.infer<typeof CustomListFilter>;
 
 /** Ops that take no value input. */
 export const VALUELESS_LIST_OPS: CustomListFilter["op"][] = ["is_empty", "not_empty"];
+/** Ops whose operand is a SET (multi-select), not a single value. */
+export const MULTI_VALUE_LIST_OPS: CustomListFilter["op"][] = ["in", "not_in"];
 
 /** Admin-defined list. Filters live in Cardstack (not the CRM) and are ANDed. */
 export const CustomList = z.object({
@@ -75,6 +95,8 @@ const OP_PHRASE: Record<CustomListFilter["op"], string> = {
   lt: "<",
   lte: "≤",
   contains: "contains",
+  in: "is any of",
+  not_in: "is none of",
   is_empty: "is empty",
   not_empty: "is not empty",
 };
@@ -94,9 +116,16 @@ export function summarizeCustomFilters(list: CustomList, labels?: FilterLabels):
       const fieldLabel = meta?.label ?? f.field;
       const phrase = OP_PHRASE[f.op] ?? f.op;
       if (VALUELESS_LIST_OPS.includes(f.op)) return `${fieldLabel} ${phrase}`;
+      const label = (v: unknown) => meta?.valueLabels?.[String(v)] ?? String(v);
+      if (MULTI_VALUE_LIST_OPS.includes(f.op)) {
+        const vals = f.values ?? [];
+        // Keep long sets readable ("is none of Closed won, Closed lost +3").
+        const shown = vals.slice(0, 3).map(label).join(", ");
+        const extra = vals.length > 3 ? ` +${vals.length - 3}` : "";
+        return `${fieldLabel} ${phrase} ${shown}${extra}`.trim();
+      }
       const raw = f.value;
-      const valueLabel =
-        raw !== null && raw !== undefined ? (meta?.valueLabels?.[String(raw)] ?? String(raw)) : "";
+      const valueLabel = raw !== null && raw !== undefined ? label(raw) : "";
       return `${fieldLabel} ${phrase} ${valueLabel}`.trim();
     })
     .join(" · ");
