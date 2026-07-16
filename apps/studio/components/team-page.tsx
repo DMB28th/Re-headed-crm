@@ -50,8 +50,18 @@ function TeamInner({ authEnabled }: { authEnabled: boolean }) {
     appConfigured?: boolean;
     crmOwnerId?: string | null;
     portalId?: string | null;
+    matchesWorkspace?: boolean | null;
+    workspace?: {
+      crm?: string;
+      live?: boolean;
+      portalId?: string | null;
+      label?: string | null;
+    };
   } | null>(null);
-  const [oauthBanner, setOauthBanner] = useState<string | null>(null);
+  const [oauthBanner, setOauthBanner] = useState<{
+    kind: "ok" | "err";
+    text: string;
+  } | null>(null);
   const [newOrgName, setNewOrgName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"admin" | "member">("member");
@@ -96,10 +106,17 @@ function TeamInner({ authEnabled }: { authEnabled: boolean }) {
       if (oauthRes.ok) {
         const body = (await oauthRes.json()) as {
           appConfigured?: boolean;
+          workspace?: {
+            crm?: string;
+            live?: boolean;
+            portalId?: string | null;
+            label?: string | null;
+          };
           hubspot?: {
             connected: boolean;
             crmOwnerId?: string | null;
             portalId?: string | null;
+            matchesWorkspace?: boolean | null;
           };
         };
         setHubspotRep({
@@ -107,6 +124,8 @@ function TeamInner({ authEnabled }: { authEnabled: boolean }) {
           appConfigured: body.appConfigured,
           crmOwnerId: body.hubspot?.crmOwnerId ?? null,
           portalId: body.hubspot?.portalId ?? null,
+          matchesWorkspace: body.hubspot?.matchesWorkspace ?? null,
+          workspace: body.workspace,
         });
       }
     } else {
@@ -120,14 +139,35 @@ function TeamInner({ authEnabled }: { authEnabled: boolean }) {
     void load();
     const oauth = search.get("oauth");
     const oauthError = search.get("oauth_error");
+    const expected = search.get("expected");
+    const got = search.get("got");
     if (oauth === "hubspot_connected") {
-      setOauthBanner(
-        search.get("remint") === "1"
-          ? "HubSpot connected as you. Mint a new MCP token so chat uses your CRM identity."
-          : "HubSpot connected as you.",
-      );
+      setOauthBanner({
+        kind: "ok",
+        text:
+          search.get("remint") === "1"
+            ? "Connected as you on this workspace’s HubSpot portal. Mint a new MCP token so chat uses your CRM identity."
+            : "Connected as you on this workspace’s HubSpot portal.",
+      });
+    } else if (oauthError === "wrong_portal") {
+      setOauthBanner({
+        kind: "err",
+        text: expected
+          ? `That HubSpot login was for portal ${got ?? "another account"}. This workspace is connected to portal ${expected} — pick that account in the HubSpot chooser, or reconnect Connections to the portal you want.`
+          : "That HubSpot login was for a different portal than this workspace’s Connections.",
+      });
+    } else if (oauthError === "workspace_not_hubspot") {
+      setOauthBanner({
+        kind: "err",
+        text: "Connect HubSpot under Connections first. “Connect as me” is scoped to that workspace portal.",
+      });
+    } else if (oauthError === "workspace_mock") {
+      setOauthBanner({
+        kind: "err",
+        text: "Workspace is still on the mock portal. Connect a live HubSpot private app under Connections first.",
+      });
     } else if (oauthError) {
-      setOauthBanner(`HubSpot connect failed: ${oauthError}`);
+      setOauthBanner({ kind: "err", text: `HubSpot connect failed: ${oauthError}` });
     }
   }, [load, search]);
 
@@ -376,48 +416,98 @@ function TeamInner({ authEnabled }: { authEnabled: boolean }) {
           <section className="st-card p-4 flex flex-col gap-3">
             <div className="st-section-label">Connect as me (HubSpot)</div>
             <p className="text-[12.5px] text-ink-55">
-              Per-rep OAuth so chat runs as your HubSpot user — sharing, FLS, and $me filters
-              are native. Separate from the workspace private-app connection admins use for
-              Studio.
+              Scoped to the HubSpot portal on this workspace’s{" "}
+              <a className="underline" href="/connections">
+                Connections
+              </a>{" "}
+              page — not whichever HubSpot account you happen to click. Workspace private-app
+              tokens act as the integration user; this binds <code className="font-mono text-[11px]">owner=me</code>{" "}
+              and home-card follow-ups to your owner in that same portal.
             </p>
             {oauthBanner && (
-              <div className="rounded-[10px] border border-line bg-draft px-3 py-2 text-[12px] text-draft-ink">
-                {oauthBanner}
+              <div
+                className={`rounded-[10px] border border-line px-3 py-2 text-[12px] ${
+                  oauthBanner.kind === "ok"
+                    ? "bg-published text-published-ink"
+                    : "bg-draft text-draft-ink"
+                }`}
+              >
+                {oauthBanner.text}
               </div>
             )}
-            {hubspotRep?.connected ? (
-              <div className="flex items-center justify-between rounded-[10px] bg-published px-3 py-2">
-                <div>
-                  <div className="text-[13px] font-medium text-published-ink">Connected as you</div>
-                  <div className="font-mono text-[11px] text-ink-45">
-                    portal {hubspotRep.portalId ?? "—"}
-                    {hubspotRep.crmOwnerId ? ` · owner ${hubspotRep.crmOwnerId}` : ""}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="st-btn text-[12px]"
-                  onClick={async () => {
-                    await fetch("/api/team/crm-oauth", { method: "DELETE" });
-                    await load();
-                  }}
+            {hubspotRep === null ? (
+              <p className="text-[12.5px] text-ink-45">Loading…</p>
+            ) : hubspotRep.appConfigured === false ? (
+              <p className="text-[12.5px] text-ink-45">
+                Set <code className="font-mono text-[11px]">HUBSPOT_CLIENT_ID</code> /{" "}
+                <code className="font-mono text-[11px]">HUBSPOT_CLIENT_SECRET</code> on Studio to
+                enable this.
+              </p>
+            ) : hubspotRep.workspace?.crm !== "hubspot" || !hubspotRep.workspace?.portalId ? (
+              <p className="text-[12.5px] text-ink-45">
+                Connect HubSpot under{" "}
+                <a className="underline" href="/connections">
+                  Connections
+                </a>{" "}
+                first. Until the workspace has a live portal, there’s nothing to connect “as me”
+                against.
+              </p>
+            ) : hubspotRep.connected ? (
+              <div className="flex flex-col gap-2">
+                <div
+                  className={`flex items-center justify-between rounded-[10px] px-3 py-2 ${
+                    hubspotRep.matchesWorkspace === false ? "bg-draft" : "bg-published"
+                  }`}
                 >
-                  Disconnect
-                </button>
+                  <div>
+                    <div
+                      className={`text-[13px] font-medium ${
+                        hubspotRep.matchesWorkspace === false
+                          ? "text-draft-ink"
+                          : "text-published-ink"
+                      }`}
+                    >
+                      {hubspotRep.matchesWorkspace === false
+                        ? "Connected — wrong portal"
+                        : "Connected as you"}
+                    </div>
+                    <div className="font-mono text-[11px] text-ink-45">
+                      your portal {hubspotRep.portalId ?? "—"}
+                      {" · "}
+                      workspace {hubspotRep.workspace.portalId}
+                      {hubspotRep.crmOwnerId ? ` · owner ${hubspotRep.crmOwnerId}` : ""}
+                    </div>
+                    {hubspotRep.matchesWorkspace === false && (
+                      <div className="mt-1 text-[12px] text-draft-ink">
+                        Reconnect with portal {hubspotRep.workspace.portalId}, or update Connections.
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="st-btn text-[12px]"
+                    onClick={async () => {
+                      await fetch("/api/team/crm-oauth", { method: "DELETE" });
+                      await load();
+                    }}
+                  >
+                    Disconnect
+                  </button>
+                </div>
+                <a className="st-btn st-btn--primary self-start" href="/api/team/crm-oauth/hubspot/start">
+                  Reconnect as me · portal {hubspotRep.workspace.portalId}
+                </a>
               </div>
             ) : (
-              <div className="flex flex-wrap gap-2">
-                {hubspotRep?.appConfigured === false ? (
-                  <p className="text-[12.5px] text-ink-45">
-                    Set <code className="font-mono text-[11px]">HUBSPOT_CLIENT_ID</code> /{" "}
-                    <code className="font-mono text-[11px]">HUBSPOT_CLIENT_SECRET</code> on Studio
-                    to enable this.
-                  </p>
-                ) : (
-                  <a className="st-btn st-btn--primary" href="/api/team/crm-oauth/hubspot/start">
-                    Connect HubSpot as me
-                  </a>
-                )}
+              <div className="flex flex-col gap-2">
+                <a className="st-btn st-btn--primary self-start" href="/api/team/crm-oauth/hubspot/start">
+                  Connect as me · portal {hubspotRep.workspace.portalId}
+                </a>
+                <p className="text-[11.5px] text-ink-45">
+                  HubSpot will ask you to pick an account — choose portal{" "}
+                  <code className="font-mono text-[11px]">{hubspotRep.workspace.portalId}</code>{" "}
+                  or the callback will reject it.
+                </p>
               </div>
             )}
           </section>

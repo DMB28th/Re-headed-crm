@@ -1,5 +1,5 @@
 /**
- * HubSpot OAuth callback — exchange code, store per-rep tokens + CRM link.
+ * HubSpot OAuth callback — exchange code, require portal match, store per-rep tokens.
  */
 import { NextResponse, type NextRequest } from "next/server";
 import {
@@ -49,6 +49,16 @@ export async function GET(req: NextRequest) {
       { code, redirectUri: hubspotOauthRedirectUri() },
     );
     const info = await fetchHubSpotAccessTokenInfo(tokens.accessToken);
+    const authorizedPortal = info.hubId ? String(info.hubId) : "";
+
+    if (!authorizedPortal || authorizedPortal !== String(verified.expectedPortalId)) {
+      return teamRedirect({
+        oauth_error: "wrong_portal",
+        expected: String(verified.expectedPortalId),
+        got: authorizedPortal || "unknown",
+      });
+    }
+
     const store = await createUserCrmStore(process.env.DATABASE_URL);
 
     await store.upsertToken({
@@ -59,7 +69,7 @@ export async function GET(req: NextRequest) {
       refreshToken: tokens.refreshToken,
       expiresAt: tokens.expiresAt,
       scopes: tokens.scopes ?? null,
-      portalId: info.hubId ?? null,
+      portalId: authorizedPortal,
     });
 
     await store.upsertLink({
