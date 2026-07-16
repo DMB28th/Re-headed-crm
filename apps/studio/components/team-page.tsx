@@ -45,6 +45,13 @@ function TeamInner({ authEnabled }: { authEnabled: boolean }) {
   const [tokens, setTokens] = useState<McpToken[]>([]);
   const [crmHint, setCrmHint] = useState<string | null>(null);
   const [crmLinked, setCrmLinked] = useState(false);
+  const [hubspotRep, setHubspotRep] = useState<{
+    connected: boolean;
+    appConfigured?: boolean;
+    crmOwnerId?: string | null;
+    portalId?: string | null;
+  } | null>(null);
+  const [oauthBanner, setOauthBanner] = useState<string | null>(null);
   const [newOrgName, setNewOrgName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"admin" | "member">("member");
@@ -85,6 +92,23 @@ function TeamInner({ authEnabled }: { authEnabled: boolean }) {
         setCrmHint(body.hint ?? null);
         setCrmLinked(Boolean(body.link?.crmUserId));
       }
+      const oauthRes = await fetch("/api/team/crm-oauth");
+      if (oauthRes.ok) {
+        const body = (await oauthRes.json()) as {
+          appConfigured?: boolean;
+          hubspot?: {
+            connected: boolean;
+            crmOwnerId?: string | null;
+            portalId?: string | null;
+          };
+        };
+        setHubspotRep({
+          connected: Boolean(body.hubspot?.connected),
+          appConfigured: body.appConfigured,
+          crmOwnerId: body.hubspot?.crmOwnerId ?? null,
+          portalId: body.hubspot?.portalId ?? null,
+        });
+      }
     } else {
       setMembers([]);
       setInvitations([]);
@@ -94,7 +118,18 @@ function TeamInner({ authEnabled }: { authEnabled: boolean }) {
 
   useEffect(() => {
     void load();
-  }, [load]);
+    const oauth = search.get("oauth");
+    const oauthError = search.get("oauth_error");
+    if (oauth === "hubspot_connected") {
+      setOauthBanner(
+        search.get("remint") === "1"
+          ? "HubSpot connected as you. Mint a new MCP token so chat uses your CRM identity."
+          : "HubSpot connected as you.",
+      );
+    } else if (oauthError) {
+      setOauthBanner(`HubSpot connect failed: ${oauthError}`);
+    }
+  }, [load, search]);
 
   const createOrg = async () => {
     if (!newOrgName.trim()) return;
@@ -336,6 +371,55 @@ function TeamInner({ authEnabled }: { authEnabled: boolean }) {
             <p className="text-[11.5px] text-ink-45">
               Invited users sign in with the same SSO providers, then join this workspace.
             </p>
+          </section>
+
+          <section className="st-card p-4 flex flex-col gap-3">
+            <div className="st-section-label">Connect as me (HubSpot)</div>
+            <p className="text-[12.5px] text-ink-55">
+              Per-rep OAuth so chat runs as your HubSpot user — sharing, FLS, and $me filters
+              are native. Separate from the workspace private-app connection admins use for
+              Studio.
+            </p>
+            {oauthBanner && (
+              <div className="rounded-[10px] border border-line bg-draft px-3 py-2 text-[12px] text-draft-ink">
+                {oauthBanner}
+              </div>
+            )}
+            {hubspotRep?.connected ? (
+              <div className="flex items-center justify-between rounded-[10px] bg-published px-3 py-2">
+                <div>
+                  <div className="text-[13px] font-medium text-published-ink">Connected as you</div>
+                  <div className="font-mono text-[11px] text-ink-45">
+                    portal {hubspotRep.portalId ?? "—"}
+                    {hubspotRep.crmOwnerId ? ` · owner ${hubspotRep.crmOwnerId}` : ""}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="st-btn text-[12px]"
+                  onClick={async () => {
+                    await fetch("/api/team/crm-oauth", { method: "DELETE" });
+                    await load();
+                  }}
+                >
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {hubspotRep?.appConfigured === false ? (
+                  <p className="text-[12.5px] text-ink-45">
+                    Set <code className="font-mono text-[11px]">HUBSPOT_CLIENT_ID</code> /{" "}
+                    <code className="font-mono text-[11px]">HUBSPOT_CLIENT_SECRET</code> on Studio
+                    to enable this.
+                  </p>
+                ) : (
+                  <a className="st-btn st-btn--primary" href="/api/team/crm-oauth/hubspot/start">
+                    Connect HubSpot as me
+                  </a>
+                )}
+              </div>
+            )}
           </section>
 
           <section className="st-card p-4 flex flex-col gap-3">

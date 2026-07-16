@@ -12,7 +12,7 @@ const AUTH_ENABLED = Boolean(process.env.BETTER_AUTH_SECRET && process.env.DATAB
 const SHARED_SECRET = process.env.STUDIO_SHARED_SECRET;
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-const PUBLIC_PATHS = ["/login", "/api/auth"];
+const PUBLIC_PATHS = ["/login", "/api/auth", "/api/team/crm-oauth/hubspot/callback"];
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));

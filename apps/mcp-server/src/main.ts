@@ -6,17 +6,27 @@
  *   1. Bearer `cs_live_…` MCP token → tenantId + RunningUser (preferred)
  *   2. Legacy MCP_SHARED_SECRET (header or Bearer) → DEMO_TENANT_ID
  *   3. No secret configured → open demo mode (warns)
+ *
+ * Adapter credentials:
+ *   Prefer per-rep HubSpot OAuth tokens (user_crm_tokens) when present for the
+ *   RunningUser; otherwise the workspace integration connection.
  */
 import express from "express";
 import cors from "cors";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createAdapterForConnection } from "@cardstack/crm-adapters";
+import {
+  createAdapterForConnection,
+  refreshHubSpotAccessToken,
+} from "@cardstack/crm-adapters";
 import { createPostgresConfigStore, type ConfigStore } from "@cardstack/config-store";
 import {
   createMcpTokenStore,
+  createUserCrmStore,
   demoRunningUser,
   type McpTokenStore,
   type ResolvedMcpAuth,
+  type RunningUser,
+  type UserCrmStore,
 } from "@cardstack/auth";
 import { createCardstackServer } from "./server.js";
 import { defaultConfigPath, FileConfigStore, DEMO_TENANT_ID } from "./config/store.js";
@@ -44,9 +54,11 @@ const configStore: ConfigStore = process.env.DATABASE_URL
 console.log(`config store: ${process.env.DATABASE_URL ? "postgres" : "file"}`);
 
 let mcpTokens: McpTokenStore | null = null;
+let userCrm: UserCrmStore | null = null;
 if (process.env.DATABASE_URL) {
   mcpTokens = await createMcpTokenStore(process.env.DATABASE_URL);
-  console.log("mcp tokens: postgres");
+  userCrm = await createUserCrmStore(process.env.DATABASE_URL);
+  console.log("mcp tokens + user CRM: postgres");
 }
 
 const app = express();
@@ -80,22 +92,16 @@ function extractBearer(req: express.Request): string | null {
   return null;
 }
 
-/**
- * Resolve tenant + running user for this request.
- * Returns null when the caller is not authorized.
- */
 async function resolveAuth(req: express.Request): Promise<ResolvedMcpAuth | null> {
   const bearer = extractBearer(req);
   const keyHeader = req.header("x-cardstack-key");
 
-  // Prefer MCP tokens (multi-tenant).
   if (bearer?.startsWith("cs_live_") && mcpTokens) {
     const resolved = await mcpTokens.resolve(bearer);
     if (resolved) return resolved;
     return null;
   }
 
-  // Legacy shared secret → demo tenant.
   if (MCP_SECRET) {
     if (keyHeader === MCP_SECRET || bearer === MCP_SECRET) {
       return {
@@ -103,15 +109,90 @@ async function resolveAuth(req: express.Request): Promise<ResolvedMcpAuth | null
         user: demoRunningUser("shared_secret"),
       };
     }
-    // Secret configured but wrong/missing — reject (unless a valid token already matched above).
     return null;
   }
 
-  // Open demo mode: no shared secret required. Prefer tokens when presented;
-  // otherwise serve the demo tenant so existing deploys keep working.
   return {
     tenantId: DEMO_TENANT_ID,
     user: demoRunningUser("demo"),
+  };
+}
+
+/**
+ * Prefer per-rep HubSpot OAuth credentials when the RunningUser has connected
+ * "as me"; otherwise fall back to the workspace integration connection.
+ */
+async function credentialsForRequest(
+  tenantId: string,
+  user: RunningUser,
+  workspace: { crm: "hubspot" | "salesforce"; credentials?: Record<string, string>; changedAt: string },
+): Promise<{
+  crm: "hubspot" | "salesforce";
+  credentials?: Record<string, string>;
+  cacheNonce: string;
+  asUser: boolean;
+}> {
+  if (
+    workspace.crm === "hubspot" &&
+    user.authMethod === "mcp_token" &&
+    user.userId !== "system" &&
+    userCrm &&
+    process.env.HUBSPOT_CLIENT_ID &&
+    process.env.HUBSPOT_CLIENT_SECRET
+  ) {
+    const tok = await userCrm.getToken(tenantId, user.userId, "hubspot");
+    if (tok?.accessToken) {
+      let access = tok.accessToken;
+      let expiresAt = tok.expiresAt;
+      let refresh = tok.refreshToken;
+      const stale =
+        !expiresAt || new Date(expiresAt).getTime() < Date.now() + 60_000;
+      if (stale && refresh) {
+        try {
+          const refreshed = await refreshHubSpotAccessToken(
+            {
+              clientId: process.env.HUBSPOT_CLIENT_ID,
+              clientSecret: process.env.HUBSPOT_CLIENT_SECRET,
+            },
+            refresh,
+          );
+          access = refreshed.accessToken;
+          expiresAt = refreshed.expiresAt;
+          refresh = refreshed.refreshToken;
+          await userCrm.upsertToken({
+            tenantId,
+            userId: user.userId,
+            crm: "hubspot",
+            accessToken: access,
+            refreshToken: refresh,
+            expiresAt,
+            scopes: refreshed.scopes ?? tok.scopes,
+            portalId: tok.portalId,
+          });
+        } catch (error) {
+          console.warn("per-rep HubSpot refresh failed; falling back to workspace connection", error);
+          return {
+            crm: workspace.crm,
+            ...(workspace.credentials ? { credentials: workspace.credentials } : {}),
+            cacheNonce: workspace.changedAt,
+            asUser: false,
+          };
+        }
+      }
+      return {
+        crm: "hubspot",
+        credentials: { accessToken: access },
+        cacheNonce: `user:${user.userId}:${expiresAt ?? tok.updatedAt}`,
+        asUser: true,
+      };
+    }
+  }
+
+  return {
+    crm: workspace.crm,
+    ...(workspace.credentials ? { credentials: workspace.credentials } : {}),
+    cacheNonce: workspace.changedAt,
+    asUser: false,
   };
 }
 
@@ -145,10 +226,11 @@ app.all("/mcp", async (req, res) => {
     return;
   }
   const connection = await configStore.getConnection(auth.tenantId);
+  const resolved = await credentialsForRequest(auth.tenantId, auth.user, connection);
   const adapter = createAdapterForConnection({
-    crm: connection.crm,
-    ...(connection.credentials ? { credentials: connection.credentials } : {}),
-    cacheNonce: connection.changedAt,
+    crm: resolved.crm,
+    ...(resolved.credentials ? { credentials: resolved.credentials } : {}),
+    cacheNonce: resolved.cacheNonce,
   });
   const server = await createCardstackServer({
     adapter,
