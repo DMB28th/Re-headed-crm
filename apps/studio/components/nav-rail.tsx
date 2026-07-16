@@ -55,8 +55,16 @@ export function NavRail() {
   const [adding, setAdding] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/objects");
-    setData((await res.json()) as ObjectsData);
+    try {
+      const res = await fetch("/api/objects");
+      if (!res.ok) {
+        setData(null);
+        return;
+      }
+      setData((await res.json()) as ObjectsData);
+    } catch {
+      setData(null);
+    }
   }, []);
 
   // Refetch on navigation: connect/disconnect and publishes change the rail.
@@ -190,7 +198,10 @@ export function NavRail() {
         </RailLink>
       </div>
 
-      <div className="mt-auto">
+      <div className="mt-auto flex flex-col gap-1">
+        <RailLink href="/team" active={pathname === "/team" || pathname.startsWith("/team/")}>
+          My team
+        </RailLink>
         <RailLink href="/connections" active={pathname === "/connections"}>
           <span className="flex items-center gap-2">
             <span

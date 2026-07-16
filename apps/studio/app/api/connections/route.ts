@@ -8,7 +8,7 @@ import {
   type HubSpotCredentials,
   type SalesforceCredentials,
 } from "@cardstack/crm-adapters";
-import { getAdapter, getStore, TENANT_ID } from "../../../lib/backend";
+import { getAdapter, getStore, requireTenantId } from "../../../lib/backend";
 
 /** Credentials NEVER leave the server (hard rule 3) — the API ships a flag only. */
 function redact(connection: ConnectionState): Record<string, unknown> {
@@ -23,6 +23,7 @@ async function scopeGapsFor(adapter: CrmAdapter): Promise<string[]> {
 }
 
 export async function GET() {
+  const TENANT_ID = await requireTenantId();
   const store = await getStore();
   const connection = await store.getConnection(TENANT_ID);
   if (connection.status !== "connected") {
@@ -43,6 +44,7 @@ interface ConnectBody {
 }
 
 export async function POST(req: Request) {
+  const TENANT_ID = await requireTenantId();
   const body = (await req.json()) as ConnectBody;
   const store = await getStore();
 

@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { HubSpotAdapter } from "@cardstack/crm-adapters";
-import { getAdapter, getStore, TENANT_ID } from "../../../lib/backend";
+import { getAdapter, getStore, requireTenantId } from "../../../lib/backend";
 import { generateStarterLayout } from "../../../lib/starter-layout";
 
 /** Objects panel data: what's configured (draft or published) vs addable. */
 export async function GET() {
+  const TENANT_ID = await requireTenantId();
   const store = await getStore();
   const adapter = await getAdapter();
   const connection = await store.getConnection(TENANT_ID);
@@ -44,6 +45,7 @@ export async function GET() {
 
 /** Add an object: generate a starter DRAFT layout from describe (3c). */
 export async function POST(req: Request) {
+  const TENANT_ID = await requireTenantId();
   try {
     const { object } = (await req.json()) as { object?: string };
     if (!object) return NextResponse.json({ error: "object required" }, { status: 400 });

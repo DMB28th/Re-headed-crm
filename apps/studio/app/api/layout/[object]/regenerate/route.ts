@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAdapter, getStore, TENANT_ID } from "../../../../../lib/backend";
+import { getAdapter, getStore, requireTenantId } from "../../../../../lib/backend";
 import { generateStarterLayout } from "../../../../../lib/starter-layout";
 
 type Params = { params: Promise<{ object: string }> };
@@ -10,6 +10,7 @@ type Params = { params: Promise<{ object: string }> };
  * replaces the draft only; publish stays an explicit act.
  */
 export async function POST(_req: Request, { params }: Params) {
+  const TENANT_ID = await requireTenantId();
   const { object } = await params;
   try {
     const store = await getStore();

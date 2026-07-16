@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { HomeCardConfig, summarizeCustomFilters, type CustomList } from "@cardstack/core";
-import { getAdapter, getStore, TENANT_ID } from "../../../lib/backend";
+import { getAdapter, getStore, requireTenantId } from "../../../lib/backend";
 
 export interface ExposedViewInfo {
   viewId: string;
@@ -12,6 +12,7 @@ export interface ExposedViewInfo {
 }
 
 export async function GET() {
+  const TENANT_ID = await requireTenantId();
   try {
   const store = await getStore();
   const adapter = await getAdapter();
@@ -70,6 +71,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const TENANT_ID = await requireTenantId();
   try {
     const config = HomeCardConfig.parse(await req.json());
     if (config.tenantId !== TENANT_ID) {

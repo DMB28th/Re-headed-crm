@@ -1,3 +1,4 @@
+import { demoRunningUser } from "@cardstack/auth";
 /**
  * M2.5 demo: saved views — "show me my deals" resolves to the user's exposed
  * CRM views; ambiguous asks render a picker and the choice is remembered.
@@ -28,6 +29,7 @@ async function main() {
     auditLog: new InMemoryAuditLog(),
     preferences: new InMemoryPreferenceStore(),
     tenantId: DEMO_TENANT_ID,
+    runningUser: demoRunningUser(),
   });
   const client = new Client({ name: "demo-host", version: "0.0.1" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

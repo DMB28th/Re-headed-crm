@@ -1,6 +1,6 @@
 /** Object landing (design 6a/12b): hub of four status cards, one per tab. */
 import Link from "next/link";
-import { getAdapter, getStore, TENANT_ID } from "../../../lib/backend";
+import { getAdapter, getStore, requireTenantId } from "../../../lib/backend";
 import { NoConnection } from "../../../components/no-connection";
 import { RemoveObjectZone } from "../../../components/remove-object-zone";
 
@@ -11,6 +11,7 @@ export default async function ObjectHubPage({
 }: {
   params: Promise<{ object: string }>;
 }) {
+  const TENANT_ID = await requireTenantId();
   const { object } = await params;
   const store = await getStore();
   const connection = await store.getConnection(TENANT_ID);

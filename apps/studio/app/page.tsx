@@ -1,6 +1,6 @@
 /** Studio home (design 6b): object cards with inline status, recent publishes. */
 import Link from "next/link";
-import { getAdapter, getStore, TENANT_ID } from "../lib/backend";
+import { getAdapter, getStore, requireTenantId } from "../lib/backend";
 import { AddObjectCard } from "../components/add-object-card";
 import { NoConnection } from "../components/no-connection";
 
@@ -12,6 +12,7 @@ function greeting(): string {
 }
 
 export default async function HomePage() {
+  const TENANT_ID = await requireTenantId();
   const store = await getStore();
   const adapter = await getAdapter();
   const connection = await store.getConnection(TENANT_ID);

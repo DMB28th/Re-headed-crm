@@ -14,7 +14,7 @@ import {
 } from "@cardstack/core";
 import { HomeCardConfig as HomeCardConfigSchema } from "@cardstack/core";
 import { CrmValidationError } from "@cardstack/crm-adapters";
-import { getAdapter, getStore, TENANT_ID } from "../../../lib/backend";
+import { getAdapter, getStore, requireTenantId } from "../../../lib/backend";
 
 /**
  * Server-side preview assembly — the builders render EXACTLY what the MCP
@@ -36,15 +36,16 @@ interface PreviewBody {
   limit?: number;
 }
 
-async function layoutFor(object: string, posted?: unknown): Promise<LayoutConfig> {
+async function layoutFor(tenantId: string, object: string, posted?: unknown): Promise<LayoutConfig> {
   if (posted) return parseLayoutConfig(posted);
-  const record = await (await getStore()).getLayoutRecord(TENANT_ID, object);
+  const record = await (await getStore()).getLayoutRecord(tenantId, object);
   const config = record.published ?? record.draft;
   if (!config) throw new Error(`No layout configured for ${object}.`);
   return config;
 }
 
 export async function POST(req: Request) {
+  const TENANT_ID = await requireTenantId();
   try {
     const body = (await req.json()) as PreviewBody;
     const store = await getStore();
@@ -54,7 +55,7 @@ export async function POST(req: Request) {
 
     if (body.kind === "record") {
       if (!body.object) throw new Error("object required");
-      const config = await layoutFor(body.object, body.config);
+      const config = await layoutFor(TENANT_ID, body.object, body.config);
       const record = body.recordId
         ? await adapter.getRecord(config.object, body.recordId, [])
         : (await adapter.search(config.object, { limit: 1 })).rows[0];
@@ -67,7 +68,7 @@ export async function POST(req: Request) {
 
     if (body.kind === "view") {
       if (!body.object || !body.viewId) throw new Error("object and viewId required");
-      const config = await layoutFor(body.object, body.config);
+      const config = await layoutFor(TENANT_ID, body.object, body.config);
       const custom = (await store.getCustomLists(TENANT_ID, body.object)).find(
         (c) => c.id === body.viewId,
       );
@@ -192,7 +193,7 @@ export async function POST(req: Request) {
       if (!body.object || !body.recordId || !body.relationship) {
         throw new Error("object, recordId and relationship required");
       }
-      const config = await layoutFor(body.object, body.config);
+      const config = await layoutFor(TENANT_ID, body.object, body.config);
       const rel = config.recordCard.relatedLists.find((r) => r.relationship === body.relationship);
       if (!rel) throw new Error(`Relationship "${body.relationship}" not configured.`);
       const page = await adapter.getRelated(body.recordId, {
@@ -224,7 +225,7 @@ export async function POST(req: Request) {
       if (!body.object || !body.recordId || !body.patch) {
         throw new Error("object, recordId and patch required");
       }
-      const config = await layoutFor(body.object, body.config);
+      const config = await layoutFor(TENANT_ID, body.object, body.config);
       const patch = body.patch;
       const before = await adapter.getRecord(config.object, body.recordId, Object.keys(patch));
       const describe = await adapter.describeObject(config.object);

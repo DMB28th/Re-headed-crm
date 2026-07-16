@@ -1,3 +1,4 @@
+import { demoRunningUser } from "@cardstack/auth";
 /**
  * Integration tests: a real MCP client talking to the server over an in-memory
  * transport — the M0 round-trip check plus M1's golden-path and security gates.
@@ -27,6 +28,7 @@ beforeEach(async () => {
     auditLog,
     preferences: new InMemoryPreferenceStore(),
     tenantId: DEMO_TENANT_ID,
+    runningUser: demoRunningUser(),
   });
   client = new Client({ name: "test-host", version: "0.0.1" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -390,6 +392,7 @@ describe("connection gate (empty canvas)", () => {
       auditLog: new InMemoryAuditLog(),
       preferences: new InMemoryPreferenceStore(),
       tenantId: DEMO_TENANT_ID,
+    runningUser: demoRunningUser(),
     });
     const offline = new Client({ name: "test-host", version: "0.0.1" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -436,6 +439,7 @@ describe("custom lists (Cardstack-native filters)", () => {
       auditLog: new InMemoryAuditLog(),
       preferences: new InMemoryPreferenceStore(),
       tenantId: DEMO_TENANT_ID,
+    runningUser: demoRunningUser(),
     });
     const custom = new Client({ name: "test-host", version: "0.0.1" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

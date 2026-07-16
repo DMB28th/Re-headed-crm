@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getStore, TENANT_ID } from "../../../../lib/backend";
+import { getStore, requireTenantId } from "../../../../lib/backend";
 
 type Params = { params: Promise<{ object: string }> };
 
@@ -9,6 +9,7 @@ type Params = { params: Promise<{ object: string }> };
  * it returns to "available to add".
  */
 export async function DELETE(_req: Request, { params }: Params) {
+  const TENANT_ID = await requireTenantId();
   const { object } = await params;
   try {
     await (await getStore()).removeObject(TENANT_ID, object);

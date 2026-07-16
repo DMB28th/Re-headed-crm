@@ -20,6 +20,12 @@ REAL HomeCard component previewing "as the rep"; publish bumps the revision
 and logs the event. Layout rollback now has UI too (Versions dropdown in the
 layout builder).
 
+**M7 auth foundation (in progress):** Studio SSO (Google / HubSpot / Salesforce)
+via better-auth + organizations (= accounts). `/login`, `/team` (My team:
+workspaces, invites, logout, MCP token minting). MCP resolves
+`Bearer cs_live_…` → tenantId + RunningUser for audit attribution. Demo mode
+unchanged when `BETTER_AUTH_SECRET` is unset.
+
 **M3 — Studio core — is complete.** `pnpm demo:m3` walks Golden Path 3
 (publish → live layout change, rollback) at the store level, and the same flow
 works through the real Studio UI: `pnpm --filter @cardstack/studio dev` (:3002)
@@ -38,6 +44,12 @@ requirements pass-through (3d), audience picker (3e). Stale-card strip and
 re-auth widget states also still open. PostgresConfigStore ships behind
 DATABASE_URL (Railway two-service deploys); audit log + preferences are
 still in-memory — move them to Postgres alongside multi-tenant auth (M7).
+
+**Auth foundation (partial M7):** `@cardstack/auth` MCP tokens; Studio
+better-auth SSO (Google/HubSpot/Salesforce) + organizations (= accounts);
+`/login`, `/team`, logout; MCP `Bearer cs_live_…` → tenant + RunningUser.
+Still open: MCP OAuth 2.1 registry metadata, CRM token encryption (KMS),
+preferences → Postgres.
 
 ## Hard rules
 

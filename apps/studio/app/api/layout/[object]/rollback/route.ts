@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { getStore, TENANT_ID } from "../../../../../lib/backend";
+import { getStore, requireTenantId } from "../../../../../lib/backend";
 
 export async function POST(req: Request, { params }: { params: Promise<{ object: string }> }) {
+  const TENANT_ID = await requireTenantId();
   const { object } = await params;
   try {
     const { revision } = (await req.json()) as { revision: number };

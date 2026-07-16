@@ -1,5 +1,5 @@
 /** Audit log (compliance spine): every confirmed chat write, durably logged. */
-import { getAuditLog, getStore, TENANT_ID } from "../../lib/backend";
+import { getAuditLog, getStore, requireTenantId } from "../../lib/backend";
 import { NoConnection } from "../../components/no-connection";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +10,7 @@ function formatValue(v: unknown): string {
 }
 
 export default async function AuditPage() {
+  const TENANT_ID = await requireTenantId();
   const store = await getStore();
   const connection = await store.getConnection(TENANT_ID);
   if (connection.status !== "connected") return <NoConnection />;

@@ -16,6 +16,7 @@
     "demo:m4": "tsx scripts/demo-m4.ts"
   },
   "dependencies": {
+    "@cardstack/auth": "workspace:*",
     "@cardstack/core": "workspace:*",
     "@cardstack/config-store": "workspace:*",
     "@cardstack/crm-adapters": "workspace:*",

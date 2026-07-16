@@ -1,3 +1,4 @@
+import { demoRunningUser } from "@cardstack/auth";
 /**
  * Golden Path 3 demo (M3 exit criteria): Studio publish → live layout change.
  * A layout edit is published through the shared config store and the very next
@@ -30,6 +31,7 @@ async function main() {
     auditLog: new InMemoryAuditLog(),
     preferences: new InMemoryPreferenceStore(),
     tenantId: DEMO_TENANT_ID,
+    runningUser: demoRunningUser(),
   });
   // …and Studio writes to it from a DIFFERENT store instance (different process in real life).
   const studio = new FileConfigStore(configPath);

@@ -1,5 +1,5 @@
 /** Assignment (2f–2i): v1 teaching state — one default layout, audiences later. */
-import { getAdapter, getStore, TENANT_ID } from "../../../../lib/backend";
+import { getAdapter, getStore, requireTenantId } from "../../../../lib/backend";
 import { NoConnection } from "../../../../components/no-connection";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +9,7 @@ export default async function AssignmentPage({
 }: {
   params: Promise<{ object: string }>;
 }) {
+  const TENANT_ID = await requireTenantId();
   const { object } = await params;
   const store = await getStore();
   const connection = await store.getConnection(TENANT_ID);

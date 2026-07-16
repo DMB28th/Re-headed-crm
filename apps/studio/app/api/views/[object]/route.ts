@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { ViewExposuresConfig } from "@cardstack/core";
-import { getAdapter, getStore, TENANT_ID } from "../../../../lib/backend";
+import { getAdapter, getStore, requireTenantId } from "../../../../lib/backend";
 
 type Params = { params: Promise<{ object: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
+  const TENANT_ID = await requireTenantId();
   const { object } = await params;
   try {
     const adapter = await getAdapter();
@@ -21,6 +22,7 @@ export async function GET(_req: Request, { params }: Params) {
 }
 
 export async function PUT(req: Request, { params }: Params) {
+  const TENANT_ID = await requireTenantId();
   const { object } = await params;
   try {
     const exposures = ViewExposuresConfig.parse(await req.json());

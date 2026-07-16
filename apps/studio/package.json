@@ -10,6 +10,7 @@
     "test": "echo 'studio: covered by build + browser checks'"
   },
   "dependencies": {
+    "@cardstack/auth": "workspace:*",
     "@cardstack/config-store": "workspace:*",
     "@cardstack/core": "workspace:*",
     "@cardstack/crm-adapters": "workspace:*",
@@ -18,12 +19,15 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@fontsource-variable/instrument-sans": "^5.1.0",
+    "better-auth": "^1.6.23",
     "next": "^15.1.0",
+    "pg": "^8.22.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
+    "@types/pg": "^8.20.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "tailwindcss": "^4.0.0",

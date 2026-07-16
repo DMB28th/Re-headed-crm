@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { PortalInfo } from "@cardstack/crm-adapters";
-import { getAdapter, getStore, TENANT_ID } from "../../../lib/backend";
+import { getAdapter, getStore, requireTenantId } from "../../../lib/backend";
 
 const UNKNOWN: PortalInfo = {
   userCount: null,
@@ -15,6 +15,7 @@ const UNKNOWN: PortalInfo = {
  * drop the number rather than invent one.
  */
 export async function GET() {
+  const TENANT_ID = await requireTenantId();
   const store = await getStore();
   const connection = await store.getConnection(TENANT_ID);
   if (connection.status !== "connected") {

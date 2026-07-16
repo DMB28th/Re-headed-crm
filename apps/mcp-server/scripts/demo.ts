@@ -1,3 +1,4 @@
+import { demoRunningUser } from "@cardstack/auth";
 /**
  * Golden Path 1 demo (M1 exit criteria): search → results table → record card,
  * end-to-end through a real MCP client over an in-memory transport.
@@ -23,6 +24,7 @@ async function main() {
     auditLog: new InMemoryAuditLog(),
     preferences: new InMemoryPreferenceStore(),
     tenantId: DEMO_TENANT_ID,
+    runningUser: demoRunningUser(),
   });
   const client = new Client({ name: "demo-host", version: "0.0.1" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

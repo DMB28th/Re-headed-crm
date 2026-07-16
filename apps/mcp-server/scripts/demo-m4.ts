@@ -1,3 +1,4 @@
+import { demoRunningUser } from "@cardstack/auth";
 /**
  * M4 core demo: "open my CRM" → home card (lists, recents, follow-ups) →
  * confirmed task check-off → audit log → model awareness.
@@ -31,6 +32,7 @@ async function main() {
     auditLog,
     preferences: new InMemoryPreferenceStore(),
     tenantId: DEMO_TENANT_ID,
+    runningUser: demoRunningUser(),
   });
   const client = new Client({ name: "demo-host", version: "0.0.1" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

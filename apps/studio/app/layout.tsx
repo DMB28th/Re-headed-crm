@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import "@fontsource-variable/instrument-sans";
 import "./globals.css";
-import { NavRail } from "../components/nav-rail";
+import { AppShell } from "../components/app-shell";
+import { isAuthEnabled } from "../lib/auth";
 
 export const metadata: Metadata = {
   title: "Cardstack Studio",
@@ -11,11 +12,8 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>
-        <div className="flex min-h-screen">
-          <NavRail />
-          <main className="flex-1 min-w-0 px-7 py-6">{children}</main>
-        </div>
+      <body data-auth={isAuthEnabled() ? "on" : "off"}>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

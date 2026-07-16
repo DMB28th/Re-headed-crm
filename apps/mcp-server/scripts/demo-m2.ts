@@ -1,3 +1,4 @@
+import { demoRunningUser } from "@cardstack/auth";
 /**
  * Golden Path 2 demo (M2 exit criteria): inline edit → confirmed write →
  * receipt → audit log → model awareness via updateModelContext.
@@ -31,6 +32,7 @@ async function main() {
     auditLog,
     preferences: new InMemoryPreferenceStore(),
     tenantId: DEMO_TENANT_ID,
+    runningUser: demoRunningUser(),
   });
   const client = new Client({ name: "demo-host", version: "0.0.1" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { parseLayoutConfig } from "@cardstack/core";
 import { diffLayouts } from "@cardstack/config-store";
-import { getAdapter, getStore, TENANT_ID } from "../../../../lib/backend";
+import { getAdapter, getStore, requireTenantId } from "../../../../lib/backend";
 
 type Params = { params: Promise<{ object: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
+  const TENANT_ID = await requireTenantId();
   const { object } = await params;
   try {
     const store = await getStore();
@@ -37,6 +38,7 @@ export async function GET(_req: Request, { params }: Params) {
 }
 
 export async function PUT(req: Request, { params }: Params) {
+  const TENANT_ID = await requireTenantId();
   const { object } = await params;
   try {
     const draft = parseLayoutConfig(await req.json());
@@ -51,6 +53,7 @@ export async function PUT(req: Request, { params }: Params) {
 }
 
 export async function DELETE(_req: Request, { params }: Params) {
+  const TENANT_ID = await requireTenantId();
   const { object } = await params;
   try {
     await (await getStore()).discardDraft(TENANT_ID, object);

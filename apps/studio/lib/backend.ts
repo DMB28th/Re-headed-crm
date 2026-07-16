@@ -7,6 +7,9 @@
  * The adapter is resolved from the tenant's CONNECTION: no credentials =
  * mock portal; live HubSpot/Salesforce credentials build the real adapter
  * (cached per credential set by the factory).
+ *
+ * M7: tenantId comes from the signed-in user's active organization when auth
+ * is enabled; otherwise DEMO_TENANT_ID (open demo mode).
  */
 import path from "node:path";
 import {
@@ -19,8 +22,11 @@ import {
   type AdminConfigStore,
   type AuditLog,
 } from "@cardstack/config-store";
+import { createMcpTokenStore, type McpTokenStore } from "@cardstack/auth";
 import { createAdapterForConnection, type CrmAdapter } from "@cardstack/crm-adapters";
+import { requireTenantId } from "./session";
 
+/** @deprecated Prefer requireTenantId() — kept for transitional imports. */
 export const TENANT_ID = DEMO_TENANT_ID;
 
 const configPath =
@@ -44,9 +50,20 @@ export function getAuditLog(): Promise<AuditLog> {
   return auditPromise;
 }
 
+let mcpTokensPromise: Promise<McpTokenStore> | undefined;
+/** MCP API tokens for chat hosts — requires DATABASE_URL. */
+export function getMcpTokenStore(): Promise<McpTokenStore> {
+  if (!process.env.DATABASE_URL) {
+    return Promise.reject(new Error("MCP tokens require DATABASE_URL (Postgres)."));
+  }
+  mcpTokensPromise ??= createMcpTokenStore(process.env.DATABASE_URL);
+  return mcpTokensPromise;
+}
+
 /** The tenant's adapter per its CURRENT connection (read fresh each call). */
-export async function getAdapter(): Promise<CrmAdapter> {
-  const connection = await (await getStore()).getConnection(TENANT_ID);
+export async function getAdapter(tenantId?: string): Promise<CrmAdapter> {
+  const tid = tenantId ?? (await requireTenantId());
+  const connection = await (await getStore()).getConnection(tid);
   return createAdapterForConnection({
     crm: connection.crm,
     ...(connection.credentials ? { credentials: connection.credentials } : {}),
@@ -55,3 +72,5 @@ export async function getAdapter(): Promise<CrmAdapter> {
     cacheNonce: connection.changedAt,
   });
 }
+
+export { requireTenantId };

@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { getAuditLog, TENANT_ID } from "../../../lib/backend";
+import { getAuditLog, requireTenantId } from "../../../lib/backend";
 
 /** GET /api/audit — recent chat writes. ?format=csv flattens to one row per
  *  field change (timestamp,user,object,recordId,field,before,after). */
 export async function GET(req: Request) {
+  const TENANT_ID = await requireTenantId();
   try {
     const entries = await (await getAuditLog()).list(TENANT_ID);
     const url = new URL(req.url);

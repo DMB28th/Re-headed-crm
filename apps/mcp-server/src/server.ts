@@ -35,6 +35,7 @@ import {
   type CrmAdapter,
 } from "@cardstack/crm-adapters";
 import { getWidgetHtml, type WidgetName } from "@cardstack/widgets";
+import type { RunningUser } from "@cardstack/auth";
 import { DEMO_TENANT_ID, InMemoryConfigStore, type ConfigStore } from "./config/store.js";
 import type { PreferenceStore } from "./config/preferences.js";
 import type { AuditLog } from "./audit.js";
@@ -57,8 +58,27 @@ export interface ServerDeps {
   auditLog: AuditLog;
   /** Remembered ambiguous-ask choices (design 5b). Shared like the audit log. */
   preferences: PreferenceStore;
-  /** M1: single-tenant. OAuth 2.1 token → tenant resolution lands in M7. */
+  /**
+   * Workspace (account) for this request. Resolved from MCP token → org id,
+   * or DEMO_TENANT_ID when auth is off / shared-secret demo mode.
+   */
   tenantId: string;
+  /**
+   * Cardstack principal for this request — audit attribution + profile context.
+   * CRM writes still execute as the workspace's connected CRM integration user;
+   * this captures who in Cardstack initiated the action.
+   */
+  runningUser: RunningUser;
+}
+
+/** Format audit/provenance author: Cardstack user (+ CRM writer when different). */
+export function auditUserLabel(runningUser: RunningUser, crmUser: string): string {
+  if (runningUser.authMethod === "mcp_token") {
+    return runningUser.displayName === crmUser
+      ? runningUser.displayName
+      : `${runningUser.displayName} (CRM: ${crmUser})`;
+  }
+  return crmUser;
 }
 
 const RECORD_CARD_URI = "ui://cardstack/record-card";
@@ -72,7 +92,7 @@ const HOME_CARD_URI = "ui://cardstack/home-card";
  */
 export async function createCardstackServer(deps: ServerDeps): Promise<McpServer> {
   const server = new McpServer({ name: "Cardstack CRM", version: "0.0.1" });
-  const { adapter, configStore, auditLog, preferences, tenantId } = deps;
+  const { adapter, configStore, auditLog, preferences, tenantId, runningUser } = deps;
 
   // Connection gate: a disconnected tenant is an empty canvas — every tool
   // refuses until an admin reconnects in Studio (feedback 2026-07-11).
@@ -720,7 +740,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         const writtenAs = await adapter.getConnectedUser();
         await auditLog.append({
           tenantId,
-          user: writtenAs,
+          user: auditUserLabel(runningUser, writtenAs),
           object: "tasks",
           recordId: task.id,
           changes: [{ field: "status", before: "open", after: "completed" }],
@@ -730,7 +750,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           content: [
             {
               type: "text",
-              text: `Completed task "${task.subject}"${task.relatedRecordName ? ` (${task.relatedRecordName})` : ""}. Written as ${writtenAs}; logged.`,
+              text: `Completed task "${task.subject}"${task.relatedRecordName ? ` (${task.relatedRecordName})` : ""}. Written as ${auditUserLabel(runningUser, writtenAs)}; logged.`,
             },
           ],
           structuredContent: { task } as unknown as Record<string, unknown>,
@@ -849,7 +869,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         if (saved.length > 0) {
           await auditLog.append({
             tenantId,
-            user: writtenAs,
+            user: auditUserLabel(runningUser, writtenAs),
             object: config.object,
             recordId: args.id,
             changes: saved.map(({ field, before, after }) => ({ field, before, after })),
@@ -929,7 +949,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         const writtenAs = await adapter.getConnectedUser();
         await auditLog.append({
           tenantId,
-          user: writtenAs,
+          user: auditUserLabel(runningUser, writtenAs),
           object: config.object,
           recordId: created.id,
           changes: Object.entries(args.fields).map(([field, after]) => ({
@@ -946,7 +966,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           content: [
             {
               type: "text",
-              text: `Created ${config.object} "${name}" (id ${created.id}), written as ${writtenAs} and logged.`,
+              text: `Created ${config.object} "${name}" (id ${created.id}), written as ${auditUserLabel(runningUser, writtenAs)} and logged.`,
             },
           ],
           structuredContent: { record: fresh },
