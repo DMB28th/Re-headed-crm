@@ -18,6 +18,10 @@
  *   `values` array operand (one-click "Open deals" = stage not_in closedValues,
  *   instead of eleven neq rows). Additive + optional — old configs parse
  *   unchanged.
+ * - 2026-07-20: CustomList gains optional creator + visibility metadata.
+ *   Missing visibility defaults to "workspace" so existing admin-defined lists
+ *   stay visible to everyone after the migration; newly created user lists are
+ *   stamped server-side as private unless the creator shares them.
  */
 import { z } from "zod";
 
@@ -69,6 +73,16 @@ export const CustomList = z.object({
   sort: z.object({ field: z.string().min(1), dir: z.enum(["asc", "desc"]) }).optional(),
   /** Precomputed human summary (Studio writes it with field labels). */
   filterSummary: z.string().optional(),
+  /**
+   * Creator/app identity metadata. Old lists have neither field and therefore
+   * parse as workspace-shared for backwards compatibility.
+   */
+  visibility: z.enum(["workspace", "private"]).default("workspace"),
+  createdByUserId: z.string().optional(),
+  createdByName: z.string().optional(),
+  createdByEmail: z.string().optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
 });
 export type CustomList = z.infer<typeof CustomList>;
 

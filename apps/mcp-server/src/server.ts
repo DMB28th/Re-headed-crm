@@ -17,6 +17,7 @@ import {
   recordCardFieldPaths,
   filterRecord,
   summarizeCustomFilters,
+  defaultUserContext,
   type CrmFieldValue,
   type ErrorPayload,
   type FieldFilter,
@@ -25,8 +26,10 @@ import {
   type LayoutConfig,
   type RecordPage,
   type SearchQuery,
+  type UserContext,
   type WriteReceiptPayload,
 } from "@cardstack/core";
+import { scopeViewExposuresForUser } from "@cardstack/config-store";
 import {
   CrmAuthError,
   CrmRateLimitError,
@@ -35,7 +38,7 @@ import {
   type CrmAdapter,
 } from "@cardstack/crm-adapters";
 import { getWidgetHtml, type WidgetName } from "@cardstack/widgets";
-import { DEMO_TENANT_ID, InMemoryConfigStore, type ConfigStore } from "./config/store.js";
+import type { ConfigStore } from "./config/store.js";
 import type { PreferenceStore } from "./config/preferences.js";
 import type { AuditLog } from "./audit.js";
 import {
@@ -59,6 +62,8 @@ export interface ServerDeps {
   preferences: PreferenceStore;
   /** M1: single-tenant. OAuth 2.1 token → tenant resolution lands in M7. */
   tenantId: string;
+  /** Authenticated app user. Defaults to the demo rep for scripts/tests. */
+  userContext?: UserContext;
 }
 
 const RECORD_CARD_URI = "ui://cardstack/record-card";
@@ -73,6 +78,7 @@ const HOME_CARD_URI = "ui://cardstack/home-card";
 export async function createCardstackServer(deps: ServerDeps): Promise<McpServer> {
   const server = new McpServer({ name: "Cardstack CRM", version: "0.0.1" });
   const { adapter, configStore, auditLog, preferences, tenantId } = deps;
+  const userContext = deps.userContext ?? defaultUserContext(tenantId);
 
   // Connection gate: a disconnected tenant is an empty canvas — every tool
   // refuses until an admin reconnects in Studio (feedback 2026-07-11).
@@ -86,12 +92,12 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
   };
 
   const exposedViewsFor = async (object: string): Promise<ExposedView[]> => {
-    const exposures = await configStore.getViewExposures(tenantId, object);
+    const fullConfig = await configStore.getViewExposuresConfig(tenantId, object);
+    const scopedConfig = fullConfig ? scopeViewExposuresForUser(fullConfig, userContext) : null;
+    const exposures = scopedConfig?.views.filter((view) => view.exposed) ?? [];
     const savedViews = await adapter.listSavedViews(object);
     const byId = new Map(savedViews.map((v) => [v.id, v]));
-    const customs = new Map(
-      (await configStore.getCustomLists(tenantId, object)).map((c) => [c.id, c]),
-    );
+    const customs = new Map((scopedConfig?.customLists ?? []).map((c) => [c.id, c]));
     return exposures.flatMap((exposure) => {
       const custom = customs.get(exposure.viewId);
       if (custom) {
@@ -143,7 +149,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
   ).flat();
 
   const requireLayout = async (object: string): Promise<LayoutConfig> => {
-    const config = await configStore.getLayout(tenantId, object);
+    const config = await configStore.getLayout(tenantId, object, userContext.audience);
     if (!config) {
       const configured = await configStore.listConfiguredObjects(tenantId);
       throw new Error(
@@ -526,10 +532,14 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           }
           // An explicit pick after an ambiguous ask sticks for that phrasing.
           if (args.query) {
-            await preferences.rememberViewChoice(tenantId, args.query, match.view.id);
+            await preferences.rememberViewChoice(tenantId, args.query, match.view.id, userContext.userId);
           }
         } else if (args.query) {
-          const rememberedId = await preferences.recallViewChoice(tenantId, args.query);
+          const rememberedId = await preferences.recallViewChoice(
+            tenantId,
+            args.query,
+            userContext.userId,
+          );
           match = exposed.find((e) => e.view.id === rememberedId);
           if (!match) {
             const resolution = resolveViewAsk(args.query, exposed);
@@ -729,6 +739,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         await auditLog.append({
           tenantId,
           user: writtenAs,
+          actor: auditActor(userContext),
           object: "tasks",
           recordId: task.id,
           changes: [{ field: "status", before: "open", after: "completed" }],
@@ -858,6 +869,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           await auditLog.append({
             tenantId,
             user: writtenAs,
+            actor: auditActor(userContext),
             object: config.object,
             recordId: args.id,
             changes: saved.map(({ field, before, after }) => ({ field, before, after })),
@@ -938,6 +950,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         await auditLog.append({
           tenantId,
           user: writtenAs,
+          actor: auditActor(userContext),
           object: config.object,
           recordId: created.id,
           changes: Object.entries(args.fields).map(([field, after]) => ({
@@ -1001,6 +1014,14 @@ function receiptText(
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function auditActor(user: UserContext): { userId: string; name: string; email?: string } {
+  return {
+    userId: user.userId,
+    name: user.name,
+    ...(user.email ? { email: user.email } : {}),
+  };
 }
 
 function formatPlain(value: unknown): string {

@@ -15,6 +15,7 @@ import {
   type FilterLabels,
   type ObjectDescribe,
   type SavedView,
+  type UserContext,
   type ViewExposure,
   type ViewExposuresConfig,
 } from "@cardstack/core";
@@ -115,6 +116,7 @@ export function ViewsEditor({ object }: { object: string }) {
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [describe, setDescribe] = useState<ObjectDescribe | null>(null);
   const [exposures, setExposures] = useState<ViewExposuresConfig | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserContext | null>(null);
   const [saved, setSaved] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -130,6 +132,7 @@ export function ViewsEditor({ object }: { object: string }) {
           savedViews: SavedView[];
           exposures: ViewExposuresConfig;
           describe: ObjectDescribe;
+          currentUser: UserContext;
           error?: string;
         };
         if (!res.ok || data.error) {
@@ -139,6 +142,7 @@ export function ViewsEditor({ object }: { object: string }) {
         setSavedViews(data.savedViews);
         setExposures(data.exposures);
         setDescribe(data.describe);
+        setCurrentUser(data.currentUser);
       } catch (error) {
         setLoadError(String(error));
       }
@@ -203,11 +207,22 @@ export function ViewsEditor({ object }: { object: string }) {
 
   const addCustomList = () => {
     const id = `cl-${Date.now().toString(36)}`;
+    const now = new Date().toISOString();
     const list: CustomList = {
       id,
       name: "New list",
       filters: [],
       filterSummary: "All records",
+      visibility: "private",
+      ...(currentUser
+        ? {
+            createdByUserId: currentUser.userId,
+            createdByName: currentUser.name,
+            ...(currentUser.email ? { createdByEmail: currentUser.email } : {}),
+          }
+        : {}),
+      createdAt: now,
+      updatedAt: now,
     };
     setEditing(id);
     void save({
@@ -219,7 +234,23 @@ export function ViewsEditor({ object }: { object: string }) {
 
   const addFromTemplate = (t: ListTemplate) => {
     const id = `cl-${t.key}-${Date.now().toString(36)}`;
-    const list: CustomList = { id, name: t.name, filters: t.filters, filterSummary: t.summary };
+    const now = new Date().toISOString();
+    const list: CustomList = {
+      id,
+      name: t.name,
+      filters: t.filters,
+      filterSummary: t.summary,
+      visibility: "private",
+      ...(currentUser
+        ? {
+            createdByUserId: currentUser.userId,
+            createdByName: currentUser.name,
+            ...(currentUser.email ? { createdByEmail: currentUser.email } : {}),
+          }
+        : {}),
+      createdAt: now,
+      updatedAt: now,
+    };
     void save({
       ...exposures,
       customLists: [...exposures.customLists, list],
@@ -242,7 +273,7 @@ export function ViewsEditor({ object }: { object: string }) {
       exposure,
       aliasInput: (
         <input
-          className="st-input text-[11.5px]"
+          className="st-input w-full min-w-0 text-[11.5px]"
           placeholder="my deals, open deals…"
           defaultValue={exposure.aliases.join(", ")}
           onBlur={(e) =>
@@ -261,7 +292,7 @@ export function ViewsEditor({ object }: { object: string }) {
           role="switch"
           aria-checked={exposure.exposed}
           onClick={() => updateView(viewId, { exposed: !exposure.exposed })}
-          className={`h-5 w-9 rounded-full transition-colors ${exposure.exposed ? "bg-accent" : "bg-line"}`}
+          className={`h-5 w-9 shrink-0 rounded-full transition-colors ${exposure.exposed ? "bg-accent" : "bg-line"}`}
         >
           <span
             className={`block h-4 w-4 rounded-full bg-white transition-transform ${exposure.exposed ? "translate-x-4" : "translate-x-0.5"}`}
@@ -296,17 +327,10 @@ export function ViewsEditor({ object }: { object: string }) {
         Changes apply on the next ask (no publish step).
       </p>
 
-      <h2 className="st-section-label mt-6">Synced from the CRM</h2>
-      <div className="st-card mt-2 overflow-hidden">
-        <div className="grid grid-cols-[1.4fr_1.6fr_1.6fr_auto] gap-3 border-b border-line-soft px-4 py-2">
-          {["View", "Filters (from CRM)", "Ask Claude with", "Exposed"].map((h) => (
-            <span key={h} className="st-section-label">
-              {h}
-            </span>
-          ))}
-        </div>
+      <h2 className="st-section-label mt-6">Synced CRM components</h2>
+      <div className="mt-2 grid grid-cols-1 gap-2.5">
         {savedViews.length === 0 && (
-          <div className="px-4 py-3 text-[12.5px] text-ink-45">
+          <div className="st-card px-4 py-3 text-[12.5px] text-ink-45">
             No CRM lists for this object. HubSpot <strong>Lists</strong> (Contacts ▸ Lists, plus
             company/deal lists) import here automatically when the token has the{" "}
             <code className="st-chip-mono bg-paper">crm.lists.read</code> scope — Connections shows a
@@ -315,24 +339,40 @@ export function ViewsEditor({ object }: { object: string }) {
           </div>
         )}
         {savedViews.map((view) => {
-          const { aliasInput, toggle, defaultChip } = exposureRowControls(view.id);
+          const { aliasInput, toggle, defaultChip, exposure } = exposureRowControls(view.id);
+          const primaryPhrase = exposure.aliases[0] ?? view.name.toLowerCase();
           return (
-            <div
-              key={view.id}
-              className="grid grid-cols-[1.4fr_1.6fr_1.6fr_auto] items-center gap-3 border-b border-line-soft px-4 py-2.5 last:border-b-0"
-            >
-              <span className="text-[12.5px]">
-                <span className="font-medium">{view.name}</span>
-                <span className="mt-0.5 flex items-center gap-1.5">
-                  {view.visibility === "private" && (
-                    <span className="st-chip-mono bg-paper text-ink-45">private</span>
-                  )}
-                  {defaultChip}
-                </span>
-              </span>
-              <span className="text-[11.5px] text-ink-55">{view.filterSummary}</span>
-              {aliasInput}
-              {toggle}
+            <div key={view.id} className="st-card min-w-0 overflow-hidden p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="break-words text-[13px] font-semibold">{view.name}</span>
+                    <span className="st-chip-mono bg-crmmeta text-crmmeta-ink">CRM list</span>
+                    {view.visibility === "private" && (
+                      <span className="st-chip-mono bg-paper text-ink-45">private</span>
+                    )}
+                    {defaultChip}
+                  </div>
+                  <div className="mt-1 text-[11.5px] text-ink-55">{view.filterSummary}</div>
+                </div>
+                <label className="flex flex-wrap items-center gap-2 text-[11.5px] text-ink-55">
+                  {exposure.exposed ? "Available in chat" : "Hidden from chat"}
+                  {toggle}
+                </label>
+              </div>
+              <div className="mt-3 grid gap-2 md:grid-cols-[1fr_1.3fr]">
+                <div className="min-w-0 rounded-[9px] border border-line-soft bg-paper px-3 py-2">
+                  <div className="text-[10px] font-semibold uppercase text-ink-55">Invocation</div>
+                  <div className="mt-1 break-words text-[12px] text-ink-55">
+                    Chat resolves <span className="font-medium text-ink">"{primaryPhrase}"</span> to this
+                    CRM-managed list.
+                  </div>
+                </div>
+                <label className="text-[11.5px] text-ink-55">
+                  aliases
+                  <div className="mt-1">{aliasInput}</div>
+                </label>
+              </div>
             </div>
           );
         })}
@@ -355,7 +395,7 @@ export function ViewsEditor({ object }: { object: string }) {
         return (
           <div className="mt-2 rounded-[10px] border border-line-soft bg-paper px-3 py-2.5">
             <div className="text-[11px] text-ink-45">
-              Quick add — one-click lists built from this object's fields (edit or delete after):
+              Starter components — one-click lists built from this object's fields (edit or delete after):
             </div>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {templates.map((t) => (
@@ -374,81 +414,126 @@ export function ViewsEditor({ object }: { object: string }) {
         );
       })()}
 
-      <div className="st-card mt-2 overflow-hidden">
+      <div className="mt-2 grid grid-cols-1 gap-2.5">
         {exposures.customLists.length === 0 && (
-          <div className="px-4 py-3 text-[12.5px] text-ink-45">
+          <div className="st-card px-4 py-3 text-[12.5px] text-ink-45">
             None yet — Cardstack lists are filters you define here, without touching the CRM.
           </div>
         )}
         {exposures.customLists.map((list) => {
-          const { aliasInput, toggle, defaultChip } = exposureRowControls(list.id);
+          const { aliasInput, toggle, defaultChip, exposure } = exposureRowControls(list.id);
           const isEditing = editing === list.id;
+          const primaryPhrase = exposure.aliases[0] ?? list.name.toLowerCase();
+          const summary = summarize(list);
           return (
-            <div key={list.id} className="border-b border-line-soft last:border-b-0">
-              <div className="grid grid-cols-[1.4fr_1.6fr_1.6fr_auto] items-center gap-3 px-4 py-2.5">
-                <span className="text-[12.5px]">
-                  {isEditing ? (
-                    <input
-                      className="st-input w-full py-1 text-[12.5px] font-medium"
-                      value={list.name}
-                      onChange={(e) => updateCustomList(list.id, { name: e.target.value })}
-                    />
-                  ) : (
-                    <span className="font-medium">{list.name}</span>
-                  )}
-                  <span className="mt-0.5 flex items-center gap-1.5">
-                    <span className="st-chip-mono bg-crmmeta text-crmmeta-ink">Cardstack</span>
-                    {defaultChip}
-                  </span>
-                </span>
-                <span className="text-[11.5px] text-ink-55">
-                  {summarize(list)}
-                  <button
-                    type="button"
-                    className="ml-2 text-[10.5px] text-ink-45 underline"
-                    onClick={() => setEditing(isEditing ? null : list.id)}
-                  >
-                    {isEditing ? "done" : "edit"}
-                  </button>
-                  {deleteConfirm === list.id ? (
-                    <>
+            <div key={list.id} className="st-card min-w-0 overflow-hidden">
+              <div className="p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    {isEditing ? (
+                      <input
+                        className="st-input w-full py-1 text-[13px] font-semibold"
+                        value={list.name}
+                        onChange={(e) => updateCustomList(list.id, { name: e.target.value })}
+                      />
+                    ) : (
+                      <span className="break-words text-[13px] font-semibold">{list.name}</span>
+                    )}
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <span className="st-chip-mono bg-crmmeta text-crmmeta-ink">Cardstack list</span>
                       <button
                         type="button"
-                        className="ml-2 text-[10.5px] text-drift-ink underline"
-                        onClick={() => {
-                          deleteCustomList(list.id);
-                          setDeleteConfirm(null);
-                        }}
+                        className="st-chip-mono bg-paper text-ink-45"
+                        title={
+                          list.visibility === "private"
+                            ? "Only you can see this list in Studio and chat"
+                            : "Everyone in the workspace can see this list"
+                        }
+                        onClick={() =>
+                          updateCustomList(list.id, {
+                            visibility: list.visibility === "private" ? "workspace" : "private",
+                          })
+                        }
                       >
-                        {(() => {
-                          const ex = exposureFor(list.id);
-                          return ex.isDefault
-                            ? "delete — reps' default ask breaks"
-                            : ex.aliases.length > 0
-                              ? `delete — "${ex.aliases[0]}" stops resolving`
-                              : "confirm delete";
-                        })()}
+                        {list.visibility === "private" ? "Only me" : "Workspace"}
                       </button>
-                      <button
-                        type="button"
-                        className="ml-1.5 text-[10.5px] text-ink-45 underline"
-                        onClick={() => setDeleteConfirm(null)}
-                      >
-                        cancel
-                      </button>
-                    </>
-                  ) : (
+                      {list.createdByName && (
+                        <span className="st-chip-mono bg-paper text-ink-45">
+                          by {list.createdByName}
+                        </span>
+                      )}
+                      {defaultChip}
+                    </div>
+                  </div>
+                  <label className="flex flex-wrap items-center gap-2 text-[11.5px] text-ink-55">
+                    {exposure.exposed ? "Available in chat" : "Hidden from chat"}
+                    {toggle}
+                  </label>
+                </div>
+                <div className="mt-3 grid gap-2 md:grid-cols-[1fr_1.3fr]">
+                  <div className="min-w-0 rounded-[9px] border border-line-soft bg-paper px-3 py-2">
+                    <div className="text-[10px] font-semibold uppercase text-ink-55">Invocation</div>
+                    <div className="mt-1 break-words text-[12px] text-ink-55">
+                      Chat resolves <span className="font-medium text-ink">"{primaryPhrase}"</span> to this
+                      list component.
+                    </div>
+                  </div>
+                  <div className="min-w-0 rounded-[9px] border border-line-soft bg-paper px-3 py-2">
+                    <div className="text-[10px] font-semibold uppercase text-ink-55">Filter</div>
+                    <div className="mt-1 break-words text-[12px] text-ink-55">{summary}</div>
+                  </div>
+                </div>
+                <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto] md:items-end">
+                  <label className="text-[11.5px] text-ink-55">
+                    aliases
+                    <div className="mt-1">{aliasInput}</div>
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      className="ml-2 text-[10.5px] text-drift-ink underline"
-                      onClick={() => setDeleteConfirm(list.id)}
+                      className="text-[10.5px] text-ink-45 underline"
+                      onClick={() => setEditing(isEditing ? null : list.id)}
                     >
-                      delete
+                      {isEditing ? "done" : "edit filters"}
                     </button>
-                  )}
-                </span>
-                {aliasInput}
-                {toggle}
+                    {deleteConfirm === list.id ? (
+                      <>
+                        <button
+                          type="button"
+                          className="text-[10.5px] text-drift-ink underline"
+                          onClick={() => {
+                            deleteCustomList(list.id);
+                            setDeleteConfirm(null);
+                          }}
+                        >
+                          {(() => {
+                            const ex = exposureFor(list.id);
+                            return ex.isDefault
+                              ? "delete - default ask breaks"
+                              : ex.aliases.length > 0
+                                ? `delete - "${ex.aliases[0]}" stops resolving`
+                                : "confirm delete";
+                          })()}
+                        </button>
+                        <button
+                          type="button"
+                          className="text-[10.5px] text-ink-45 underline"
+                          onClick={() => setDeleteConfirm(null)}
+                        >
+                          cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="text-[10.5px] text-drift-ink underline"
+                        onClick={() => setDeleteConfirm(list.id)}
+                      >
+                        delete
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
               {isEditing && (
                 <FilterEditor

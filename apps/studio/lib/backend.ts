@@ -21,7 +21,7 @@ import {
 } from "@cardstack/config-store";
 import { createAdapterForConnection, type CrmAdapter } from "@cardstack/crm-adapters";
 
-export const TENANT_ID = DEMO_TENANT_ID;
+export const TENANT_ID = process.env.CARDSTACK_TENANT_ID ?? DEMO_TENANT_ID;
 
 const configPath =
   process.env.CARDSTACK_CONFIG_PATH ??
@@ -45,8 +45,8 @@ export function getAuditLog(): Promise<AuditLog> {
 }
 
 /** The tenant's adapter per its CURRENT connection (read fresh each call). */
-export async function getAdapter(): Promise<CrmAdapter> {
-  const connection = await (await getStore()).getConnection(TENANT_ID);
+export async function getAdapter(tenantId = TENANT_ID): Promise<CrmAdapter> {
+  const connection = await (await getStore()).getConnection(tenantId);
   return createAdapterForConnection({
     crm: connection.crm,
     ...(connection.credentials ? { credentials: connection.credentials } : {}),

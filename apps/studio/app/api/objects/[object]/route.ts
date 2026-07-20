@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getStore, TENANT_ID } from "../../../../lib/backend";
+import { getStore } from "../../../../lib/backend";
+import { getUserContextFromRequest } from "../../../../lib/auth";
 
 type Params = { params: Promise<{ object: string }> };
 
@@ -8,10 +9,11 @@ type Params = { params: Promise<{ object: string }> };
  * lists, publish history). The object and its records in the CRM are untouched;
  * it returns to "available to add".
  */
-export async function DELETE(_req: Request, { params }: Params) {
+export async function DELETE(req: Request, { params }: Params) {
   const { object } = await params;
   try {
-    await (await getStore()).removeObject(TENANT_ID, object);
+    const { tenantId } = getUserContextFromRequest(req);
+    await (await getStore()).removeObject(tenantId, object);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 400 });

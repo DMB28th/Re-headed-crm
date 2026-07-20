@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { HubSpotAdapter } from "@cardstack/crm-adapters";
-import { getAdapter, getStore, TENANT_ID } from "../../../lib/backend";
+import { getAdapter, getStore } from "../../../lib/backend";
+import { getUserContextFromRequest } from "../../../lib/auth";
 import { generateStarterLayout } from "../../../lib/starter-layout";
 
 /** Objects panel data: what's configured (draft or published) vs addable. */
-export async function GET() {
+export async function GET(req: Request) {
+  const { tenantId } = getUserContextFromRequest(req);
   const store = await getStore();
-  const adapter = await getAdapter();
-  const connection = await store.getConnection(TENANT_ID);
+  const adapter = await getAdapter(tenantId);
+  const connection = await store.getConnection(tenantId);
   // Redact: credentials never leave the server (hard rule 3).
   const { credentials, ...connectionSafe } = connection;
   const redacted = { ...connectionSafe, live: !!credentials && Object.keys(credentials).length > 0 };
@@ -27,7 +29,7 @@ export async function GET() {
   const objects: { api: string; labelPlural: string; draft: boolean; publishedRevision: number | null }[] = [];
   const available: { api: string; labelPlural: string }[] = [];
   for (const summary of crmObjects) {
-    const record = await store.getLayoutRecord(TENANT_ID, summary.api);
+    const record = await store.getLayoutRecord(tenantId, summary.api);
     if (record.draft || record.published) {
       objects.push({
         api: summary.api,
@@ -45,16 +47,17 @@ export async function GET() {
 /** Add an object: generate a starter DRAFT layout from describe (3c). */
 export async function POST(req: Request) {
   try {
+    const { tenantId } = getUserContextFromRequest(req);
     const { object } = (await req.json()) as { object?: string };
     if (!object) return NextResponse.json({ error: "object required" }, { status: 400 });
     const store = await getStore();
-    const record = await store.getLayoutRecord(TENANT_ID, object);
+    const record = await store.getLayoutRecord(tenantId, object);
     if (record.draft || record.published) {
       return NextResponse.json({ error: `${object} is already configured` }, { status: 409 });
     }
-    const connection = await store.getConnection(TENANT_ID);
-    const describe = await (await getAdapter()).describeObject(object);
-    await store.saveDraft(generateStarterLayout(TENANT_ID, describe, connection.crm));
+    const connection = await store.getConnection(tenantId);
+    const describe = await (await getAdapter(tenantId)).describeObject(object);
+    await store.saveDraft(generateStarterLayout(tenantId, describe, connection.crm));
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 400 });

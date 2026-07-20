@@ -1,6 +1,7 @@
 import { PermissionsEditor } from "../../../../components/permissions-editor";
 import { NoConnection } from "../../../../components/no-connection";
-import { getStore, TENANT_ID } from "../../../../lib/backend";
+import { getStore } from "../../../../lib/backend";
+import { getUserContext } from "../../../../lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,8 @@ export default async function PermissionsPage({
   params: Promise<{ object: string }>;
 }) {
   const { object } = await params;
-  const connection = await (await getStore()).getConnection(TENANT_ID);
+  const { tenantId } = await getUserContext();
+  const connection = await (await getStore()).getConnection(tenantId);
   if (connection.status !== "connected") return <NoConnection />;
   return <PermissionsEditor object={object} />;
 }

@@ -41,6 +41,11 @@ export interface ConfigStore {
   listConfiguredObjects(tenantId: string): Promise<string[]>;
   /** Exposed saved-view config only (unexposed views stay invisible to chat). */
   getViewExposures(tenantId: string, object: string): Promise<ViewExposure[]>;
+  /** Full exposure config for user-scoped reads; callers must filter before display. */
+  getViewExposuresConfig(
+    tenantId: string,
+    object: string,
+  ): Promise<ViewExposuresConfig | undefined>;
   /** Admin-defined custom lists (filters live in Cardstack, not the CRM). */
   getCustomLists(tenantId: string, object: string): Promise<CustomList[]>;
   /** Published home-card config for "open my CRM" (design 7a). */

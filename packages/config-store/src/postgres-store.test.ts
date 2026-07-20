@@ -103,7 +103,7 @@ describe("PostgresConfigStore", () => {
     const config = (await store.getViewExposuresConfig(DEMO_TENANT_ID, "deals"))!;
     await store.setViewExposures({
       ...config,
-      customLists: [{ id: "cl-pg", name: "PG list", filters: [] }],
+      customLists: [{ id: "cl-pg", name: "PG list", filters: [], visibility: "workspace" }],
       views: [...config.views, { viewId: "cl-pg", exposed: true, aliases: [], isDefault: false }],
     });
     expect((await store.getCustomLists(DEMO_TENANT_ID, "deals"))[0]?.name).toBe("PG list");

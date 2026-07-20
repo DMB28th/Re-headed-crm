@@ -9,6 +9,7 @@ import { MockCrmAdapter } from "@cardstack/crm-adapters";
 import type {
   RecordCardPayload,
   ResultsTablePayload,
+  UserContext,
   WriteReceiptPayload,
 } from "@cardstack/core";
 import { createCardstackServer } from "./server.js";
@@ -162,6 +163,7 @@ describe("golden path 2: confirmed write → receipt → audit", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
       user: "Demo rep",
+      actor: { userId: "demo-rep", name: "Demo rep" },
       object: "deals",
       recordId: "d-001",
     });
@@ -423,6 +425,7 @@ describe("custom lists (Cardstack-native filters)", () => {
             { field: "dealstage", op: "neq", value: "Closed lost" },
           ],
           filterSummary: "Amount > $100k · open",
+          visibility: "workspace",
         },
       ],
       views: [
@@ -453,5 +456,69 @@ describe("custom lists (Cardstack-native filters)", () => {
     for (const row of payload.page.rows) {
       expect(Number(row.fields.amount)).toBeGreaterThan(100000);
     }
+  });
+
+  it("filters private custom lists to the creating app user", async () => {
+    const configStore = new InMemoryConfigStore();
+    const exposures = (await configStore.getViewExposuresConfig(DEMO_TENANT_ID, "deals"))!;
+    await configStore.setViewExposures({
+      ...exposures,
+      customLists: [
+        {
+          id: "cl-private",
+          name: "Dana's save list",
+          filters: [{ field: "amount", op: "gt", value: 100000 }],
+          filterSummary: "Amount > $100k",
+          visibility: "private",
+          createdByUserId: "dana",
+          createdByName: "Dana",
+        },
+      ],
+      views: [
+        ...exposures.views,
+        { viewId: "cl-private", exposed: true, aliases: ["dana saves"], isDefault: false },
+      ],
+    });
+    const makeClient = async (userContext: UserContext): Promise<Client> => {
+      const server = await createCardstackServer({
+        adapter: new MockCrmAdapter(),
+        configStore,
+        auditLog: new InMemoryAuditLog(),
+        preferences: new InMemoryPreferenceStore(),
+        tenantId: DEMO_TENANT_ID,
+        userContext,
+      });
+      const c = new Client({ name: "test-host", version: "0.0.1" });
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      await Promise.all([server.connect(serverTransport), c.connect(clientTransport)]);
+      return c;
+    };
+
+    const dana = await makeClient({
+      tenantId: DEMO_TENANT_ID,
+      userId: "dana",
+      name: "Dana",
+      audience: "default",
+    });
+    const lee = await makeClient({
+      tenantId: DEMO_TENANT_ID,
+      userId: "lee",
+      name: "Lee",
+      audience: "default",
+    });
+
+    const visible = await dana.callTool({
+      name: "crm_list_view",
+      arguments: { object: "deals", query: "dana saves" },
+    });
+    expect(visible.isError).toBeFalsy();
+    expect(textOf(visible)).toContain("Dana's save list");
+
+    const hidden = await lee.callTool({
+      name: "crm_list_view",
+      arguments: { object: "deals", query: "dana saves" },
+    });
+    expect(hidden.isError).toBe(true);
+    expect(textOf(hidden)).toContain("No exposed view matches");
   });
 });

@@ -1,18 +1,24 @@
 import { NextResponse } from "next/server";
-import { getAuditLog, TENANT_ID } from "../../../lib/backend";
+import { getAuditLog } from "../../../lib/backend";
+import { getUserContextFromRequest } from "../../../lib/auth";
 
 /** GET /api/audit — recent chat writes. ?format=csv flattens to one row per
- *  field change (timestamp,user,object,recordId,field,before,after). */
+ *  field change (timestamp,actor,writtenAs,object,recordId,field,before,after). */
 export async function GET(req: Request) {
   try {
-    const entries = await (await getAuditLog()).list(TENANT_ID);
+    const { tenantId } = getUserContextFromRequest(req);
+    const entries = await (await getAuditLog()).list(tenantId);
     const url = new URL(req.url);
     if (url.searchParams.get("format") === "csv") {
-      const rows = [["timestamp", "user", "object", "recordId", "field", "before", "after"]];
+      const rows = [
+        ["timestamp", "actor", "actorEmail", "writtenAs", "object", "recordId", "field", "before", "after"],
+      ];
       for (const e of entries) {
         for (const c of e.changes) {
           rows.push([
             e.timestamp,
+            e.actor?.name ?? "",
+            e.actor?.email ?? "",
             e.user,
             e.object,
             e.recordId,

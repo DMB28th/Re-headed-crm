@@ -1,5 +1,6 @@
 /** Audit log (compliance spine): every confirmed chat write, durably logged. */
-import { getAuditLog, getStore, TENANT_ID } from "../../lib/backend";
+import { getAuditLog, getStore } from "../../lib/backend";
+import { getUserContext } from "../../lib/auth";
 import { NoConnection } from "../../components/no-connection";
 
 export const dynamic = "force-dynamic";
@@ -10,12 +11,13 @@ function formatValue(v: unknown): string {
 }
 
 export default async function AuditPage() {
+  const { tenantId } = await getUserContext();
   const store = await getStore();
-  const connection = await store.getConnection(TENANT_ID);
+  const connection = await store.getConnection(tenantId);
   if (connection.status !== "connected") return <NoConnection />;
 
   const entries = await getAuditLog()
-    .then((log) => log.list(TENANT_ID))
+    .then((log) => log.list(tenantId))
     .catch(() => []);
 
   return (
@@ -29,8 +31,8 @@ export default async function AuditPage() {
         )}
       </div>
       <p className="mt-1 text-[12.5px] text-ink-55">
-        Every write reps confirm from chat, with before/after values and who it was written as.
-        Durable across restarts.
+        Every write reps confirm from chat, with before/after values, who triggered it and who it
+        was written as. Durable across restarts.
       </p>
 
       {entries.length === 0 ? (
@@ -43,8 +45,8 @@ export default async function AuditPage() {
         </div>
       ) : (
         <div className="st-card mt-5 overflow-hidden">
-          <div className="grid grid-cols-[1.3fr_1.2fr_1fr_2fr] gap-3 border-b border-line-soft px-4 py-2">
-            {["When", "Written as", "Record", "Change"].map((h) => (
+          <div className="grid grid-cols-[1.3fr_1.1fr_1.1fr_1fr_2fr] gap-3 border-b border-line-soft px-4 py-2">
+            {["When", "Actor", "Written as", "Record", "Change"].map((h) => (
               <span key={h} className="st-section-label">
                 {h}
               </span>
@@ -53,9 +55,10 @@ export default async function AuditPage() {
           {entries.map((e) => (
             <div
               key={e.id}
-              className="grid grid-cols-[1.3fr_1.2fr_1fr_2fr] gap-3 border-b border-line-soft px-4 py-2.5 text-[12px] last:border-b-0"
+              className="grid grid-cols-[1.3fr_1.1fr_1.1fr_1fr_2fr] gap-3 border-b border-line-soft px-4 py-2.5 text-[12px] last:border-b-0"
             >
               <span className="text-ink-55">{new Date(e.timestamp).toLocaleString()}</span>
+              <span>{e.actor?.name ?? "—"}</span>
               <span>{e.user}</span>
               <span className="text-ink-55">
                 <span className="st-chip-mono bg-paper text-ink-45">{e.object}</span> {e.recordId}

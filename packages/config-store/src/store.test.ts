@@ -6,6 +6,8 @@ import { FileConfigStore } from "./file-store.js";
 import { InMemoryConfigStore } from "./memory-store.js";
 import { diffLayouts } from "./diff.js";
 import { DEMO_TENANT_ID, demoDealsLayout } from "./seed.js";
+import type { UserContext } from "@cardstack/core";
+import { mergeScopedViewExposures, scopeViewExposuresForUser } from "./list-visibility.js";
 
 const editedDraft = () => ({
   ...structuredClone(demoDealsLayout),
@@ -141,7 +143,12 @@ describe("custom lists (view-exposures v2)", () => {
     await store.setViewExposures({
       ...config,
       customLists: [
-        { id: "cl-1", name: "Big renewals", filters: [{ field: "amount", op: "gt", value: 100000 }] },
+        {
+          id: "cl-1",
+          name: "Big renewals",
+          filters: [{ field: "amount", op: "gt", value: 100000 }],
+          visibility: "workspace",
+        },
       ],
       views: [...config.views, { viewId: "cl-1", exposed: true, aliases: ["big renewals"], isDefault: false }],
     });
@@ -150,6 +157,70 @@ describe("custom lists (view-exposures v2)", () => {
     expect(lists[0]!.name).toBe("Big renewals");
     const exposed = await store.getViewExposures(DEMO_TENANT_ID, "deals");
     expect(exposed.map((v) => v.viewId)).toContain("cl-1");
+  });
+
+  it("merges a user-scoped edit without deleting another user's private list", async () => {
+    const dana: UserContext = {
+      tenantId: DEMO_TENANT_ID,
+      userId: "dana",
+      name: "Dana",
+      audience: "default",
+    };
+    const lee: UserContext = {
+      tenantId: DEMO_TENANT_ID,
+      userId: "lee",
+      name: "Lee",
+      audience: "default",
+    };
+    const store = new InMemoryConfigStore();
+    const config = (await store.getViewExposuresConfig(DEMO_TENANT_ID, "deals"))!;
+    const full = {
+      ...config,
+      customLists: [
+        {
+          id: "cl-dana",
+          name: "Dana's list",
+          filters: [],
+          visibility: "private" as const,
+          createdByUserId: "dana",
+          createdByName: "Dana",
+        },
+        {
+          id: "cl-lee",
+          name: "Lee's list",
+          filters: [],
+          visibility: "private" as const,
+          createdByUserId: "lee",
+          createdByName: "Lee",
+        },
+      ],
+      views: [
+        ...config.views,
+        { viewId: "cl-dana", exposed: true, aliases: ["dana"], isDefault: false },
+        { viewId: "cl-lee", exposed: true, aliases: ["lee"], isDefault: false },
+      ],
+    };
+    await store.setViewExposures(full);
+
+    const danaScoped = scopeViewExposuresForUser(full, dana);
+    const merged = mergeScopedViewExposures(
+      full,
+      {
+        ...danaScoped,
+        customLists: danaScoped.customLists.map((list) =>
+          list.id === "cl-dana" ? { ...list, name: "Dana renamed" } : list,
+        ),
+      },
+      dana,
+      "2026-07-20T12:00:00.000Z",
+    );
+
+    expect(scopeViewExposuresForUser(merged, dana).customLists.map((l) => l.id)).toEqual([
+      "cl-dana",
+    ]);
+    expect(scopeViewExposuresForUser(merged, lee).customLists.map((l) => l.id)).toEqual(["cl-lee"]);
+    expect(merged.customLists.find((l) => l.id === "cl-dana")?.name).toBe("Dana renamed");
+    expect(merged.customLists.find((l) => l.id === "cl-lee")?.name).toBe("Lee's list");
   });
 });
 

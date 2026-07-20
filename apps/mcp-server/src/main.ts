@@ -9,6 +9,7 @@ import { createAdapterForConnection } from "@cardstack/crm-adapters";
 import { createPostgresConfigStore, type ConfigStore } from "@cardstack/config-store";
 import { createCardstackServer } from "./server.js";
 import { defaultConfigPath, FileConfigStore, DEMO_TENANT_ID } from "./config/store.js";
+import { userContextFromHeaders } from "./auth.js";
 import {
   InMemoryAuditLog,
   FileAuditLog,
@@ -105,7 +106,8 @@ app.all("/mcp", async (req, res) => {
     res.status(429).json({ error: "Rate limit exceeded — retry shortly." });
     return;
   }
-  const connection = await configStore.getConnection(DEMO_TENANT_ID);
+  const userContext = userContextFromHeaders({ get: (name) => req.header(name) });
+  const connection = await configStore.getConnection(userContext.tenantId);
   const adapter = createAdapterForConnection({
     crm: connection.crm,
     ...(connection.credentials ? { credentials: connection.credentials } : {}),
@@ -118,7 +120,8 @@ app.all("/mcp", async (req, res) => {
     configStore,
     auditLog,
     preferences,
-    tenantId: DEMO_TENANT_ID,
+    tenantId: userContext.tenantId,
+    userContext,
   });
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   res.on("close", () => {
@@ -130,5 +133,7 @@ app.all("/mcp", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Cardstack MCP server on http://localhost:${PORT}/mcp (mock adapter, tenant ${DEMO_TENANT_ID})`);
+  console.log(
+    `Cardstack MCP server on http://localhost:${PORT}/mcp (default tenant ${process.env.CARDSTACK_TENANT_ID ?? DEMO_TENANT_ID})`,
+  );
 });

@@ -5,8 +5,17 @@
  * stateless requests via the shared instance in main.ts.
  */
 export interface PreferenceStore {
-  rememberViewChoice(tenantId: string, query: string, viewId: string): Promise<void>;
-  recallViewChoice(tenantId: string, query: string): Promise<string | undefined>;
+  rememberViewChoice(
+    tenantId: string,
+    query: string,
+    viewId: string,
+    userId?: string,
+  ): Promise<void>;
+  recallViewChoice(
+    tenantId: string,
+    query: string,
+    userId?: string,
+  ): Promise<string | undefined>;
 }
 
 export function normalizeAsk(query: string): string {
@@ -16,11 +25,20 @@ export function normalizeAsk(query: string): string {
 export class InMemoryPreferenceStore implements PreferenceStore {
   private choices = new Map<string, string>();
 
-  async rememberViewChoice(tenantId: string, query: string, viewId: string): Promise<void> {
-    this.choices.set(`${tenantId}::${normalizeAsk(query)}`, viewId);
+  async rememberViewChoice(
+    tenantId: string,
+    query: string,
+    viewId: string,
+    userId = "workspace",
+  ): Promise<void> {
+    this.choices.set(`${tenantId}::${userId}::${normalizeAsk(query)}`, viewId);
   }
 
-  async recallViewChoice(tenantId: string, query: string): Promise<string | undefined> {
-    return this.choices.get(`${tenantId}::${normalizeAsk(query)}`);
+  async recallViewChoice(
+    tenantId: string,
+    query: string,
+    userId = "workspace",
+  ): Promise<string | undefined> {
+    return this.choices.get(`${tenantId}::${userId}::${normalizeAsk(query)}`);
   }
 }

@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
 import { parseLayoutConfig } from "@cardstack/core";
 import { diffLayouts } from "@cardstack/config-store";
-import { getAdapter, getStore, TENANT_ID } from "../../../../lib/backend";
+import { getAdapter, getStore } from "../../../../lib/backend";
+import { getUserContextFromRequest } from "../../../../lib/auth";
 
 type Params = { params: Promise<{ object: string }> };
 
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(req: Request, { params }: Params) {
   const { object } = await params;
   try {
+    const { tenantId } = getUserContextFromRequest(req);
     const store = await getStore();
-    const adapter = await getAdapter();
-    const record = await store.getLayoutRecord(TENANT_ID, object);
+    const adapter = await getAdapter(tenantId);
+    const record = await store.getLayoutRecord(tenantId, object);
     const full = await adapter.describeObject(object);
     // Related-object describes keyed by relationship api — the related-list
     // picker (3b) needs the target's fields for column choices. Targets the
@@ -39,8 +41,9 @@ export async function GET(_req: Request, { params }: Params) {
 export async function PUT(req: Request, { params }: Params) {
   const { object } = await params;
   try {
+    const { tenantId } = getUserContextFromRequest(req);
     const draft = parseLayoutConfig(await req.json());
-    if (draft.object !== object || draft.tenantId !== TENANT_ID) {
+    if (draft.object !== object || draft.tenantId !== tenantId) {
       return NextResponse.json({ error: "tenant/object mismatch" }, { status: 400 });
     }
     await (await getStore()).saveDraft(draft);
@@ -50,10 +53,11 @@ export async function PUT(req: Request, { params }: Params) {
   }
 }
 
-export async function DELETE(_req: Request, { params }: Params) {
+export async function DELETE(req: Request, { params }: Params) {
   const { object } = await params;
   try {
-    await (await getStore()).discardDraft(TENANT_ID, object);
+    const { tenantId } = getUserContextFromRequest(req);
+    await (await getStore()).discardDraft(tenantId, object);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 400 });

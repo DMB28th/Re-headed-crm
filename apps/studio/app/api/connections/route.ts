@@ -8,7 +8,8 @@ import {
   type HubSpotCredentials,
   type SalesforceCredentials,
 } from "@cardstack/crm-adapters";
-import { getAdapter, getStore, TENANT_ID } from "../../../lib/backend";
+import { getAdapter, getStore } from "../../../lib/backend";
+import { getUserContextFromRequest } from "../../../lib/auth";
 
 /** Credentials NEVER leave the server (hard rule 3) — the API ships a flag only. */
 function redact(connection: ConnectionState): Record<string, unknown> {
@@ -22,13 +23,14 @@ async function scopeGapsFor(adapter: CrmAdapter): Promise<string[]> {
   return info?.scopeGaps ?? [];
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const { tenantId } = getUserContextFromRequest(req);
   const store = await getStore();
-  const connection = await store.getConnection(TENANT_ID);
+  const connection = await store.getConnection(tenantId);
   if (connection.status !== "connected") {
     return NextResponse.json({ connection: redact(connection), connectedUser: null, scopeGaps: [] });
   }
-  const adapter = await getAdapter();
+  const adapter = await getAdapter(tenantId);
   const [connectedUser, scopeGaps] = await Promise.all([
     adapter.getConnectedUser().catch(() => null),
     scopeGapsFor(adapter),
@@ -43,6 +45,7 @@ interface ConnectBody {
 }
 
 export async function POST(req: Request) {
+  const { tenantId } = getUserContextFromRequest(req);
   const body = (await req.json()) as ConnectBody;
   const store = await getStore();
 
@@ -50,7 +53,7 @@ export async function POST(req: Request) {
   // re-probe with a fresh one, and bump changedAt so every process (incl. the
   // MCP server) rebuilds its adapter on the next call.
   if (body.action === "refresh") {
-    const current = await store.getConnection(TENANT_ID);
+    const current = await store.getConnection(tenantId);
     if (current.status !== "connected" || !current.credentials) {
       return NextResponse.json({ error: "No live connection to refresh." }, { status: 400 });
     }
@@ -74,7 +77,7 @@ export async function POST(req: Request) {
   }
 
   if (body.action === "disconnect") {
-    const current = await store.getConnection(TENANT_ID);
+    const current = await store.getConnection(tenantId);
     if (current.credentials) {
       // A later reconnect must build a FRESH adapter, not inherit stale caches.
       invalidateAdapterCache({ crm: current.crm, credentials: current.credentials });
@@ -99,7 +102,7 @@ export async function POST(req: Request) {
   try {
     if (kind === "mock") {
       state = {
-        tenantId: TENANT_ID,
+        tenantId,
         status: "connected",
         crm: "hubspot",
         label: "mock portal",
@@ -119,7 +122,7 @@ export async function POST(req: Request) {
       connectedUser = await probe.validateConnection();
       scopeGaps = await scopeGapsFor(probe);
       state = {
-        tenantId: TENANT_ID,
+        tenantId,
         status: "connected",
         crm: "hubspot",
         label: "private app",
@@ -144,7 +147,7 @@ export async function POST(req: Request) {
       connectedUser = await probe.validateConnection();
       scopeGaps = await scopeGapsFor(probe);
       state = {
-        tenantId: TENANT_ID,
+        tenantId,
         status: "connected",
         crm: "salesforce",
         label: "client credentials",

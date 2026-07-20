@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getAdapter, getStore, TENANT_ID } from "../../../../../lib/backend";
+import { getAdapter, getStore } from "../../../../../lib/backend";
+import { getUserContextFromRequest } from "../../../../../lib/auth";
 import { generateStarterLayout } from "../../../../../lib/starter-layout";
 
 type Params = { params: Promise<{ object: string }> };
@@ -9,16 +10,17 @@ type Params = { params: Promise<{ object: string }> };
  * auto-generation, re-runnable). The published revision is untouched — this
  * replaces the draft only; publish stays an explicit act.
  */
-export async function POST(_req: Request, { params }: Params) {
+export async function POST(req: Request, { params }: Params) {
   const { object } = await params;
   try {
+    const { tenantId } = getUserContextFromRequest(req);
     const store = await getStore();
-    const connection = await store.getConnection(TENANT_ID);
-    const describe = await (await getAdapter()).describeObject(object);
-    const starter = generateStarterLayout(TENANT_ID, describe, connection.crm);
+    const connection = await store.getConnection(tenantId);
+    const describe = await (await getAdapter(tenantId)).describeObject(object);
+    const starter = generateStarterLayout(tenantId, describe, connection.crm);
     // Governance survives regeneration: the denylist and write policy are the
     // admin's rules about the CRM, not part of the field arrangement.
-    const existing = await store.getLayoutRecord(TENANT_ID, object);
+    const existing = await store.getLayoutRecord(tenantId, object);
     const permissions = (existing.draft ?? existing.published)?.permissions;
     await store.saveDraft(permissions ? { ...starter, permissions } : starter);
     return NextResponse.json({ ok: true });

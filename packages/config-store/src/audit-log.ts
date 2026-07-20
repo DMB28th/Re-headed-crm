@@ -17,6 +17,12 @@ export interface AuditEntry {
   tenantId: string;
   /** Who the write was attributed to (the connected CRM user, pre-M7). */
   user: string;
+  /** Authenticated app user who initiated the write. */
+  actor?: {
+    userId: string;
+    name: string;
+    email?: string;
+  };
   object: string;
   recordId: string;
   changes: { field: string; before: unknown; after: unknown }[];

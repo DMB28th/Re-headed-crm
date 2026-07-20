@@ -14,7 +14,9 @@ import {
 } from "@cardstack/core";
 import { HomeCardConfig as HomeCardConfigSchema } from "@cardstack/core";
 import { CrmValidationError } from "@cardstack/crm-adapters";
-import { getAdapter, getStore, TENANT_ID } from "../../../lib/backend";
+import { scopeViewExposuresForUser } from "@cardstack/config-store";
+import { getAdapter, getStore } from "../../../lib/backend";
+import { getUserContextFromRequest } from "../../../lib/auth";
 
 /**
  * Server-side preview assembly — the builders render EXACTLY what the MCP
@@ -36,9 +38,9 @@ interface PreviewBody {
   limit?: number;
 }
 
-async function layoutFor(object: string, posted?: unknown): Promise<LayoutConfig> {
+async function layoutFor(tenantId: string, object: string, posted?: unknown): Promise<LayoutConfig> {
   if (posted) return parseLayoutConfig(posted);
-  const record = await (await getStore()).getLayoutRecord(TENANT_ID, object);
+  const record = await (await getStore()).getLayoutRecord(tenantId, object);
   const config = record.published ?? record.draft;
   if (!config) throw new Error(`No layout configured for ${object}.`);
   return config;
@@ -46,15 +48,17 @@ async function layoutFor(object: string, posted?: unknown): Promise<LayoutConfig
 
 export async function POST(req: Request) {
   try {
+    const user = getUserContextFromRequest(req);
+    const { tenantId } = user;
     const body = (await req.json()) as PreviewBody;
     const store = await getStore();
-    const adapter = await getAdapter();
-    const connection = await store.getConnection(TENANT_ID);
+    const adapter = await getAdapter(tenantId);
+    const connection = await store.getConnection(tenantId);
     const live = !!connection.credentials && Object.keys(connection.credentials).length > 0;
 
     if (body.kind === "record") {
       if (!body.object) throw new Error("object required");
-      const config = await layoutFor(body.object, body.config);
+      const config = await layoutFor(tenantId, body.object, body.config);
       const record = body.recordId
         ? await adapter.getRecord(config.object, body.recordId, [])
         : (await adapter.search(config.object, { limit: 1 })).rows[0];
@@ -67,8 +71,9 @@ export async function POST(req: Request) {
 
     if (body.kind === "view") {
       if (!body.object || !body.viewId) throw new Error("object and viewId required");
-      const config = await layoutFor(body.object, body.config);
-      const custom = (await store.getCustomLists(TENANT_ID, body.object)).find(
+      const config = await layoutFor(tenantId, body.object, body.config);
+      const fullExposures = await store.getViewExposuresConfig(tenantId, body.object);
+      const custom = (fullExposures ? scopeViewExposuresForUser(fullExposures, user).customLists : []).find(
         (c) => c.id === body.viewId,
       );
       let page;
@@ -102,7 +107,7 @@ export async function POST(req: Request) {
 
     if (body.kind === "home") {
       const config: HomeCardConfig = HomeCardConfigSchema.parse(body.config);
-      const objects = await store.listConfiguredObjects(TENANT_ID);
+      const objects = await store.listConfiguredObjects(tenantId);
       const listsBlock = config.blocks.find((b) => b.type === "lists");
       const lists = [];
       if (listsBlock) {
@@ -115,9 +120,13 @@ export async function POST(req: Request) {
         }
         const entries: Entry[] = [];
         for (const object of objects) {
-          const exposures = await store.getViewExposures(TENANT_ID, object);
+          const fullExposures = await store.getViewExposuresConfig(tenantId, object);
+          const scopedExposures = fullExposures
+            ? scopeViewExposuresForUser(fullExposures, user)
+            : null;
+          const exposures = scopedExposures?.views.filter((view) => view.exposed) ?? [];
           const customs = new Map(
-            (await store.getCustomLists(TENANT_ID, object)).map((c) => [c.id, c]),
+            (scopedExposures?.customLists ?? []).map((c) => [c.id, c]),
           );
           const savedViews = await adapter.listSavedViews(object).catch(() => []);
           for (const exposure of exposures) {
@@ -192,7 +201,7 @@ export async function POST(req: Request) {
       if (!body.object || !body.recordId || !body.relationship) {
         throw new Error("object, recordId and relationship required");
       }
-      const config = await layoutFor(body.object, body.config);
+      const config = await layoutFor(tenantId, body.object, body.config);
       const rel = config.recordCard.relatedLists.find((r) => r.relationship === body.relationship);
       if (!rel) throw new Error(`Relationship "${body.relationship}" not configured.`);
       const page = await adapter.getRelated(body.recordId, {
@@ -224,7 +233,7 @@ export async function POST(req: Request) {
       if (!body.object || !body.recordId || !body.patch) {
         throw new Error("object, recordId and patch required");
       }
-      const config = await layoutFor(body.object, body.config);
+      const config = await layoutFor(tenantId, body.object, body.config);
       const patch = body.patch;
       const before = await adapter.getRecord(config.object, body.recordId, Object.keys(patch));
       const describe = await adapter.describeObject(config.object);

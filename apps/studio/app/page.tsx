@@ -1,6 +1,7 @@
 /** Studio home (design 6b): object cards with inline status, recent publishes. */
 import Link from "next/link";
-import { getAdapter, getStore, TENANT_ID } from "../lib/backend";
+import { getAdapter, getStore } from "../lib/backend";
+import { getUserContext } from "../lib/auth";
 import { AddObjectCard } from "../components/add-object-card";
 import { NoConnection } from "../components/no-connection";
 
@@ -12,9 +13,10 @@ function greeting(): string {
 }
 
 export default async function HomePage() {
+  const { tenantId } = await getUserContext();
   const store = await getStore();
-  const adapter = await getAdapter();
-  const connection = await store.getConnection(TENANT_ID);
+  const adapter = await getAdapter(tenantId);
+  const connection = await store.getConnection(tenantId);
   if (connection.status !== "connected") {
     return <NoConnection />;
   }
@@ -39,7 +41,7 @@ export default async function HomePage() {
   try {
     const crmObjects = await adapter.listObjects();
     for (const summary of crmObjects) {
-      const record = await store.getLayoutRecord(TENANT_ID, summary.api);
+      const record = await store.getLayoutRecord(tenantId, summary.api);
       if (record.draft || record.published) {
         let missingDescriptions = 0;
         let fieldCount = 0;
@@ -63,12 +65,12 @@ export default async function HomePage() {
     }
   } catch (error) {
     crmError = String(error);
-    for (const api of await store.listConfiguredObjects(TENANT_ID)) {
-      const record = await store.getLayoutRecord(TENANT_ID, api);
+    for (const api of await store.listConfiguredObjects(tenantId)) {
+      const record = await store.getLayoutRecord(tenantId, api);
       objects.push({ api, labelPlural: api, record, missingDescriptions: 0, fieldCount: 0 });
     }
   }
-  const publishes = (await store.listPublishes(TENANT_ID)).slice(0, 6);
+  const publishes = (await store.listPublishes(tenantId)).slice(0, 6);
   const drafted = objects.filter((o) => o.record.draft);
 
   return (

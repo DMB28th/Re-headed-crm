@@ -1,6 +1,8 @@
 /** Object landing (design 6a/12b): hub of four status cards, one per tab. */
 import Link from "next/link";
-import { getAdapter, getStore, TENANT_ID } from "../../../lib/backend";
+import { scopeViewExposuresForUser } from "@cardstack/config-store";
+import { getAdapter, getStore } from "../../../lib/backend";
+import { getUserContext } from "../../../lib/auth";
 import { NoConnection } from "../../../components/no-connection";
 import { RemoveObjectZone } from "../../../components/remove-object-zone";
 
@@ -12,15 +14,20 @@ export default async function ObjectHubPage({
   params: Promise<{ object: string }>;
 }) {
   const { object } = await params;
+  const user = await getUserContext();
+  const { tenantId } = user;
   const store = await getStore();
-  const connection = await store.getConnection(TENANT_ID);
+  const connection = await store.getConnection(tenantId);
   if (connection.status !== "connected") return <NoConnection />;
 
-  const adapter = await getAdapter();
-  const record = await store.getLayoutRecord(TENANT_ID, object);
+  const adapter = await getAdapter(tenantId);
+  const record = await store.getLayoutRecord(tenantId, object);
   const layout = record.published ?? record.draft;
-  const exposures = await store.getViewExposures(TENANT_ID, object);
-  const customLists = await store.getCustomLists(TENANT_ID, object);
+  const scopedExposures = await store
+    .getViewExposuresConfig(tenantId, object)
+    .then((config) => (config ? scopeViewExposuresForUser(config, user) : null));
+  const exposures = scopedExposures?.views.filter((view) => view.exposed) ?? [];
+  const customLists = scopedExposures?.customLists ?? [];
   const label = await adapter
     .listObjects()
     .then((objects) => objects.find((o) => o.api === object)?.labelPlural ?? object)

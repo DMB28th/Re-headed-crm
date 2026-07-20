@@ -1,5 +1,6 @@
 /** Assignment (2f–2i): v1 teaching state — one default layout, audiences later. */
-import { getAdapter, getStore, TENANT_ID } from "../../../../lib/backend";
+import { getAdapter, getStore } from "../../../../lib/backend";
+import { getUserContext } from "../../../../lib/auth";
 import { NoConnection } from "../../../../components/no-connection";
 
 export const dynamic = "force-dynamic";
@@ -10,13 +11,14 @@ export default async function AssignmentPage({
   params: Promise<{ object: string }>;
 }) {
   const { object } = await params;
+  const { tenantId } = await getUserContext();
   const store = await getStore();
-  const connection = await store.getConnection(TENANT_ID);
+  const connection = await store.getConnection(tenantId);
   if (connection.status !== "connected") return <NoConnection />;
-  const record = await store.getLayoutRecord(TENANT_ID, object);
+  const record = await store.getLayoutRecord(tenantId, object);
   const layoutName = record.published?.name ?? "default layout";
   // Live user count when the CRM can answer; number-free copy otherwise.
-  const userCount = await getAdapter()
+  const userCount = await getAdapter(tenantId)
     .then((adapter) => adapter.getPortalInfo())
     .then((info) => info.userCount)
     .catch(() => null);
