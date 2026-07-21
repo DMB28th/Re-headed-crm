@@ -8,9 +8,13 @@ import {
 import type { UserConnectionState } from "@cardstack/config-store";
 import { getUserContextFromRequest } from "../../../../../../lib/auth";
 import { getStore } from "../../../../../../lib/backend";
+import { studioOrigin } from "../../../../../../lib/oauth";
 
 const done = (req: Request, params: Record<string, string>) => {
-  const url = new URL("/connections", req.url);
+  // Base off the canonical Studio origin, not req.url — behind a proxy (Railway)
+  // req.url is the internal host (localhost:8080) and would redirect the browser
+  // to a dead address.
+  const url = new URL("/connections", studioOrigin(req.url));
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
   return NextResponse.redirect(url);
 };

@@ -63,14 +63,15 @@ app.get("/healthz", (_req, res) => {
   res.json({ ok: true });
 });
 
-// Shared-secret gate on /mcp. In production MCP_SHARED_SECRET is REQUIRED —
-// resolveMcpAuth throws at boot when it's missing, so the server never serves
-// /mcp internet-open. Outside production, unset is allowed (the live demo) but
-// warned about.
-const { secret: MCP_SECRET } = resolveMcpAuth(process.env);
+// Shared-secret gate on /mcp. Setting MCP_SHARED_SECRET requires a bearer on
+// every request; leaving it unset serves /mcp open (warned, louder in prod).
+// resolveMcpAuth never throws — the server must boot so the deploy succeeds and
+// /healthz stays up even when the secret isn't configured.
+const { secret: MCP_SECRET, warnOpen } = resolveMcpAuth(process.env);
 if (!MCP_SECRET) {
   console.warn(
-    "⚠ /mcp is UNAUTHENTICATED — set MCP_SHARED_SECRET and pass it as x-cardstack-key from the chat host.",
+    (warnOpen ? "⚠ PRODUCTION: " : "⚠ ") +
+      "/mcp is UNAUTHENTICATED — set MCP_SHARED_SECRET and send it as `Authorization: Bearer <secret>` (or x-cardstack-key) from the chat host.",
   );
 }
 function authorized(req: express.Request): boolean {

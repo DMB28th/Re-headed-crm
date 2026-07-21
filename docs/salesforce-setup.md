@@ -98,25 +98,39 @@ http://localhost:3002/api/user-connections/salesforce/oauth/callback
 
 Set these on **both** services (Studio and MCP), from the same revision:
 
+Required for the OAuth flow to work at all:
+
 ```text
 DATABASE_URL=<shared postgres url>          # or a shared CARDSTACK_CONFIG_PATH volume for demo
 CARDSTACK_STUDIO_URL=https://<studio-origin>
 CARDSTACK_ENCRYPTION_KEY=<32-byte key>      # openssl rand -base64 32 — SAME value on both services
-MCP_SHARED_SECRET=<secret from the MCP host>
-STUDIO_SHARED_SECRET=<secret for mutating Studio API calls>
+```
+
+Optional hardening (opt-in — the app runs without them):
+
+```text
+MCP_SHARED_SECRET=<bearer required on /mcp when set>
+STUDIO_SHARED_SECRET=<gates non-browser mutating Studio API calls when set>
 CORS_ORIGINS=https://<allowed-chat-host-origin>
 ```
 
 Notes:
+- **`CARDSTACK_STUDIO_URL` is required in production** — it builds the OAuth `redirect_uri` and
+  the post-callback redirect back to `/connections`. Behind a proxy (e.g. Railway) the request's
+  own origin is an internal address (`localhost:8080`), so without this var OAuth redirects break.
+  Set it to the exact deployed Studio origin (e.g. `https://cardstackstudio-production.up.railway.app`).
 - **`CARDSTACK_ENCRYPTION_KEY`** encrypts CRM tokens and the app secret at rest (AES-256-GCM).
-  It must be **identical on both services** — a mismatch makes stored credentials unreadable.
-  If unset, credentials are stored unencrypted (acceptable only for local/demo). Rotating the
-  key makes already-stored credentials unreadable, so re-authorize after a rotation.
-- In **production**, `MCP_SHARED_SECRET` and `STUDIO_SHARED_SECRET` are **required** — the MCP
-  server refuses to serve `/mcp` and Studio refuses mutating API calls when they are unset
-  (fail-closed). Locally they may be unset.
-- `CARDSTACK_STUDIO_URL` is used to build the OAuth `redirect_uri` and the "connect your
-  Salesforce" link the MCP server returns, so it must match the deployed Studio origin.
+  Identical on both services — a mismatch makes stored credentials unreadable. If unset,
+  credentials are stored unencrypted (fine for local/demo, not for real tokens). Rotating the key
+  makes already-stored credentials unreadable, so re-authorize after a rotation.
+- **`MCP_SHARED_SECRET`** — when set, every `/mcp` request must send it as
+  `Authorization: Bearer <secret>` (or `x-cardstack-key`); the chat-host connector must be
+  configured with it. When unset, `/mcp` is open (the server logs a warning, louder in
+  production, but still serves). Enforcement is opt-in, not fail-closed.
+- **`STUDIO_SHARED_SECRET`** — when set, gates mutating Studio `/api` calls that can present the
+  secret (header or `cardstack_key` cookie). It does **not** secure the browser UI itself (there
+  is no login flow to attach the cookie yet — that is the M7 work), so setting it will block the
+  admin's own browser from connecting/publishing. Leave it unset until per-user Studio auth ships.
 
 ## Step 3 — Connect the admin
 
