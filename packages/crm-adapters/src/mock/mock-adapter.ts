@@ -221,6 +221,11 @@ export class MockCrmAdapter implements CrmAdapter {
     return clone(fixtures.FLOWS);
   }
 
+  getFlowLaunchUrl(flowApiName: string): string | null {
+    // Sample handoff target so the demo/preview shows a real-looking launch.
+    return `https://demo.my.salesforce.com/flow/${encodeURIComponent(flowApiName)}`;
+  }
+
   async refreshTokenIfNeeded(): Promise<void> {
     // no-op: the mock portal has no auth
   }

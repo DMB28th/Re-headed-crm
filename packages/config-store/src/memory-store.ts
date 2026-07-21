@@ -1,18 +1,27 @@
 import {
+  CustomScreenConfig as CustomScreenSchema,
+  FlowRenderModeConfig as FlowRenderModeSchema,
   ViewExposuresConfig as ViewExposuresSchema,
+  type CustomScreenConfig,
+  type CustomScreenRecord,
   type CustomList,
+  type FlowRenderModeConfig,
   type HomeCardConfig,
   type LayoutConfig,
   type ViewExposure,
   type ViewExposuresConfig,
 } from "@cardstack/core";
 import {
+  customScreenKey,
   exposureKey,
+  flowKey,
   layoutKey,
+  userConnectionKey,
   type AdminConfigStore,
   type ConnectionState,
   type LayoutRecord,
   type PublishEvent,
+  type UserConnectionState,
 } from "./types.js";
 import { defaultConnection, demoDealsLayout, demoHomeCard, demoViewExposures } from "./seed.js";
 
@@ -21,8 +30,14 @@ interface StoreState {
   viewExposures: Record<string, ViewExposuresConfig>;
   /** Keyed tenant::audience. Published-only in M4 core; drafts come with the 8a builder. */
   homeCards?: Record<string, HomeCardConfig>;
+  /** Keyed tenant::flowApiName. */
+  flowRenderModes?: Record<string, FlowRenderModeConfig>;
+  /** Keyed tenant::customScreenId. */
+  customScreens?: Record<string, CustomScreenRecord>;
   /** Keyed by tenant. Absent (pre-connections config files) = connected mock. */
   connections?: Record<string, ConnectionState>;
+  /** Keyed tenant::userId::crm. Absent = user has not authorized that CRM. */
+  userConnections?: Record<string, UserConnectionState>;
   publishes: PublishEvent[];
 }
 
@@ -97,6 +112,35 @@ export abstract class BaseConfigStore implements AdminConfigStore {
   async setConnection(connection: ConnectionState): Promise<void> {
     const state = await this.load();
     state.connections = { ...(state.connections ?? {}), [connection.tenantId]: connection };
+    await this.save(state);
+  }
+
+  async getUserConnection(
+    tenantId: string,
+    userId: string,
+    crm: UserConnectionState["crm"],
+  ): Promise<UserConnectionState | undefined> {
+    const state = await this.load();
+    return state.userConnections?.[userConnectionKey(tenantId, userId, crm)];
+  }
+
+  async setUserConnection(connection: UserConnectionState): Promise<void> {
+    const state = await this.load();
+    state.userConnections = {
+      ...(state.userConnections ?? {}),
+      [userConnectionKey(connection.tenantId, connection.userId, connection.crm)]: connection,
+    };
+    await this.save(state);
+  }
+
+  async deleteUserConnection(
+    tenantId: string,
+    userId: string,
+    crm: UserConnectionState["crm"],
+  ): Promise<void> {
+    const state = await this.load();
+    if (!state.userConnections) return;
+    delete state.userConnections[userConnectionKey(tenantId, userId, crm)];
     await this.save(state);
   }
 
@@ -231,6 +275,98 @@ export abstract class BaseConfigStore implements AdminConfigStore {
     const state = await this.load();
     // ?? handles config files written before homeCards existed.
     return (state.homeCards ?? {})[`${tenantId}::${audience}`];
+  }
+
+  async getFlowRenderModes(tenantId: string): Promise<FlowRenderModeConfig[]> {
+    const state = await this.load();
+    return Object.values(state.flowRenderModes ?? {})
+      .filter((config) => config.tenantId === tenantId)
+      .map((config) => FlowRenderModeSchema.parse(config));
+  }
+
+  async setFlowRenderMode(config: FlowRenderModeConfig): Promise<void> {
+    const state = await this.load();
+    const parsed = FlowRenderModeSchema.parse(config);
+    state.flowRenderModes = {
+      ...(state.flowRenderModes ?? {}),
+      [flowKey(parsed.tenantId, parsed.flowApiName)]: parsed,
+    };
+    await this.save(state);
+  }
+
+  async getCustomScreens(tenantId: string): Promise<CustomScreenConfig[]> {
+    const records = await this.listCustomScreenRecords(tenantId);
+    return records.flatMap((record) => (record.published ? [record.published] : []));
+  }
+
+  async listCustomScreenRecords(
+    tenantId: string,
+  ): Promise<(CustomScreenRecord & { id: string })[]> {
+    const state = await this.load();
+    const prefix = `${tenantId}::`;
+    return Object.entries(state.customScreens ?? {})
+      .filter(([key]) => key.startsWith(prefix))
+      .map(([key, record]) => ({
+        id: key.slice(prefix.length),
+        draft: record.draft ? CustomScreenSchema.parse(record.draft) : null,
+        published: record.published ? CustomScreenSchema.parse(record.published) : null,
+        history: record.history.map((screen) => CustomScreenSchema.parse(screen)),
+      }))
+      .sort((a, b) => {
+        const aLabel = a.draft?.label ?? a.published?.label ?? a.id;
+        const bLabel = b.draft?.label ?? b.published?.label ?? b.id;
+        return aLabel.localeCompare(bLabel);
+      });
+  }
+
+  async getCustomScreenRecord(tenantId: string, id: string): Promise<CustomScreenRecord> {
+    const state = await this.load();
+    return (
+      state.customScreens?.[customScreenKey(tenantId, id)] ?? {
+        draft: null,
+        published: null,
+        history: [],
+      }
+    );
+  }
+
+  async saveCustomScreenDraft(config: CustomScreenConfig): Promise<void> {
+    const state = await this.load();
+    const parsed = CustomScreenSchema.parse({
+      ...config,
+      status: "draft",
+      updatedAt: config.updatedAt ?? new Date().toISOString(),
+    });
+    const key = customScreenKey(parsed.tenantId, parsed.id);
+    const record = state.customScreens?.[key] ?? { draft: null, published: null, history: [] };
+    state.customScreens = {
+      ...(state.customScreens ?? {}),
+      [key]: { ...record, draft: parsed },
+    };
+    await this.save(state);
+  }
+
+  async publishCustomScreen(tenantId: string, id: string): Promise<CustomScreenConfig> {
+    const state = await this.load();
+    const key = customScreenKey(tenantId, id);
+    const record = state.customScreens?.[key];
+    if (!record?.draft) throw new Error(`No draft to publish for custom screen ${id}.`);
+    const published = CustomScreenSchema.parse({
+      ...record.draft,
+      status: "published",
+      revision: (record.published?.revision ?? 0) + 1,
+      updatedAt: new Date().toISOString(),
+    });
+    state.customScreens = {
+      ...(state.customScreens ?? {}),
+      [key]: {
+        draft: null,
+        published,
+        history: record.published ? [...record.history, record.published] : record.history,
+      },
+    };
+    await this.save(state);
+    return published;
   }
 
   async setHomeCard(config: HomeCardConfig): Promise<void> {

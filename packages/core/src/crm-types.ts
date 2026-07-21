@@ -50,6 +50,8 @@ export interface FieldDescribe {
   closedValues?: string[];
 }
 
+import type { ActionInputValueType } from "./layout-config.js";
+
 export interface ObjectSummary {
   api: string;
   label: string;
@@ -165,6 +167,20 @@ export interface FlowSummary {
   label: string;
   screens: number;
   writesSummary: string;
+  /**
+   * Input variables the CRM/runtime can discover. Optional because live
+   * adapters may not have metadata coverage yet; Studio still lets admins add
+   * explicit mappings by hand.
+   */
+  inputVariables?: FlowInputVariable[];
+}
+
+export interface FlowInputVariable {
+  name: string;
+  label?: string;
+  valueType?: ActionInputValueType;
+  required?: boolean;
+  description?: string;
 }
 
 /** "Picked up recently" entry on the home card (design 7a). */

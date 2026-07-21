@@ -3,10 +3,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { FileConfigStore } from "./file-store.js";
+import { resetEncryptionKeyCache } from "./crypto.js";
 import { InMemoryConfigStore } from "./memory-store.js";
 import { diffLayouts } from "./diff.js";
 import { DEMO_TENANT_ID, demoDealsLayout } from "./seed.js";
-import type { UserContext } from "@cardstack/core";
+import { DEFAULT_CUSTOM_SCREEN_SOURCE, type UserContext } from "@cardstack/core";
 import { mergeScopedViewExposures, scopeViewExposuresForUser } from "./list-visibility.js";
 
 const editedDraft = () => ({
@@ -134,6 +135,39 @@ describe("connections (empty canvas)", () => {
     });
     expect((await server.getConnection(DEMO_TENANT_ID)).status).toBe("disconnected");
   });
+
+  it("stores per-user CRM authorization separately from admin connection", async () => {
+    const file = path.join(mkdtempSync(path.join(tmpdir(), "cardstack-")), "config.json");
+    const studio = new FileConfigStore(file);
+    const server = new FileConfigStore(file);
+    await studio.setConnection({
+      tenantId: DEMO_TENANT_ID,
+      status: "connected",
+      crm: "salesforce",
+      label: "admin OAuth",
+      changedAt: "2026-07-20T12:00:00.000Z",
+      credentials: { authType: "oauth", clientId: "app", clientSecret: "secret", refreshToken: "admin" },
+    });
+    await studio.setUserConnection({
+      tenantId: DEMO_TENANT_ID,
+      userId: "dana",
+      status: "connected",
+      crm: "salesforce",
+      label: "user OAuth",
+      changedAt: "2026-07-20T12:01:00.000Z",
+      connectedUser: "Dana Seller",
+      credentials: { authType: "oauth", clientId: "app", clientSecret: "secret", refreshToken: "user" },
+    });
+
+    expect((await server.getConnection(DEMO_TENANT_ID)).credentials?.refreshToken).toBe("admin");
+    expect((await server.getUserConnection(DEMO_TENANT_ID, "dana", "salesforce"))?.connectedUser).toBe(
+      "Dana Seller",
+    );
+    expect(await server.getUserConnection(DEMO_TENANT_ID, "lee", "salesforce")).toBeUndefined();
+
+    await studio.deleteUserConnection(DEMO_TENANT_ID, "dana", "salesforce");
+    expect(await server.getUserConnection(DEMO_TENANT_ID, "dana", "salesforce")).toBeUndefined();
+  });
 });
 
 describe("custom lists (view-exposures v2)", () => {
@@ -224,6 +258,45 @@ describe("custom lists (view-exposures v2)", () => {
   });
 });
 
+describe("shared capabilities", () => {
+  it("stores flow render modes", async () => {
+    const store = new InMemoryConfigStore();
+    await store.setFlowRenderMode({
+      version: 1,
+      tenantId: DEMO_TENANT_ID,
+      flowApiName: "Renewal_Playbook",
+      mode: "embedded",
+      fallback: "open-in-salesforce",
+    });
+    expect(await store.getFlowRenderModes(DEMO_TENANT_ID)).toMatchObject([
+      { flowApiName: "Renewal_Playbook", mode: "embedded" },
+    ]);
+  });
+
+  it("publishes custom screens with draft/history lifecycle", async () => {
+    const store = new InMemoryConfigStore();
+    await store.saveCustomScreenDraft({
+      version: 1,
+      tenantId: DEMO_TENANT_ID,
+      id: "cs-onsite",
+      label: "Onsite scheduling",
+      flowApiName: "Renewal_Playbook",
+      source: DEFAULT_CUSTOM_SCREEN_SOURCE,
+      status: "draft",
+      revision: 1,
+    });
+    const v1 = await store.publishCustomScreen(DEMO_TENANT_ID, "cs-onsite");
+    expect(v1).toMatchObject({ status: "published", revision: 1 });
+    expect((await store.getCustomScreens(DEMO_TENANT_ID))[0]?.label).toBe("Onsite scheduling");
+
+    await store.saveCustomScreenDraft({ ...v1, label: "Onsite scheduling v2" });
+    const v2 = await store.publishCustomScreen(DEMO_TENANT_ID, "cs-onsite");
+    const record = await store.getCustomScreenRecord(DEMO_TENANT_ID, "cs-onsite");
+    expect(v2.revision).toBe(2);
+    expect(record.history.map((screen) => screen.revision)).toEqual([1]);
+  });
+});
+
 describe("diffLayouts (publish modal, 2b)", () => {
   it("reports removed/changed entries vs the published layout", () => {
     const diff = diffLayouts(demoDealsLayout, editedDraft());
@@ -260,6 +333,29 @@ describe("diffLayouts (publish modal, 2b)", () => {
       true,
     );
   });
+
+  it("reports changed flow input mappings", () => {
+    const published = structuredClone(demoDealsLayout);
+    published.recordCard.actions.push({
+      type: "screen_flow",
+      flowApiName: "Renewal_Playbook",
+      label: "Run renewal",
+      embed: "auto",
+      inputs: {
+        recordId: { source: "context", key: "recordId", valueType: "recordId" },
+      },
+    });
+    const draft = structuredClone(published);
+    const action = draft.recordCard.actions.find(
+      (candidate) => candidate.type === "screen_flow" && candidate.flowApiName === "Renewal_Playbook",
+    );
+    if (action?.type === "screen_flow") {
+      action.inputs.recordId = { source: "field", field: "hs_object_id", valueType: "recordId" };
+    }
+
+    const diff = diffLayouts(published, draft);
+    expect(diff.changed).toContain("action · flow Renewal_Playbook (inputs changed)");
+  });
 });
 
 describe("pre-customLists rows (live-portal crash regression)", () => {
@@ -275,5 +371,67 @@ describe("pre-customLists rows (live-portal crash regression)", () => {
     const config = await store.getViewExposuresConfig(DEMO_TENANT_ID, "deals");
     expect(config?.customLists).toEqual([]); // defaulted, not undefined
     expect(await store.getCustomLists(DEMO_TENANT_ID, "deals")).toEqual([]);
+  });
+});
+
+describe("credentials encryption at rest", () => {
+  const KEY = Buffer.alloc(32, 3).toString("base64");
+
+  it("encrypts credentials on disk and round-trips them", async () => {
+    process.env.CARDSTACK_ENCRYPTION_KEY = KEY;
+    resetEncryptionKeyCache();
+    try {
+      const file = path.join(mkdtempSync(path.join(tmpdir(), "cardstack-")), "config.json");
+      const store = new FileConfigStore(file);
+      await store.setConnection({
+        tenantId: "t-enc",
+        status: "connected",
+        crm: "salesforce",
+        label: "admin OAuth",
+        changedAt: new Date(0).toISOString(),
+        credentials: { authType: "oauth", refreshToken: "super-secret-rt", clientSecret: "cs" },
+      });
+
+      const rawFile = readFileSync(file, "utf-8");
+      expect(rawFile).not.toContain("super-secret-rt"); // encrypted on disk
+      expect(rawFile).toContain("enc:v1:");
+
+      const back = await new FileConfigStore(file).getConnection("t-enc");
+      expect(back.credentials).toEqual({
+        authType: "oauth",
+        refreshToken: "super-secret-rt",
+        clientSecret: "cs",
+      });
+    } finally {
+      delete process.env.CARDSTACK_ENCRYPTION_KEY;
+      resetEncryptionKeyCache();
+    }
+  });
+
+  it("still reads a legacy plaintext connection written before encryption", async () => {
+    const file = path.join(mkdtempSync(path.join(tmpdir(), "cardstack-")), "config.json");
+    // Seed a plaintext credentials row (no key set), as older builds wrote.
+    resetEncryptionKeyCache();
+    const store = new FileConfigStore(file);
+    await store.setConnection({
+      tenantId: "t-legacy",
+      status: "connected",
+      crm: "salesforce",
+      label: "admin OAuth",
+      changedAt: new Date(0).toISOString(),
+      credentials: { authType: "oauth", refreshToken: "legacy-rt" },
+    });
+    expect(readFileSync(file, "utf-8")).toContain("legacy-rt"); // stored plaintext
+
+    // Now a key is configured: the legacy plaintext row must still decrypt-or-passthrough.
+    process.env.CARDSTACK_ENCRYPTION_KEY = KEY;
+    resetEncryptionKeyCache();
+    try {
+      const back = await new FileConfigStore(file).getConnection("t-legacy");
+      expect(back.credentials?.refreshToken).toBe("legacy-rt");
+    } finally {
+      delete process.env.CARDSTACK_ENCRYPTION_KEY;
+      resetEncryptionKeyCache();
+    }
   });
 });

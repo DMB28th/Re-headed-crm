@@ -5,6 +5,7 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
+import { DEFAULT_CUSTOM_SCREEN_SOURCE } from "@cardstack/core";
 import { PostgresConfigStore, type SqlSession } from "./postgres-store.js";
 import { DEMO_TENANT_ID, demoDealsLayout } from "./seed.js";
 
@@ -99,6 +100,25 @@ describe("PostgresConfigStore", () => {
     expect((await store.getConnection(DEMO_TENANT_ID)).status).toBe("disconnected");
   });
 
+  it("stores per-user OAuth connections", async () => {
+    await store.setUserConnection({
+      tenantId: DEMO_TENANT_ID,
+      userId: "dana",
+      status: "connected",
+      crm: "salesforce",
+      label: "user OAuth",
+      changedAt: "2026-07-20T12:01:00.000Z",
+      connectedUser: "Dana Seller",
+      credentials: { authType: "oauth", clientId: "app", clientSecret: "secret", refreshToken: "user" },
+    });
+    expect((await store.getUserConnection(DEMO_TENANT_ID, "dana", "salesforce"))?.credentials?.refreshToken).toBe(
+      "user",
+    );
+    expect(await store.getUserConnection(DEMO_TENANT_ID, "lee", "salesforce")).toBeUndefined();
+    await store.deleteUserConnection(DEMO_TENANT_ID, "dana", "salesforce");
+    expect(await store.getUserConnection(DEMO_TENANT_ID, "dana", "salesforce")).toBeUndefined();
+  });
+
   it("custom lists ride inside the view_exposures jsonb", async () => {
     const config = (await store.getViewExposuresConfig(DEMO_TENANT_ID, "deals"))!;
     await store.setViewExposures({
@@ -107,5 +127,31 @@ describe("PostgresConfigStore", () => {
       views: [...config.views, { viewId: "cl-pg", exposed: true, aliases: [], isDefault: false }],
     });
     expect((await store.getCustomLists(DEMO_TENANT_ID, "deals"))[0]?.name).toBe("PG list");
+  });
+
+  it("stores flow modes and custom screen publishes", async () => {
+    await store.setFlowRenderMode({
+      version: 1,
+      tenantId: DEMO_TENANT_ID,
+      flowApiName: "Renewal_Playbook",
+      mode: "native",
+      fallback: "open-in-salesforce",
+    });
+    expect(await store.getFlowRenderModes(DEMO_TENANT_ID)).toMatchObject([
+      { flowApiName: "Renewal_Playbook", mode: "native" },
+    ]);
+
+    await store.saveCustomScreenDraft({
+      version: 1,
+      tenantId: DEMO_TENANT_ID,
+      id: "cs-onsite",
+      label: "Onsite scheduling",
+      source: DEFAULT_CUSTOM_SCREEN_SOURCE,
+      status: "draft",
+      revision: 1,
+    });
+    const published = await store.publishCustomScreen(DEMO_TENANT_ID, "cs-onsite");
+    expect(published).toMatchObject({ status: "published", revision: 1 });
+    expect((await store.getCustomScreens(DEMO_TENANT_ID))[0]?.id).toBe("cs-onsite");
   });
 });

@@ -5,6 +5,7 @@
 export {
   buildRecordCardPayload,
   buildResultsTablePayload,
+  buildFlowRunPayload,
   fieldNotes,
   provenanceFor,
   type PayloadSource,

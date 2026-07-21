@@ -362,7 +362,7 @@ export function ViewsEditor({ object }: { object: string }) {
               </div>
               <div className="mt-3 grid gap-2 md:grid-cols-[1fr_1.3fr]">
                 <div className="min-w-0 rounded-[9px] border border-line-soft bg-paper px-3 py-2">
-                  <div className="text-[10px] font-semibold uppercase text-ink-55">Invocation</div>
+                  <div className="text-[10px] font-semibold uppercase text-ink-55">Ask</div>
                   <div className="mt-1 break-words text-[12px] text-ink-55">
                     Chat resolves <span className="font-medium text-ink">"{primaryPhrase}"</span> to this
                     CRM-managed list.
@@ -472,7 +472,7 @@ export function ViewsEditor({ object }: { object: string }) {
                 </div>
                 <div className="mt-3 grid gap-2 md:grid-cols-[1fr_1.3fr]">
                   <div className="min-w-0 rounded-[9px] border border-line-soft bg-paper px-3 py-2">
-                    <div className="text-[10px] font-semibold uppercase text-ink-55">Invocation</div>
+                    <div className="text-[10px] font-semibold uppercase text-ink-55">Ask</div>
                     <div className="mt-1 break-words text-[12px] text-ink-55">
                       Chat resolves <span className="font-medium text-ink">"{primaryPhrase}"</span> to this
                       list component.

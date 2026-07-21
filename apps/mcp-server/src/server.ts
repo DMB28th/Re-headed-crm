@@ -3,6 +3,7 @@
  * SEP-1865 mechanics via @modelcontextprotocol/ext-apps — resource mimeType and
  * _meta shapes come from the shipped SDK, per CLAUDE.md rule 7.
  */
+import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
@@ -18,6 +19,9 @@ import {
   filterRecord,
   summarizeCustomFilters,
   defaultUserContext,
+  resolveActionInputs,
+  type ActionInvocationContext,
+  type CardAction,
   type CrmFieldValue,
   type ErrorPayload,
   type FieldFilter,
@@ -49,6 +53,7 @@ import {
 import {
   buildRecordCardPayload,
   buildResultsTablePayload,
+  buildFlowRunPayload,
   fieldNotes,
   provenanceFor,
 } from "./payloads.js";
@@ -64,11 +69,18 @@ export interface ServerDeps {
   tenantId: string;
   /** Authenticated app user. Defaults to the demo rep for scripts/tests. */
   userContext?: UserContext;
+  /** Runtime auth gate for CRMs that need the product user's own OAuth token. */
+  runtimeAuth?: {
+    missingUserAuth?: boolean;
+    crmLabel: string;
+    connectUrl?: string;
+  };
 }
 
 const RECORD_CARD_URI = "ui://cardstack/record-card";
 const RESULTS_TABLE_URI = "ui://cardstack/results-table";
 const HOME_CARD_URI = "ui://cardstack/home-card";
+const FLOW_RUN_URI = "ui://cardstack/flow-run";
 
 /**
  * Async because tool descriptions are tenant-specific: the exposed views'
@@ -87,6 +99,13 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     if (connection.status !== "connected") {
       throw new Error(
         "No CRM is connected for this workspace. An admin can connect one in Cardstack Studio → Connections.",
+      );
+    }
+    if (deps.runtimeAuth?.missingUserAuth) {
+      throw new CrmAuthError(
+        deps.runtimeAuth.crmLabel,
+        `Connect your ${deps.runtimeAuth.crmLabel} account to use Cardstack with your own records and list views.` +
+          (deps.runtimeAuth.connectUrl ? ` Open ${deps.runtimeAuth.connectUrl}` : ""),
       );
     }
   };
@@ -137,16 +156,18 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
   // Resilience: one object's unreadable exposures (e.g. a config written by a
   // newer schema than this process knows) must degrade THAT object's views, not
   // 502 every tool by throwing out of server creation.
-  const allExposedViews: ExposedView[] = (
-    await Promise.all(
-      (await configStore.listConfiguredObjects(tenantId)).map((o) =>
-        exposedViewsFor(o).catch((error) => {
-          console.error(`exposedViewsFor(${o}) failed; skipping its views:`, error);
-          return [] as ExposedView[];
-        }),
-      ),
-    )
-  ).flat();
+  const allExposedViews: ExposedView[] = deps.runtimeAuth?.missingUserAuth
+    ? []
+    : (
+        await Promise.all(
+          (await configStore.listConfiguredObjects(tenantId)).map((o) =>
+            exposedViewsFor(o).catch((error) => {
+              console.error(`exposedViewsFor(${o}) failed; skipping its views:`, error);
+              return [] as ExposedView[];
+            }),
+          ),
+        )
+      ).flat();
 
   const requireLayout = async (object: string): Promise<LayoutConfig> => {
     const config = await configStore.getLayout(tenantId, object, userContext.audience);
@@ -199,6 +220,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     [RECORD_CARD_URI, "record-card"],
     [RESULTS_TABLE_URI, "results-table"],
     [HOME_CARD_URI, "home-card"],
+    [FLOW_RUN_URI, "flow-run"],
   ] as [string, WidgetName][]) {
     registerAppResource(
       server,
@@ -976,6 +998,186 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         return asToolError(error, { tool: "crm_create_record" });
       }
     },
+  );
+
+  // --- Flow runtime (design 10a, HANDOFF rung) ---
+  // The server is stateless: crm_flow_continue re-resolves from the answers the
+  // model passes, so no interview session is persisted (PLAN spike #2). Only the
+  // HANDOFF rung is wired — the flow opens in the CRM, which owns the screens and
+  // the write. Native/Embedded rungs are gated behind their spikes.
+  const runFlow = async (
+    args: { object: string; recordId: string; flowApiName: string },
+    answers: Record<string, CrmFieldValue>,
+    actionSessionId: string,
+    tool: "crm_flow_start" | "crm_flow_continue",
+  ): Promise<CallToolResult> => {
+    try {
+      await requireConnection();
+      const config = await requireLayout(args.object);
+      const action = config.recordCard.actions.find(
+        (a): a is Extract<CardAction, { type: "screen_flow" }> =>
+          a.type === "screen_flow" && a.flowApiName === args.flowApiName,
+      );
+      if (!action) {
+        throw new Error(
+          `Flow "${args.flowApiName}" is not configured on the ${args.object} card.`,
+        );
+      }
+      const inputs = action.inputs ?? {};
+
+      const flows = await adapter.listFlows().catch(() => []);
+      const summary = flows.find((f) => f.api === args.flowApiName);
+      const flow = summary ?? {
+        api: args.flowApiName,
+        label: action.label || args.flowApiName,
+        screens: 0,
+        writesSummary: "Runs in the CRM.",
+      };
+
+      // Fetch only the fields that `field`-source inputs reference.
+      const fieldApis = Object.values(inputs)
+        .filter((m): m is Extract<typeof m, { source: "field" }> => m.source === "field")
+        .map((m) => m.field);
+      let recordFields: Record<string, CrmFieldValue> = {};
+      if (fieldApis.length > 0) {
+        const record = await adapter
+          .getRecord(config.object, args.recordId, fieldApis)
+          .catch(() => null);
+        if (record) recordFields = record.fields;
+      }
+
+      const renderMode =
+        (await configStore.getFlowRenderModes(tenantId)).find(
+          (m) => m.flowApiName === args.flowApiName,
+        )?.mode ?? "auto";
+
+      const context: ActionInvocationContext = {
+        tenantId,
+        crm: config.crm,
+        objectApiName: config.object,
+        recordId: args.recordId,
+        userId: userContext.userId,
+        ...(userContext.email ? { userEmail: userContext.email } : {}),
+        audience: userContext.audience,
+        actionSessionId,
+        recordFields,
+        selections: {},
+      };
+      const { resolved, pending, missing } = resolveActionInputs({ inputs, context, answers });
+      const launchUrl = adapter.getFlowLaunchUrl?.(args.flowApiName) ?? null;
+
+      const payload = buildFlowRunPayload({
+        actionSessionId,
+        flow: {
+          api: flow.api,
+          label: flow.label,
+          screens: flow.screens,
+          writesSummary: flow.writesSummary,
+        },
+        renderMode,
+        launchUrl,
+        resolved: resolved.map((r) => ({ name: r.name, value: r.value, source: r.source })),
+        pending: pending.map((p) => ({ name: p.name, prompt: p.prompt, required: p.required })),
+        missing,
+        provenance: { ...provenanceFor(config), connectedUser: await adapter.getConnectedUser() },
+      });
+
+      const text =
+        payload.status === "needs-input"
+          ? `Flow "${flow.label}" needs input before it can run: ` +
+            `${pending.filter((p) => p.required).map((p) => p.prompt).join("; ")}. ` +
+            `Ask the rep, then call crm_flow_continue with { actionSessionId: "${actionSessionId}", answers }.`
+          : `Flow "${flow.label}" is ready to run. It opens in ${payload.provenance.crmLabel}` +
+            (flow.writesSummary ? ` — ${flow.writesSummary}` : "") +
+            (payload.launchUrl
+              ? ". The rep confirms and launches it from the card."
+              : `. No launch URL is available yet — the rep may need to connect ${payload.provenance.crmLabel}.`);
+      void tool;
+      return {
+        content: [{ type: "text", text }],
+        structuredContent: payload as unknown as Record<string, unknown>,
+      };
+    } catch (error) {
+      return asToolError(error, { tool });
+    }
+  };
+
+  registerAppTool(
+    server,
+    "crm_flow_start",
+    {
+      title: "Start a CRM screen flow",
+      description:
+        "Begin a configured screen-flow action for a record. Resolves the flow's inputs from the " +
+        "record and context; if any inputs must be asked, they come back as pending — collect them in " +
+        "chat, then call crm_flow_continue. When ready, the rep opens the flow in the CRM from the card. " +
+        "Use when the user asks to run/start a named flow on a record.",
+      inputSchema: {
+        object: z.string().default("deals"),
+        recordId: z.string(),
+        flowApiName: z.string(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false },
+      _meta: { ui: { resourceUri: FLOW_RUN_URI } },
+    },
+    async (args): Promise<CallToolResult> =>
+      runFlow(
+        { object: args.object, recordId: args.recordId, flowApiName: args.flowApiName },
+        {},
+        randomUUID(),
+        "crm_flow_start",
+      ),
+  );
+
+  registerAppTool(
+    server,
+    "crm_flow_continue",
+    {
+      title: "Continue a CRM screen flow with collected inputs",
+      description:
+        "Supply the answers a flow asked for (from crm_flow_start's pending inputs) and re-render the " +
+        "flow-run card. Pass the actionSessionId from crm_flow_start and an answers map of input name → value.",
+      inputSchema: {
+        object: z.string().default("deals"),
+        recordId: z.string(),
+        flowApiName: z.string(),
+        actionSessionId: z.string(),
+        answers: z
+          .record(z.union([z.string(), z.number(), z.boolean(), z.null()]))
+          .default({})
+          .describe("Flow input name → value collected from the rep"),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false },
+      _meta: { ui: { resourceUri: FLOW_RUN_URI } },
+    },
+    async (args): Promise<CallToolResult> =>
+      runFlow(
+        { object: args.object, recordId: args.recordId, flowApiName: args.flowApiName },
+        args.answers as Record<string, CrmFieldValue>,
+        args.actionSessionId,
+        "crm_flow_continue",
+      ),
+  );
+
+  server.registerTool(
+    "crm_flow_cancel",
+    {
+      title: "Cancel a CRM screen flow",
+      description:
+        "Abandon a flow the rep decided not to run. The server holds no interview state, so this just " +
+        "acknowledges the cancellation for the conversation.",
+      inputSchema: { flowApiName: z.string(), actionSessionId: z.string() },
+      annotations: { readOnlyHint: true },
+    },
+    async (args): Promise<CallToolResult> => ({
+      content: [{ type: "text", text: `Cancelled flow "${args.flowApiName}". Nothing was run.` }],
+      structuredContent: {
+        kind: "flow-run",
+        actionSessionId: args.actionSessionId,
+        flowApiName: args.flowApiName,
+        status: "cancelled",
+      } as unknown as Record<string, unknown>,
+    }),
   );
 
   return server;

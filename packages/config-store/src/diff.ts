@@ -24,6 +24,7 @@ type FieldFp = {
   section: string;
 };
 type RelatedFp = { columns: string[]; limit: number };
+type ActionFp = { label: string; inputs?: unknown };
 
 function fingerprint(config: LayoutConfig): Map<string, Unit> {
   const map = new Map<string, Unit>();
@@ -115,8 +116,22 @@ function fingerprint(config: LayoutConfig): Map<string, Unit> {
           ? `action · create ${action.object}`
           : `action · flow ${action.flowApiName}`;
     map.set(key, {
-      fp: action.label,
-      describeChange: (b, a) => `: “${b}” → “${a}”`,
+      fp: JSON.stringify({
+        label: action.label,
+        ...(action.type === "screen_flow" ? { inputs: action.inputs } : {}),
+      } satisfies ActionFp),
+      describeChange: (b, a) => {
+        const before = JSON.parse(b) as ActionFp;
+        const after = JSON.parse(a) as ActionFp;
+        const labelChanged = before.label !== after.label;
+        const inputsChanged = JSON.stringify(before.inputs ?? {}) !== JSON.stringify(after.inputs ?? {});
+        if (labelChanged && inputsChanged) {
+          return `: “${before.label}” → “${after.label}” · inputs changed`;
+        }
+        if (labelChanged) return `: “${before.label}” → “${after.label}”`;
+        if (inputsChanged) return " (inputs changed)";
+        return " (changed)";
+      },
     });
   }
 

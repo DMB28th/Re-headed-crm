@@ -44,6 +44,8 @@ export interface WidgetHost {
   updateModelContext(text: string): void;
   /** Post a user-turn followup into the chat (host sendMessage). No-op in previews. */
   sendFollowup?(text: string): void;
+  /** Open an external URL via the host (flow HANDOFF). No-op in previews. */
+  openLink?(url: string): void;
 }
 
 export function RecordCard({

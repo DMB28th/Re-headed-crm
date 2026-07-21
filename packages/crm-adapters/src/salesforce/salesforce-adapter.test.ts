@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { SalesforceAdapter } from "./salesforce-adapter.js";
+import {
+  SalesforceAdapter,
+  buildSalesforceAuthorizationUrl,
+  exchangeSalesforceAuthorizationCode,
+  normalizeSalesforceLoginUrl,
+} from "./salesforce-adapter.js";
 import { CrmRateLimitError, CrmValidationError } from "../adapter.js";
 
 type Handler = (url: string, init?: RequestInit) => { status: number; json: unknown } | undefined;
@@ -101,6 +106,39 @@ describe("SalesforceAdapter", () => {
     expect(tokenCount).toBe(2); // initial + refresh after 401
     expect(describeAuths).toEqual(["Bearer tok-1", "Bearer tok-2"]);
     expect(describe.fields.map((f) => f.api)).toContain("Name");
+  });
+
+  it("uses OAuth refresh tokens for web-server-flow credentials", async () => {
+    const bodies: string[] = [];
+    const { impl } = fetchStub([
+      (url, init) => {
+        if (url.includes("/services/oauth2/token") && init?.method === "POST") {
+          bodies.push(String(init.body));
+          return {
+            status: 200,
+            json: {
+              access_token: "user-token",
+              instance_url: "https://user.my.salesforce.com",
+            },
+          };
+        }
+        return undefined;
+      },
+      (url) => (url.includes("/sobjects/Opportunity/describe") ? { status: 200, json: OPP_DESCRIBE } : undefined),
+    ]);
+    const adapter = new SalesforceAdapter(
+      {
+        authType: "oauth",
+        loginUrl: "https://login.salesforce.com",
+        clientId: "key",
+        clientSecret: "secret",
+        refreshToken: "refresh-user",
+      },
+      impl,
+    );
+    await adapter.describeObject("Opportunity");
+    expect(bodies[0]).toContain("grant_type=refresh_token");
+    expect(bodies[0]).toContain("refresh_token=refresh-user");
   });
 
   it("maps sobject describe → FieldDescribe (required, readOnly, picklists, address dropped)", async () => {
@@ -299,5 +337,85 @@ describe("SalesforceAdapter", () => {
     const task = await adapter.completeTask("00Tx");
     expect(patched[0]).toEqual({ Status: "Completed" });
     expect(task.status).toBe("completed");
+  });
+});
+
+describe("Salesforce OAuth hardening (PKCE + loginUrl allowlist)", () => {
+  it("adds PKCE challenge params to the authorize URL when given a challenge", () => {
+    const url = new URL(
+      buildSalesforceAuthorizationUrl({
+        loginUrl: "https://login.salesforce.com",
+        clientId: "key",
+        redirectUri: "https://app.example/api/connections/salesforce/oauth/callback",
+        state: "st-1",
+        codeChallenge: "abc123",
+      }),
+    );
+    expect(url.searchParams.get("code_challenge")).toBe("abc123");
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(url.searchParams.get("state")).toBe("st-1");
+  });
+
+  it("omits PKCE params when no challenge is given (back-compat)", () => {
+    const url = new URL(
+      buildSalesforceAuthorizationUrl({
+        loginUrl: "https://test.salesforce.com",
+        clientId: "key",
+        redirectUri: "https://app.example/cb",
+        state: "st-2",
+      }),
+    );
+    expect(url.searchParams.has("code_challenge")).toBe(false);
+    expect(url.searchParams.has("code_challenge_method")).toBe(false);
+  });
+
+  it("sends the PKCE code_verifier in the token exchange body", async () => {
+    const { impl, calls } = fetchStub([
+      (url, init) =>
+        url.includes("/services/oauth2/token") && init?.method === "POST"
+          ? {
+              status: 200,
+              json: {
+                access_token: "tok",
+                refresh_token: "rt",
+                instance_url: "https://x.my.salesforce.com",
+              },
+            }
+          : undefined,
+    ]);
+    await exchangeSalesforceAuthorizationCode(
+      {
+        loginUrl: "https://login.salesforce.com",
+        clientId: "key",
+        clientSecret: "secret",
+        redirectUri: "https://app.example/cb",
+        code: "authcode",
+        codeVerifier: "verifier-xyz",
+      },
+      impl,
+    );
+    const body = new URLSearchParams(String(calls[0]?.init?.body));
+    expect(body.get("code_verifier")).toBe("verifier-xyz");
+    expect(body.get("grant_type")).toBe("authorization_code");
+  });
+
+  it("accepts Salesforce-owned login hosts", () => {
+    expect(normalizeSalesforceLoginUrl("https://login.salesforce.com")).toBe(
+      "https://login.salesforce.com",
+    );
+    expect(normalizeSalesforceLoginUrl("https://test.salesforce.com/")).toBe(
+      "https://test.salesforce.com",
+    );
+    expect(normalizeSalesforceLoginUrl("https://acme.my.salesforce.com")).toBe(
+      "https://acme.my.salesforce.com",
+    );
+  });
+
+  it("rejects non-Salesforce and non-https login hosts (SSRF guard)", () => {
+    expect(() => normalizeSalesforceLoginUrl("https://attacker.example")).toThrow(/My Domain/);
+    expect(() => normalizeSalesforceLoginUrl("https://login.salesforce.com.evil.com")).toThrow(
+      /My Domain/,
+    );
+    expect(() => normalizeSalesforceLoginUrl("http://login.salesforce.com")).toThrow(/https/);
   });
 });

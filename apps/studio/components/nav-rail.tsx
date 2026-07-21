@@ -1,9 +1,8 @@
 "use client";
 /**
  * Studio navigation shell (design 12b): 224px left rail, object-scoped tabs.
- * Objects are dynamic (object picker 3c); the roadmap placeholders ("Custom
- * screens", "Flows") were removed per feedback 2026-07-11 — dead rows read as
- * half-done. PR note: deviation from 12b's static rail.
+ * Objects are dynamic (object picker 3c); Shared holds cross-object capability
+ * surfaces (home card, custom screens, flows, audit).
  */
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -184,6 +183,12 @@ export function NavRail() {
         <div className="st-section-label px-2.5 pb-1.5">Shared</div>
         <RailLink href="/home-card" active={pathname === "/home-card"}>
           Home card
+        </RailLink>
+        <RailLink href="/custom-screens" active={pathname === "/custom-screens"}>
+          Custom screens
+        </RailLink>
+        <RailLink href="/flows" active={pathname === "/flows"}>
+          Flows
         </RailLink>
         <RailLink href="/audit" active={pathname === "/audit"}>
           Audit log

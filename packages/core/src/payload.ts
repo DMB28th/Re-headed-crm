@@ -132,6 +132,45 @@ export interface HomeCardPayload {
 }
 
 /**
+ * structuredContent for crm_flow_start / crm_flow_continue → the flow-run widget
+ * (design 10a, flow-as-card-state). The HANDOFF rung: inputs are resolved
+ * server-side (context/field/literal/selection), any `ask` inputs are collected
+ * in chat, and the rep opens the flow in the CRM via the host's openLink. The
+ * server is stateless — continue re-resolves from the answers the model passes.
+ */
+export interface FlowRunResolvedInput {
+  name: string;
+  value: CrmFieldValue | CrmFieldValue[];
+  source: "context" | "field" | "literal" | "selection" | "ask";
+}
+
+export interface FlowRunPendingInput {
+  name: string;
+  prompt: string;
+  required: boolean;
+}
+
+export type FlowRunStatus = "ready" | "needs-input" | "launched" | "cancelled";
+
+export interface FlowRunPayload {
+  kind: "flow-run";
+  /** Correlation id for audit + continue calls; NOT server-persisted state. */
+  actionSessionId: string;
+  flowApiName: string;
+  flowLabel: string;
+  screens: number;
+  writesSummary: string;
+  renderMode: "auto" | "native" | "embedded" | "handoff";
+  /** Handoff target — open the flow in the CRM. null when the CRM can't provide one. */
+  launchUrl: string | null;
+  resolvedInputs: FlowRunResolvedInput[];
+  pendingInputs: FlowRunPendingInput[];
+  /** "needs-input" = required asks unfilled; "ready" = launchable. */
+  status: FlowRunStatus;
+  provenance: WidgetProvenance;
+}
+
+/**
  * Typed tool failure (design 1e): widgets render an actionable error card —
  * "unauthorized" gets the re-auth treatment, everything else gets Retry via
  * the embedded original call.
@@ -151,4 +190,5 @@ export type WidgetPayload =
   | WriteReceiptPayload
   | ViewPickerPayload
   | HomeCardPayload
+  | FlowRunPayload
   | ErrorPayload;

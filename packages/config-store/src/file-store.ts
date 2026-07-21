@@ -1,6 +1,25 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { BaseConfigStore, seededState, type StoreState } from "./memory-store.js";
+import { openConnection, sealConnection } from "./crypto.js";
+
+/**
+ * Seal/open the secret-bearing records in a whole StoreState. Only what hits
+ * disk is encrypted; the in-memory StoreState the base store operates on stays
+ * plaintext. Never mutates the input — connections/userConnections are remapped
+ * into fresh objects.
+ */
+type SecretBearing = { credentials?: Record<string, string>; pendingAuth?: Record<string, string> };
+
+function mapConnections(state: StoreState, fn: <T extends SecretBearing>(v: T) => T): StoreState {
+  const remap = <V extends SecretBearing>(record: Record<string, V>): Record<string, V> =>
+    Object.fromEntries(Object.entries(record).map(([k, v]) => [k, fn(v)]));
+  return {
+    ...state,
+    ...(state.connections ? { connections: remap(state.connections) } : {}),
+    ...(state.userConnections ? { userConnections: remap(state.userConnections) } : {}),
+  };
+}
 
 /**
  * JSON-file-backed store shared by Studio (writes) and the MCP server (reads).
@@ -19,7 +38,8 @@ export class FileConfigStore extends BaseConfigStore {
   }
 
   protected async load(): Promise<StoreState> {
-    return JSON.parse(readFileSync(this.filePath, "utf-8")) as StoreState;
+    const raw = JSON.parse(readFileSync(this.filePath, "utf-8")) as StoreState;
+    return mapConnections(raw, openConnection);
   }
 
   protected async save(state: StoreState): Promise<void> {
@@ -28,7 +48,7 @@ export class FileConfigStore extends BaseConfigStore {
 
   private writeAtomic(state: StoreState): void {
     const tmp = `${this.filePath}.tmp`;
-    writeFileSync(tmp, JSON.stringify(state, null, 2));
+    writeFileSync(tmp, JSON.stringify(mapConnections(state, sealConnection), null, 2));
     renameSync(tmp, this.filePath);
   }
 }
