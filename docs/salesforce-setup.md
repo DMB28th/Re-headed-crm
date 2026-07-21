@@ -19,6 +19,24 @@ separate authorizations:
 There is **one CRM per workspace**. Disconnect Salesforce (or a mock/HubSpot portal) before
 switching.
 
+## Sandbox vs production
+
+Most of setup is identical — a sandbox is just a separate org. The deltas:
+
+| | Sandbox | Production |
+|---|---|---|
+| **Login URL** (Studio's Salesforce card) | `https://test.salesforce.com`, or your sandbox My Domain `https://<domain>--<sbx>.sandbox.my.salesforce.com` | `https://login.salesforce.com`, or `https://<domain>.my.salesforce.com` |
+| **Connected App** | Create/authorize it **in the sandbox org**; its Consumer Key/Secret differ from prod | The prod org's app + its own key/secret |
+| **Callback URLs** | **Same** — they point at your Studio, not Salesforce | Same |
+| **Instance returned** | `*.sandbox.my.salesforce.com` | `*.my.salesforce.com` |
+
+All of these hosts pass Cardstack's login-URL allowlist (`test.salesforce.com`,
+`login.salesforce.com`, or any `*.my.salesforce.com` — which covers sandbox My Domains).
+Connections → Scope coverage shows a **Sandbox / PRODUCTION** badge so you can confirm which
+org you're on. One CRM per workspace, so moving sandbox → production means disconnect, reconnect
+with the production login URL + the prod org's app credentials, and re-authorize users (layouts
+and lists are kept).
+
 ## Prerequisites
 
 - A Salesforce org where you can create a **Connected App** or **External Client App**, and
@@ -49,6 +67,12 @@ Create one Connected App (or External Client App) with these OAuth settings:
 https://<studio-origin>/api/connections/salesforce/oauth/callback
 https://<studio-origin>/api/user-connections/salesforce/oauth/callback
 ```
+
+Both callbacks are **Studio** routes — use your **Studio** origin, *not* the MCP server's. On
+Railway that is the Studio service domain (e.g.
+`https://cardstackstudio-production.up.railway.app`). The MCP server domain is only for the
+chat-host connector (`/mcp`) and is never a callback. `<studio-origin>` must match
+`CARDSTACK_STUDIO_URL` (see Step 2), since that is what builds the `redirect_uri`.
 
 For local development:
 
