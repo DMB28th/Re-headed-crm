@@ -1,13 +1,12 @@
 /**
  * SalesforceAdapter — CrmAdapter over a REAL Salesforce org (M2 adapter).
  *
- * Auth: OAuth 2.0 CLIENT CREDENTIALS flow against a Connected App / External
- * Client App (instance URL + consumer key + secret; "run as" an integration
- * user configured on the app). Zero redirect infrastructure; the token is
- * fetched lazily and re-fetched once on 401. Because every call runs as the
- * connected user, Salesforce enforces FLS and sharing on top of Cardstack's
- * config layer (the PLAN.md selling point). The three-legged web-server flow
- * layers on in M7 without touching the request paths.
+ * Auth: OAuth 2.0 over a Connected App / External Client App. Primary path is
+ * the authorization-code web-server flow: Studio stores admin OAuth for setup
+ * and per-user OAuth for runtime. Legacy client credentials remain supported
+ * for older demo connections. Tokens are fetched lazily and re-fetched once on
+ * 401. Because every call runs as the chosen Salesforce user, Salesforce
+ * enforces FLS and sharing on top of Cardstack's config layer.
  *
  * Coverage notes (v1):
  * - Saved views come from the REST listviews API (id, label, filter summary
@@ -51,15 +50,29 @@ import {
 } from "../adapter.js";
 
 export interface SalesforceCredentials {
-  /** e.g. https://mydomain.my.salesforce.com */
-  instanceUrl: string;
+  /** Absent = legacy client credentials for pre-OAuth config files. */
+  authType?: "client_credentials" | "oauth" | "oauth_pending";
+  /** e.g. https://mydomain.my.salesforce.com. Returned by OAuth token exchange. */
+  instanceUrl?: string;
+  /** e.g. https://login.salesforce.com or https://test.salesforce.com */
+  loginUrl?: string;
   clientId: string;
   clientSecret: string;
+  /** OAuth web-server flow refresh token. */
+  refreshToken?: string;
+  /** Optional warm access token from a fresh OAuth callback. */
+  accessToken?: string;
+  redirectUri?: string;
+  identityUrl?: string;
+  issuedAt?: string;
+  scope?: string;
+  tokenType?: string;
 }
 
 type FetchLike = typeof fetch;
 
 const API = "/services/data/v61.0";
+const DEFAULT_LOGIN_URL = "https://login.salesforce.com";
 
 const OBJECTS: ObjectSummary[] = [
   { api: "Opportunity", label: "Opportunity", labelPlural: "Opportunities", custom: false },
@@ -138,8 +151,144 @@ interface SfDescribeField {
 
 const DESCRIBE_TTL_MS = 10 * 60 * 1000;
 
+interface SalesforceTokenResponse {
+  access_token?: string;
+  refresh_token?: string;
+  instance_url?: string;
+  id?: string;
+  issued_at?: string;
+  scope?: string;
+  token_type?: string;
+  error?: string;
+  error_description?: string;
+}
+
+// SSRF guard: the login URL becomes the host we POST client_id + client_secret
+// to during token exchange, so it must be a Salesforce-owned domain and never a
+// caller-chosen host. Allow only the two generic login endpoints and My Domain
+// (`*.my.salesforce.com`, which also covers sandbox `*.sandbox.my.salesforce.com`).
+function isAllowedSalesforceHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return (
+    host === "login.salesforce.com" ||
+    host === "test.salesforce.com" ||
+    host.endsWith(".my.salesforce.com")
+  );
+}
+
+export function normalizeSalesforceLoginUrl(input?: string): string {
+  const trimmed = (input || DEFAULT_LOGIN_URL).trim().replace(/\/$/, "");
+  if (!/^https:\/\//.test(trimmed)) {
+    throw new Error("Salesforce login URL must start with https://");
+  }
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new Error("Salesforce login URL is not a valid URL.");
+  }
+  if (!isAllowedSalesforceHost(url.hostname)) {
+    throw new Error(
+      "Salesforce login URL must be login.salesforce.com, test.salesforce.com, or your My Domain (*.my.salesforce.com).",
+    );
+  }
+  return trimmed;
+}
+
+export function salesforceUsesOAuth(credentials?: Record<string, string>): boolean {
+  return credentials?.authType === "oauth" || !!credentials?.refreshToken;
+}
+
+export function buildSalesforceAuthorizationUrl(args: {
+  loginUrl?: string;
+  clientId: string;
+  redirectUri: string;
+  state: string;
+  /** PKCE S256 challenge (base64url of SHA-256(codeVerifier)). */
+  codeChallenge?: string;
+}): string {
+  const url = new URL(`${normalizeSalesforceLoginUrl(args.loginUrl)}/services/oauth2/authorize`);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("client_id", args.clientId);
+  url.searchParams.set("redirect_uri", args.redirectUri);
+  url.searchParams.set("scope", "api refresh_token");
+  url.searchParams.set("state", args.state);
+  if (args.codeChallenge) {
+    url.searchParams.set("code_challenge", args.codeChallenge);
+    url.searchParams.set("code_challenge_method", "S256");
+  }
+  return url.toString();
+}
+
+async function postToken(
+  fetchImpl: FetchLike,
+  loginUrl: string | undefined,
+  params: Record<string, string>,
+): Promise<SalesforceTokenResponse> {
+  const res = await fetchImpl(`${normalizeSalesforceLoginUrl(loginUrl)}/services/oauth2/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(params).toString(),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const data = (await res.json().catch(() => ({}))) as SalesforceTokenResponse;
+  if (!res.ok || !data.access_token) {
+    throw new CrmAuthError(
+      "Salesforce",
+      data.error_description || data.error || "Salesforce OAuth token exchange failed.",
+    );
+  }
+  return data;
+}
+
+export async function exchangeSalesforceAuthorizationCode(
+  args: {
+    loginUrl?: string;
+    clientId: string;
+    clientSecret: string;
+    redirectUri: string;
+    code: string;
+    /** PKCE verifier matching the code_challenge sent on the authorize URL. */
+    codeVerifier?: string;
+  },
+  fetchImpl: FetchLike = fetch,
+): Promise<SalesforceCredentials> {
+  const loginUrl = normalizeSalesforceLoginUrl(args.loginUrl);
+  const data = await postToken(fetchImpl, loginUrl, {
+    grant_type: "authorization_code",
+    code: args.code,
+    client_id: args.clientId,
+    client_secret: args.clientSecret,
+    redirect_uri: args.redirectUri,
+    ...(args.codeVerifier ? { code_verifier: args.codeVerifier } : {}),
+  });
+  if (!data.refresh_token) {
+    throw new CrmAuthError(
+      "Salesforce",
+      "Salesforce did not return a refresh token. Add the refresh_token/offline_access OAuth scope and authorize again.",
+    );
+  }
+  if (!data.instance_url) {
+    throw new CrmAuthError("Salesforce", "Salesforce OAuth response did not include an instance URL.");
+  }
+  return {
+    authType: "oauth",
+    loginUrl,
+    clientId: args.clientId,
+    clientSecret: args.clientSecret,
+    instanceUrl: data.instance_url,
+    accessToken: data.access_token!,
+    refreshToken: data.refresh_token,
+    ...(data.id ? { identityUrl: data.id } : {}),
+    ...(data.issued_at ? { issuedAt: data.issued_at } : {}),
+    ...(data.scope ? { scope: data.scope } : {}),
+    ...(data.token_type ? { tokenType: data.token_type } : {}),
+  };
+}
+
 export class SalesforceAdapter implements CrmAdapter {
   private token: string | null = null;
+  private instanceUrl: string | null = null;
   private describeCache = new Map<string, { describe: ObjectDescribe; fetchedAt: number }>();
   private viewObjectById = new Map<string, string>();
   /** Opportunity stage ApiName → IsClosed, fetched once. */
@@ -186,13 +335,35 @@ export class SalesforceAdapter implements CrmAdapter {
   constructor(
     private readonly credentials: SalesforceCredentials,
     private readonly fetchImpl: FetchLike = fetch,
-  ) {}
+  ) {
+    this.token = credentials.accessToken ?? null;
+    this.instanceUrl = credentials.instanceUrl ?? null;
+  }
 
   private get base(): string {
-    return this.credentials.instanceUrl.replace(/\/$/, "");
+    const base = (this.instanceUrl ?? this.credentials.instanceUrl)?.replace(/\/$/, "");
+    if (!base) {
+      throw new CrmAuthError("Salesforce", "Salesforce connection is missing an instance URL.");
+    }
+    return base;
   }
 
   private async fetchToken(): Promise<string> {
+    if (salesforceUsesOAuth(this.credentials as unknown as Record<string, string>)) {
+      if (!this.credentials.refreshToken) {
+        throw new CrmAuthError("Salesforce", "Salesforce authorization is missing a refresh token.");
+      }
+      const data = await postToken(this.fetchImpl, this.credentials.loginUrl, {
+        grant_type: "refresh_token",
+        client_id: this.credentials.clientId,
+        client_secret: this.credentials.clientSecret,
+        refresh_token: this.credentials.refreshToken,
+      });
+      this.token = data.access_token!;
+      this.instanceUrl = data.instance_url ?? this.instanceUrl ?? this.credentials.instanceUrl ?? null;
+      return this.token;
+    }
+
     const res = await this.fetchImpl(`${this.base}/services/oauth2/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -571,6 +742,17 @@ export class SalesforceAdapter implements CrmAdapter {
 
   async listFlows(): Promise<FlowSummary[]> {
     return [];
+  }
+
+  /**
+   * HANDOFF launch URL: the flow's runtime page in the connected org. Null when
+   * no instance URL is known yet (unauthorized). The CRM renders the screens and
+   * owns the write — Cardstack only opens the door.
+   */
+  getFlowLaunchUrl(flowApiName: string): string | null {
+    const instance = (this.instanceUrl ?? this.credentials.instanceUrl)?.replace(/\/$/, "");
+    if (!instance) return null;
+    return `${instance}/flow/${encodeURIComponent(flowApiName)}`;
   }
 
   async refreshTokenIfNeeded(): Promise<void> {

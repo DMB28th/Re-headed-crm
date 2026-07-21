@@ -12,6 +12,9 @@
  * - 2026-07-12: LayoutField gains optional `required` (design 2a's per-field
  *   Required toggle, enforced in crm_update_record: a required field can't be
  *   cleared from chat). Additive + optional — existing configs parse unchanged.
+ * - 2026-07-20: screen_flow actions gain an `inputs` mapping contract. Existing
+ *   actions default to no explicit inputs; runtimes can still inject their safe
+ *   host context, while new Studio configs map variables intentionally.
  */
 import { z } from "zod";
 
@@ -61,6 +64,65 @@ export const RelatedListConfig = z.object({
 });
 export type RelatedListConfig = z.infer<typeof RelatedListConfig>;
 
+export const ActionInputValueType = z.enum([
+  "string",
+  "number",
+  "boolean",
+  "date",
+  "datetime",
+  "recordId",
+  "recordIds",
+  "json",
+]);
+export type ActionInputValueType = z.infer<typeof ActionInputValueType>;
+
+export const ActionContextKey = z.enum([
+  "recordId",
+  "objectApiName",
+  "crm",
+  "tenantId",
+  "userId",
+  "userEmail",
+  "audience",
+  "actionSessionId",
+]);
+export type ActionContextKey = z.infer<typeof ActionContextKey>;
+
+export const ActionInputMapping = z.discriminatedUnion("source", [
+  z.object({
+    source: z.literal("context"),
+    key: ActionContextKey.default("recordId"),
+    valueType: ActionInputValueType.optional(),
+  }),
+  z.object({
+    source: z.literal("field"),
+    field: z.string().min(1),
+    valueType: ActionInputValueType.optional(),
+  }),
+  z.object({
+    source: z.literal("literal"),
+    value: z.union([z.string(), z.number(), z.boolean(), z.null()]).default(""),
+    valueType: ActionInputValueType.optional(),
+  }),
+  z.object({
+    source: z.literal("ask"),
+    prompt: z.string().min(1),
+    valueType: ActionInputValueType.default("string"),
+    required: z.boolean().default(true),
+  }),
+  z.object({
+    source: z.literal("selection"),
+    object: z.string().optional(),
+    relationship: z.string().optional(),
+    valueType: z.literal("recordIds").default("recordIds"),
+    required: z.boolean().default(false),
+  }),
+]);
+export type ActionInputMapping = z.infer<typeof ActionInputMapping>;
+
+export const ActionInputMappings = z.record(z.string().min(1), ActionInputMapping).default({});
+export type ActionInputMappings = z.infer<typeof ActionInputMappings>;
+
 export const CardAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("update_record"), label: z.string().min(1) }),
   z.object({
@@ -75,6 +137,12 @@ export const CardAction = z.discriminatedUnion("type", [
     flowApiName: z.string().min(1),
     label: z.string().min(1),
     embed: z.enum(["auto", "native", "embedded", "iframe"]).default("auto"),
+    /**
+     * Flow/LWC/custom-screen input variables resolved by the action runtime.
+     * The same mapping is used whether the rep clicks the button or invokes the
+     * action from chat.
+     */
+    inputs: ActionInputMappings,
   }),
 ]);
 export type CardAction = z.infer<typeof CardAction>;

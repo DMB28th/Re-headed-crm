@@ -205,8 +205,29 @@ export const VALIDATION_RULES: RuleSummary[] = [
 ];
 
 export const FLOWS: FlowSummary[] = [
-  { api: "Renewal_Playbook", label: "Renewal playbook", screens: 3, writesSummary: "Updates renewal date, creates follow-up task" },
-  { api: "Discount_Approval", label: "Discount approval", screens: 2, writesSummary: "Creates approval request, updates amount" },
+  {
+    api: "Renewal_Playbook",
+    label: "Renewal playbook",
+    screens: 3,
+    writesSummary: "Updates renewal date, creates follow-up task",
+    inputVariables: [
+      { name: "recordId", label: "Record ID", valueType: "recordId", required: true },
+      { name: "objectApiName", label: "Object API name", valueType: "string", required: true },
+      { name: "renewalDate", label: "Renewal date", valueType: "date" },
+      { name: "notes", label: "Notes", valueType: "string" },
+    ],
+  },
+  {
+    api: "Discount_Approval",
+    label: "Discount approval",
+    screens: 2,
+    writesSummary: "Creates approval request, updates amount",
+    inputVariables: [
+      { name: "recordId", label: "Record ID", valueType: "recordId", required: true },
+      { name: "amount", label: "Amount", valueType: "number" },
+      { name: "discountReason", label: "Discount reason", valueType: "string", required: true },
+    ],
+  },
 ];
 
 /** Field the demo tenant's config denies — must never reach a widget. */

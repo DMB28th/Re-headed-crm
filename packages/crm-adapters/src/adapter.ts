@@ -44,6 +44,13 @@ export interface CrmAdapter {
   // Governance metadata (3d, 10c)
   getValidationRules(objectApi: string): Promise<RuleSummary[]>;
   listFlows(): Promise<FlowSummary[]>;
+  /**
+   * HANDOFF-rung launch target (design 10a): a URL that opens the flow in the
+   * CRM's own UI. Optional — returns null when the CRM has no user-launchable
+   * flow URL (e.g. HubSpot workflows). Never drives an interview; the CRM owns
+   * the screens and the write.
+   */
+  getFlowLaunchUrl?(flowApiName: string): string | null;
 
   // Auth
   refreshTokenIfNeeded(): Promise<void>;
@@ -94,8 +101,8 @@ export class CrmRecordNotFoundError extends Error {
 }
 
 export class CrmAuthError extends Error {
-  constructor(crmLabel: string) {
-    super(`${crmLabel} connection expired. Reconnect to continue; unsaved edits are kept.`);
+  constructor(crmLabel: string, message?: string) {
+    super(message ?? `${crmLabel} connection expired. Reconnect to continue; unsaved edits are kept.`);
     this.name = "CrmAuthError";
   }
 }

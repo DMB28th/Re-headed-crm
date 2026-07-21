@@ -7,9 +7,9 @@ import { fileURLToPath } from "node:url";
 
 const distDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "dist");
 
-export const WIDGET_NAMES = ["record-card", "results-table", "home-card"];
+export const WIDGET_NAMES = ["record-card", "results-table", "home-card", "flow-run"];
 
-/** @param {"record-card" | "results-table" | "home-card"} name */
+/** @param {"record-card" | "results-table" | "home-card" | "flow-run"} name */
 export async function getWidgetHtml(name) {
   if (!WIDGET_NAMES.includes(name)) {
     throw new Error(`Unknown widget: ${name}`);

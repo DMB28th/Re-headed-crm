@@ -23,11 +23,179 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import Link from "next/link";
-import { useState } from "react";
-import type { FieldDescribe, LayoutConfig, LayoutField, ObjectDescribe } from "@cardstack/core";
+import { useEffect, useState } from "react";
+import type {
+  ActionContextKey,
+  ActionInputMapping,
+  ActionInputMappings,
+  ActionInputValueType,
+  CardAction,
+  FieldDescribe,
+  FlowInputVariable,
+  FlowRenderModeConfig,
+  FlowSummary,
+  LayoutConfig,
+  LayoutField,
+  ObjectDescribe,
+} from "@cardstack/core";
 import { crmDisplayLabel } from "../../lib/crm-label";
 
 type SetConfig = (updater: (prev: LayoutConfig | null) => LayoutConfig | null) => void;
+
+interface FlowCatalogResponse {
+  flows: FlowSummary[];
+  modes: FlowRenderModeConfig[];
+  error?: string;
+}
+
+type ScreenFlowAction = Extract<CardAction, { type: "screen_flow" }>;
+type ActionInputSource = ActionInputMapping["source"];
+
+const CONTEXT_KEYS: { value: ActionContextKey; label: string }[] = [
+  { value: "recordId", label: "Current record id" },
+  { value: "objectApiName", label: "Current object" },
+  { value: "crm", label: "CRM kind" },
+  { value: "tenantId", label: "Tenant" },
+  { value: "userId", label: "Current user id" },
+  { value: "userEmail", label: "Current user email" },
+  { value: "audience", label: "Audience" },
+  { value: "actionSessionId", label: "Action session" },
+];
+
+const INPUT_SOURCES: { value: ActionInputSource; label: string }[] = [
+  { value: "context", label: "Context" },
+  { value: "field", label: "Record field" },
+  { value: "literal", label: "Literal" },
+  { value: "ask", label: "Ask rep" },
+  { value: "selection", label: "Selected rows" },
+];
+
+const VALUE_TYPES: { value: ActionInputValueType; label: string }[] = [
+  { value: "string", label: "Text" },
+  { value: "number", label: "Number" },
+  { value: "boolean", label: "Boolean" },
+  { value: "date", label: "Date" },
+  { value: "datetime", label: "Date/time" },
+  { value: "recordId", label: "Record id" },
+  { value: "recordIds", label: "Record ids" },
+  { value: "json", label: "JSON" },
+];
+
+function valueTypePatch(valueType: ActionInputValueType | undefined) {
+  return valueType ? { valueType } : {};
+}
+
+function defaultMappingForSource(
+  source: ActionInputSource,
+  describe: ObjectDescribe,
+  previous?: ActionInputMapping,
+): ActionInputMapping {
+  const previousValueType =
+    previous && "valueType" in previous && previous.valueType !== "recordIds"
+      ? previous.valueType
+      : undefined;
+  if (source === "context") {
+    return { source, key: "recordId", ...valueTypePatch(previousValueType ?? "recordId") };
+  }
+  if (source === "field") {
+    return {
+      source,
+      field: describe.fields[0]?.api ?? "id",
+      ...valueTypePatch(previousValueType),
+    };
+  }
+  if (source === "literal") {
+    return { source, value: "", ...valueTypePatch(previousValueType ?? "string") };
+  }
+  if (source === "selection") {
+    const relationship = describe.relationships[0];
+    return {
+      source,
+      ...(relationship ? { object: relationship.relatedObject, relationship: relationship.api } : {}),
+      valueType: "recordIds",
+      required: false,
+    };
+  }
+  return {
+    source: "ask",
+    prompt: "Ask the rep for this value",
+    valueType: previousValueType ?? "string",
+    required: true,
+  };
+}
+
+function inferMappingForVariable(variable: FlowInputVariable, describe: ObjectDescribe): ActionInputMapping {
+  const name = variable.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const label = variable.label ?? variable.name;
+  if (name === "recordid" || name === "currentrecordid") {
+    return { source: "context", key: "recordId", valueType: variable.valueType ?? "recordId" };
+  }
+  if (name === "objectapiname" || name === "objectname") {
+    return { source: "context", key: "objectApiName", valueType: variable.valueType ?? "string" };
+  }
+  if (name === "userid" || name === "currentuserid" || name === "ownerid") {
+    return { source: "context", key: "userId", valueType: variable.valueType ?? "recordId" };
+  }
+  const field = describe.fields.find(
+    (candidate) =>
+      candidate.api.toLowerCase().replace(/[^a-z0-9]/g, "") === name ||
+      candidate.label.toLowerCase().replace(/[^a-z0-9]/g, "") === name,
+  );
+  if (field) {
+    return { source: "field", field: field.api, ...valueTypePatch(variable.valueType) };
+  }
+  return {
+    source: "ask",
+    prompt: `Ask for ${label.toLowerCase()}`,
+    valueType: variable.valueType ?? "string",
+    required: variable.required ?? true,
+  };
+}
+
+function defaultInputsForFlow(flow: FlowSummary, describe: ObjectDescribe): ActionInputMappings {
+  const variables =
+    flow.inputVariables && flow.inputVariables.length > 0
+      ? flow.inputVariables
+      : [
+          { name: "recordId", label: "Record ID", valueType: "recordId", required: true },
+          { name: "objectApiName", label: "Object API name", valueType: "string", required: true },
+        ] satisfies FlowInputVariable[];
+  return Object.fromEntries(
+    variables.map((variable) => [variable.name, inferMappingForVariable(variable, describe)]),
+  ) as ActionInputMappings;
+}
+
+function nextInputName(inputs: ActionInputMappings): string {
+  let i = 1;
+  while (inputs[`input${i}`]) i += 1;
+  return `input${i}`;
+}
+
+function parseLiteralValue(value: string, valueType: ActionInputValueType | undefined) {
+  if (valueType === "number") {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : 0;
+  }
+  if (valueType === "boolean") return value.toLowerCase() === "true";
+  if (valueType === "json") {
+    try {
+      return JSON.stringify(JSON.parse(value));
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
+function mappingSummary(mapping: ActionInputMapping, labelOf: (api: string) => string): string {
+  if (mapping.source === "context") {
+    return CONTEXT_KEYS.find((option) => option.value === mapping.key)?.label ?? mapping.key;
+  }
+  if (mapping.source === "field") return labelOf(mapping.field);
+  if (mapping.source === "literal") return String(mapping.value ?? "");
+  if (mapping.source === "selection") return mapping.relationship ? `Selected ${mapping.relationship}` : "Selected rows";
+  return mapping.prompt;
+}
 
 export function Canvas({
   config,
@@ -48,7 +216,28 @@ export function Canvas({
     { kind: "field"; api: string } | { kind: "section"; index: number } | null
   >(null);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
+  const [flows, setFlows] = useState<FlowSummary[]>([]);
+  const [flowModes, setFlowModes] = useState<FlowRenderModeConfig[]>([]);
   const totalFields = config.recordCard.sections.reduce((n, s) => n + s.fields.length, 0);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/flows");
+        const data = (await res.json()) as FlowCatalogResponse;
+        if (!cancelled && res.ok && !data.error) {
+          setFlows(data.flows);
+          setFlowModes(data.modes);
+        }
+      } catch {
+        // Flow actions are optional; the builder still works when the CRM cannot list them.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const mutateSections = (
     fn: (sections: LayoutConfig["recordCard"]["sections"]) => LayoutConfig["recordCard"]["sections"],
@@ -68,6 +257,15 @@ export function Canvas({
             ...prev,
             recordCard: { ...prev.recordCard, relatedLists: fn(structuredClone(prev.recordCard.relatedLists)) },
           }
+        : prev,
+    );
+
+  const mutateActions = (
+    fn: (actions: LayoutConfig["recordCard"]["actions"]) => LayoutConfig["recordCard"]["actions"],
+  ) =>
+    onChange((prev) =>
+      prev
+        ? { ...prev, recordCard: { ...prev.recordCard, actions: fn(structuredClone(prev.recordCard.actions)) } }
         : prev,
     );
 
@@ -152,6 +350,15 @@ export function Canvas({
   const unconfiguredRelationships = describe.relationships.filter(
     (rel) => !config.recordCard.relatedLists.some((r) => r.relationship === rel.api),
   );
+  const modeForFlow = (flowApiName: string) =>
+    flowModes.find((mode) => mode.flowApiName === flowApiName)?.mode ?? "auto";
+  const flowLabel = (flowApiName: string) => flows.find((flow) => flow.api === flowApiName)?.label ?? flowApiName;
+  const configuredFlowActions = new Set(
+    config.recordCard.actions
+      .filter((action): action is Extract<CardAction, { type: "screen_flow" }> => action.type === "screen_flow")
+      .map((action) => action.flowApiName),
+  );
+  const availableFlowActions = flows.filter((flow) => !configuredFlowActions.has(flow.api));
 
   return (
     <section className="min-w-[340px] flex-1 overflow-y-auto">
@@ -419,96 +626,167 @@ export function Canvas({
       </div>
 
       <div className="st-card mt-3 p-3">
-        <span className="st-section-label">Actions</span>
-        <p className="mt-1 text-[11.5px] text-ink-55">
-          The buttons on the card's footer. “Save changes” submits the rep's edits (with the
-          confirmation diff); “create related” opens a prefilled new-record form in chat.
-        </p>
-        <div className="mt-2 space-y-1.5">
-          {config.recordCard.actions.map((action, i) => (
-            <div key={i} className="flex items-center gap-2 text-[12px]">
-              <span className="st-chip-mono bg-paper text-ink-45">
-                {action.type === "update_record"
-                  ? "save"
-                  : action.type === "create_related"
-                    ? `create ${action.object}`
-                    : "flow"}
-              </span>
-              <input
-                className="st-input flex-1 py-1 text-[12px]"
-                value={action.label}
-                onChange={(e) =>
-                  onChange((prev) => {
-                    if (!prev) return prev;
-                    const actions = structuredClone(prev.recordCard.actions);
-                    actions[i]!.label = e.target.value;
-                    return { ...prev, recordCard: { ...prev.recordCard, actions } };
-                  })
-                }
-              />
-              {action.type !== "update_record" && (
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <span className="st-section-label">Action components</span>
+            <p className="mt-1 text-[11.5px] text-ink-55">
+              Buttons and chat calls resolve to the same action. Flows stay governed by the shared
+              render policy, then write back through the CRM.
+            </p>
+          </div>
+          <Link href="/flows" className="text-[11.5px] text-ink-45 underline">
+            Render policy
+          </Link>
+        </div>
+        <div className="mt-3 grid gap-2">
+          {config.recordCard.actions.map((action, i) => {
+            const kind =
+              action.type === "update_record"
+                ? "Record write"
+                : action.type === "create_related"
+                  ? `Create ${action.object}`
+                  : "Screen flow";
+            const chatPhrase =
+              action.type === "update_record"
+                ? "save these changes"
+                : action.type === "create_related"
+                  ? `create ${action.object.toLowerCase()}`
+                  : flowLabel(action.flowApiName).toLowerCase();
+            return (
+              <div key={`${action.type}-${i}`} className="rounded-[10px] border border-line-soft bg-paper p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[12.5px] font-medium">{action.label}</span>
+                      <span className="st-chip-mono bg-surface text-ink-45">{kind}</span>
+                      <span className="st-chip-mono bg-published text-published-ink">button + chat</span>
+                      {action.type === "screen_flow" && (
+                        <span className="st-chip-mono bg-crmmeta text-crmmeta-ink">
+                          {modeForFlow(action.flowApiName)}
+                        </span>
+                      )}
+                      {action.type === "screen_flow" && (
+                        <span
+                          className="st-chip-mono bg-published text-published-ink"
+                          title="Reps can run this flow from chat via the open-in-Salesforce handoff. Native/Embedded modes fall back to handoff."
+                        >
+                          handoff live
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1 text-[11.5px] text-ink-55">
+                      Button: {action.label} <span className="text-ink-45">/</span> Chat: "{chatPhrase}"
+                    </div>
+                    {action.type === "screen_flow" && (
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-45">
+                        <span className="st-chip-mono bg-surface text-ink-45">{action.flowApiName}</span>
+                        <span>Fallback opens in Salesforce when the host cannot render it.</span>
+                      </div>
+                    )}
+                  </div>
+                  {action.type !== "update_record" && (
+                    <button
+                      type="button"
+                      className="text-ink-45 hover:text-drift-ink"
+                      aria-label={`Remove ${action.label}`}
+                      onClick={() => mutateActions((actions) => actions.filter((_, j) => j !== i))}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <label className="flex min-w-[220px] flex-1 items-center gap-1.5 text-[11.5px] text-ink-55">
+                    label
+                    <input
+                      className="st-input min-w-0 flex-1 py-1 text-[12px]"
+                      value={action.label}
+                      onChange={(e) =>
+                        mutateActions((actions) => {
+                          actions[i]!.label = e.target.value;
+                          return actions;
+                        })
+                      }
+                    />
+                  </label>
+                  {action.type === "update_record" && (
+                    <span className="st-chip-mono bg-surface text-ink-45">confirmation diff locked</span>
+                  )}
+                </div>
+                {action.type === "screen_flow" && (
+                  <ActionInputsEditor
+                    inputs={action.inputs ?? {}}
+                    describe={describe}
+                    onChange={(inputs) =>
+                      mutateActions((actions) => {
+                        const next = actions[i];
+                        if (next?.type === "screen_flow") next.inputs = inputs;
+                        return actions;
+                      })
+                    }
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-3 space-y-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {describe.relationships
+              .filter(
+                (rel) =>
+                  !config.recordCard.actions.some(
+                    (a) => a.type === "create_related" && a.object === rel.relatedObject,
+                  ),
+              )
+              .map((rel) => (
                 <button
+                  key={rel.api}
                   type="button"
-                  className="text-ink-45 hover:text-drift-ink"
-                  aria-label={`Remove ${action.label}`}
+                  className="rounded-[8px] border border-dashed border-line px-2.5 py-1 text-[11.5px] text-ink-45 hover:text-ink"
                   onClick={() =>
-                    onChange((prev) =>
-                      prev
-                        ? {
-                            ...prev,
-                            recordCard: {
-                              ...prev.recordCard,
-                              actions: prev.recordCard.actions.filter((_, j) => j !== i),
-                            },
-                          }
-                        : prev,
-                    )
+                    mutateActions((actions) => [
+                      ...actions,
+                      {
+                        type: "create_related",
+                        object: rel.relatedObject,
+                        label: `Add ${rel.label.replace(/s$/, "").toLowerCase()}`,
+                      },
+                    ])
                   }
                 >
-                  ×
+                  + related {rel.label.toLowerCase()}
                 </button>
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {describe.relationships
-            .filter(
-              (rel) =>
-                !config.recordCard.actions.some(
-                  (a) => a.type === "create_related" && a.object === rel.relatedObject,
-                ),
-            )
-            .map((rel) => (
+              ))}
+            {availableFlowActions.map((flow) => (
               <button
-                key={rel.api}
+                key={flow.api}
                 type="button"
                 className="rounded-[8px] border border-dashed border-line px-2.5 py-1 text-[11.5px] text-ink-45 hover:text-ink"
+                title={flow.writesSummary}
                 onClick={() =>
-                  onChange((prev) =>
-                    prev
-                      ? {
-                          ...prev,
-                          recordCard: {
-                            ...prev.recordCard,
-                            actions: [
-                              ...prev.recordCard.actions,
-                              {
-                                type: "create_related",
-                                object: rel.relatedObject,
-                                label: `Add ${rel.label.replace(/s$/, "").toLowerCase()}`,
-                              },
-                            ],
-                          },
-                        }
-                      : prev,
-                  )
+                  mutateActions((actions) => [
+                    ...actions,
+                    {
+                      type: "screen_flow",
+                      flowApiName: flow.api,
+                      label: flow.label,
+                      embed: "auto",
+                      inputs: defaultInputsForFlow(flow, describe),
+                    },
+                  ])
                 }
               >
-                + create {rel.label.toLowerCase()}
+                + flow {flow.label}
               </button>
             ))}
-          <span className="text-[11px] text-ink-45">🔒 trust line is not removable</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-ink-45">
+            <span>Trust line is not removable.</span>
+            <Link href="/custom-screens" className="underline">
+              Map unsupported flow screens
+            </Link>
+          </div>
         </div>
       </div>
     </section>
@@ -590,6 +868,261 @@ function ColumnPicker({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Controlled name field: keeps a local editing value and commits on blur. A
+ * rejected rename (empty, unchanged, or duplicate) resets to the stored name so
+ * the visible text can't desync from the underlying mapping key.
+ */
+function InputNameField({ name, onRename }: { name: string; onRename: (next: string) => boolean }) {
+  const [value, setValue] = useState(name);
+  useEffect(() => setValue(name), [name]);
+  return (
+    <input
+      className="st-input w-[150px] py-1 font-mono text-[11.5px]"
+      value={value}
+      aria-label={`Input name ${name}`}
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={() => {
+        if (!onRename(value)) setValue(name);
+      }}
+    />
+  );
+}
+
+function ActionInputsEditor({
+  inputs,
+  describe,
+  onChange,
+}: {
+  inputs: ActionInputMappings;
+  describe: ObjectDescribe;
+  onChange: (inputs: ActionInputMappings) => void;
+}) {
+  const labelOf = (api: string) => describe.fields.find((field) => field.api === api)?.label ?? api;
+
+  const setMapping = (name: string, mapping: ActionInputMapping) => {
+    onChange({ ...inputs, [name]: mapping });
+  };
+
+  const renameInput = (name: string, nextName: string): boolean => {
+    const clean = nextName.trim();
+    if (!clean || clean === name || inputs[clean]) return false;
+    const next = { ...inputs };
+    const mapping = next[name];
+    delete next[name];
+    if (mapping) next[clean] = mapping;
+    onChange(next);
+    return true;
+  };
+
+  const setValueType = (name: string, mapping: ActionInputMapping, valueType: ActionInputValueType) => {
+    if (mapping.source === "selection") return;
+    if (mapping.source === "literal") {
+      setMapping(name, {
+        ...mapping,
+        valueType,
+        value: parseLiteralValue(String(mapping.value ?? ""), valueType),
+      });
+      return;
+    }
+    setMapping(name, { ...mapping, valueType });
+  };
+
+  return (
+    <div className="mt-3 rounded-[10px] border border-line-soft bg-surface p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="st-section-label">Inputs</div>
+          <p className="mt-1 text-[11px] text-ink-45">
+            Resolved once, then passed to the flow and any mapped custom screen.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="rounded-[8px] border border-dashed border-line px-2.5 py-1 text-[11.5px] text-ink-45 hover:text-ink"
+          onClick={() =>
+            onChange({
+              ...inputs,
+              [nextInputName(inputs)]: defaultMappingForSource("context", describe),
+            })
+          }
+        >
+          + Add input
+        </button>
+      </div>
+
+      {Object.keys(inputs).length === 0 && (
+        <p className="mt-2 text-[11.5px] text-ink-45">
+          No explicit inputs. The runtime will only pass its safe host context.
+        </p>
+      )}
+
+      <div className="mt-2 space-y-2">
+        {Object.entries(inputs).map(([name, mapping]) => (
+          <div key={name} className="rounded-[9px] border border-line-soft bg-paper p-2.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <InputNameField
+                name={name}
+                onRename={(next) => renameInput(name, next)}
+              />
+              <select
+                className="st-input py-1 text-[11.5px]"
+                value={mapping.source}
+                onChange={(event) =>
+                  setMapping(
+                    name,
+                    defaultMappingForSource(event.target.value as ActionInputSource, describe, mapping),
+                  )
+                }
+              >
+                {INPUT_SOURCES.map((source) => (
+                  <option key={source.value} value={source.value}>
+                    {source.label}
+                  </option>
+                ))}
+              </select>
+              {mapping.source !== "selection" && (
+                <select
+                  className="st-input py-1 text-[11.5px]"
+                  value={("valueType" in mapping && mapping.valueType) || "string"}
+                  onChange={(event) =>
+                    setValueType(name, mapping, event.target.value as ActionInputValueType)
+                  }
+                >
+                  {VALUE_TYPES.filter((type) => type.value !== "recordIds").map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <span className="st-chip-mono bg-surface text-ink-45" title={mappingSummary(mapping, labelOf)}>
+                {mappingSummary(mapping, labelOf)}
+              </span>
+              <button
+                type="button"
+                className="ml-auto text-ink-45 hover:text-drift-ink"
+                aria-label={`Remove input ${name}`}
+                onClick={() => {
+                  const next = { ...inputs };
+                  delete next[name];
+                  onChange(next);
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {mapping.source === "context" && (
+                <select
+                  className="st-input min-w-[220px] py-1 text-[11.5px]"
+                  value={mapping.key}
+                  onChange={(event) =>
+                    setMapping(name, { ...mapping, key: event.target.value as ActionContextKey })
+                  }
+                >
+                  {CONTEXT_KEYS.map((key) => (
+                    <option key={key.value} value={key.value}>
+                      {key.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {mapping.source === "field" && (
+                <select
+                  className="st-input min-w-[220px] py-1 text-[11.5px]"
+                  value={mapping.field}
+                  onChange={(event) => setMapping(name, { ...mapping, field: event.target.value })}
+                >
+                  {describe.fields.map((field) => (
+                    <option key={field.api} value={field.api}>
+                      {field.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {mapping.source === "literal" && (
+                <input
+                  className="st-input min-w-[220px] flex-1 py-1 text-[11.5px]"
+                  placeholder="Static value"
+                  defaultValue={String(mapping.value ?? "")}
+                  onBlur={(event) =>
+                    setMapping(name, {
+                      ...mapping,
+                      value: parseLiteralValue(event.target.value, mapping.valueType),
+                    })
+                  }
+                />
+              )}
+              {mapping.source === "ask" && (
+                <>
+                  <input
+                    className="st-input min-w-[240px] flex-1 py-1 text-[11.5px]"
+                    placeholder="Prompt shown before launch"
+                    value={mapping.prompt}
+                    onChange={(event) =>
+                      setMapping(name, { ...mapping, prompt: event.target.value })
+                    }
+                    onBlur={(event) => {
+                      if (!event.target.value.trim())
+                        setMapping(name, { ...mapping, prompt: "Ask the rep for this value" });
+                    }}
+                  />
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={mapping.required}
+                    className={`h-5 w-9 shrink-0 rounded-full transition-colors ${
+                      mapping.required ? "bg-accent" : "bg-line"
+                    }`}
+                    title={mapping.required ? "Required before launch" : "Optional"}
+                    onClick={() => setMapping(name, { ...mapping, required: !mapping.required })}
+                  >
+                    <span
+                      className={`block h-4 w-4 rounded-full bg-white transition-transform ${
+                        mapping.required ? "translate-x-4" : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                </>
+              )}
+              {mapping.source === "selection" && (
+                <select
+                  className="st-input min-w-[220px] py-1 text-[11.5px]"
+                  value={mapping.relationship ?? ""}
+                  onChange={(event) => {
+                    const relationship = describe.relationships.find((rel) => rel.api === event.target.value);
+                    setMapping(
+                      name,
+                      relationship
+                        ? {
+                            source: "selection",
+                            relationship: relationship.api,
+                            object: relationship.relatedObject,
+                            valueType: "recordIds",
+                            required: mapping.required,
+                          }
+                        : { source: "selection", valueType: "recordIds", required: mapping.required },
+                    );
+                  }}
+                >
+                  <option value="">Current selected rows</option>
+                  {describe.relationships.map((relationship) => (
+                    <option key={relationship.api} value={relationship.api}>
+                      {relationship.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -9,7 +9,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "../src");
-const WIDGETS = ["record-card", "results-table", "home-card"];
+const WIDGETS = ["record-card", "results-table", "home-card", "flow-run"];
 // Not preceded by "-" so CSS custom properties (--rt-cols) aren't read as classes.
 const CLASS_RE = /(?<![-\w])((?:rc|rt|hc|cs|wd)-[a-z0-9-]+)/g;
 

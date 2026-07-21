@@ -14,9 +14,10 @@ standard (SEP-1865).
 Record card, results table, and home card with the full write path, saved-view
 resolution, and the Studio admin app — running against the **mock adapter for
 demos and live HubSpot / Salesforce** in production. HubSpot connects with a
-private-app token, Salesforce with the OAuth client-credentials flow; the
-Studio Connections page validates the token, reports scope gaps, and generates
-a starter layout. Every confirmed chat write lands in a durable audit log
+private-app token, Salesforce with two OAuth lanes: admin OAuth for setup and
+per-user OAuth for runtime records/list views/writes. The Studio Connections
+page validates tokens, reports scope gaps, and generates a starter layout.
+Every confirmed chat write lands in a durable audit log
 (Postgres/file), and the MCP endpoint takes an optional shared-secret + rate
 limit.
 
@@ -53,6 +54,23 @@ npx @modelcontextprotocol/inspector       # or connect Claude.ai via a tunnel
 Ask: *"pull up our open deals over $50k"* → results table widget → click a row
 → record card widget.
 
+## Salesforce OAuth
+
+Create a Salesforce Connected App / External Client App with the web-server
+OAuth flow enabled. Add both callback URLs for the Studio origin you run:
+
+```text
+http://localhost:3002/api/connections/salesforce/oauth/callback
+http://localhost:3002/api/user-connections/salesforce/oauth/callback
+```
+
+Use your deployed Studio origin instead of `localhost` in production. Required
+OAuth scopes are `api` and `refresh_token/offline_access`. In Studio, the admin
+authorizes first under Connections; then each product user authorizes their own
+Salesforce user from the same page. MCP runtime refuses Salesforce reads/writes
+until that user auth exists, so "my opportunities" and saved views are scoped by
+Salesforce itself.
+
 ## Layout
 
 | Path | What |
@@ -60,8 +78,8 @@ Ask: *"pull up our open deals over $50k"* → results table widget → click a r
 | `apps/mcp-server` | MCP server — streamable HTTP, stateless, per-request tenant→config→adapter resolution; optional shared-secret + rate limit |
 | `apps/studio` | Admin Studio (Next.js) — layout builder, home-card builder, lists, connections, publish/rollback, audit log |
 | `packages/core` | Layout config schema (zod), payload contracts, server-side denylist filtering |
-| `packages/config-store` | draft/publish/rollback config + durable audit log (Postgres via `DATABASE_URL`, file-backed otherwise) |
-| `packages/crm-adapters` | `CrmAdapter` interface + `MockCrmAdapter`, `hubspot/` (private-app token), `salesforce/` (client-credentials) |
+| `packages/config-store` | draft/publish/rollback config, workspace connections, per-user CRM auth + durable audit log (Postgres via `DATABASE_URL`, file-backed otherwise) |
+| `packages/crm-adapters` | `CrmAdapter` interface + `MockCrmAdapter`, `hubspot/` (private-app token), `salesforce/` (OAuth with legacy client-credentials compatibility) |
 | `packages/widgets` | React widgets → Vite single-file HTML bundles served as `ui://` resources |
 
 ## Deploy

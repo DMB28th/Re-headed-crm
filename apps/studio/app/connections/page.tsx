@@ -1,7 +1,8 @@
 "use client";
 /**
  * Connections (design 2c): the mock portal, a REAL HubSpot portal (private-app
- * token), or a REAL Salesforce org (client-credentials Connected App).
+ * token), or a REAL Salesforce org. Salesforce uses two auth lanes:
+ * admin OAuth for setup/metadata and per-user OAuth for runtime records/lists.
  * Credentials are validated server-side before storing and never come back
  * out through the API. One CRM per workspace; disconnect first to switch.
  */
@@ -23,6 +24,23 @@ interface ConnectionsData {
   connectedUser: string | null;
 }
 
+interface UserConnectionData {
+  workspace: {
+    crm: "hubspot" | "salesforce";
+    status: "connected" | "disconnected";
+    label: string;
+    requiresUserAuth: boolean;
+  };
+  connection: {
+    status: "connected" | "disconnected";
+    crm: "salesforce";
+    label?: string;
+    changedAt?: string;
+    live: boolean;
+  };
+  connectedUser: string | null;
+}
+
 interface OnboardingState {
   objects: { api: string; labelPlural: string }[];
   done: string[];
@@ -38,7 +56,13 @@ export default function ConnectionsPage() {
   const [error, setError] = useState<string | null>(null);
   const [hsToken, setHsToken] = useState("");
   const [hsFormOpen, setHsFormOpen] = useState(false);
-  const [sf, setSf] = useState({ instanceUrl: "", clientId: "", clientSecret: "" });
+  const [sf, setSf] = useState({
+    loginUrl: "https://login.salesforce.com",
+    clientId: "",
+    clientSecret: "",
+  });
+  const [origin, setOrigin] = useState("");
+  const [userData, setUserData] = useState<UserConnectionData | null>(null);
   const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -68,10 +92,81 @@ export default function ConnectionsPage() {
 
   useEffect(() => {
     void (async () => {
-      const res = await fetch("/api/connections");
+      setOrigin(window.location.origin);
+      const params = new URLSearchParams(window.location.search);
+      const callbackError = params.get("error");
+      if (callbackError) setError(callbackError);
+      const [res, userRes] = await Promise.all([
+        fetch("/api/connections"),
+        fetch("/api/user-connections/salesforce"),
+      ]);
       setData((await res.json()) as ConnectionsData);
+      setUserData((await userRes.json()) as UserConnectionData);
     })();
   }, []);
+
+  const startSalesforceAdminOAuth = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/connections/salesforce/oauth/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sf),
+      });
+      const json = (await res.json()) as { authorizationUrl?: string; error?: string };
+      if (!res.ok || !json.authorizationUrl) {
+        setError(json.error ?? "Could not start Salesforce authorization.");
+        return;
+      }
+      window.location.href = json.authorizationUrl;
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startSalesforceUserOAuth = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/user-connections/salesforce/oauth/start", {
+        method: "POST",
+      });
+      const json = (await res.json()) as { authorizationUrl?: string; error?: string };
+      if (!res.ok || !json.authorizationUrl) {
+        setError(json.error ?? "Could not start Salesforce user authorization.");
+        return;
+      }
+      window.location.href = json.authorizationUrl;
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disconnectSalesforceUser = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/user-connections/salesforce", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "disconnect" }),
+      });
+      const json = (await res.json()) as UserConnectionData & { error?: string };
+      if (!res.ok) {
+        setError(json.error ?? "Could not disconnect Salesforce user.");
+        return;
+      }
+      const userRes = await fetch("/api/user-connections/salesforce");
+      setUserData((await userRes.json()) as UserConnectionData);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const post = async (body: Record<string, unknown>) => {
     setBusy(true);
@@ -88,10 +183,14 @@ export default function ConnectionsPage() {
         return;
       }
       setData(json);
+      void fetch("/api/user-connections/salesforce")
+        .then((res) => res.json())
+        .then((next) => setUserData(next as UserConnectionData))
+        .catch(() => undefined);
       setConfirming(false);
       setHsFormOpen(false);
       setHsToken("");
-      setSf({ instanceUrl: "", clientId: "", clientSecret: "" });
+      setSf({ loginUrl: "https://login.salesforce.com", clientId: "", clientSecret: "" });
       // Successful LIVE connect (2c): offer starter-card generation for the
       // portal's unconfigured objects instead of dead-ending here.
       if (body.action === "connect" && body.kind !== "mock") {
@@ -345,7 +444,58 @@ export default function ConnectionsPage() {
       {/* Salesforce */}
       <div className="st-card mt-4 p-4">
         {salesforceActive ? (
-          connectedCard("Salesforce", connection.label)
+          <>
+            {connectedCard("Salesforce admin", connection.label)}
+            {userData?.workspace.requiresUserAuth && (
+              <div className="mt-4 rounded-[10px] border border-line-soft px-3 py-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[12.5px] font-semibold">Your Salesforce access</div>
+                    <div className="mt-1 text-[11.5px] text-ink-55">
+                      Runtime cards, saved views, and writes use the product user&apos;s own
+                      Salesforce authorization.
+                    </div>
+                  </div>
+                  {userData.connection.status === "connected" ? (
+                    <span className="st-chip-mono bg-published text-published-ink">connected</span>
+                  ) : (
+                    <span className="st-chip-mono bg-paper text-ink-45">not connected</span>
+                  )}
+                </div>
+                <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-[12px]">
+                  <dt className="text-ink-55">Authorized as</dt>
+                  <dd>{userData.connectedUser ?? "—"}</dd>
+                  <dt className="text-ink-55">Since</dt>
+                  <dd>
+                    {userData.connection.changedAt
+                      ? new Date(userData.connection.changedAt).toLocaleString()
+                      : "—"}
+                  </dd>
+                </dl>
+                <div className="mt-3 flex justify-end gap-2">
+                  {userData.connection.status === "connected" ? (
+                    <button
+                      type="button"
+                      className="st-btn"
+                      disabled={busy}
+                      onClick={disconnectSalesforceUser}
+                    >
+                      Disconnect my user
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="st-btn st-btn--primary"
+                      disabled={busy}
+                      onClick={startSalesforceUserOAuth}
+                    >
+                      Connect my Salesforce user
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
         ) : (
           <>
             <div className="flex items-center justify-between">
@@ -363,16 +513,30 @@ export default function ConnectionsPage() {
             ) : (
               <div className="mt-3 space-y-2">
                 <p className="text-[11.5px] text-ink-55">
-                  Create a Connected App (or External Client App) with the <strong>Client
-                  Credentials</strong> flow enabled and a run-as integration user. Every call runs
-                  as that user, so Salesforce enforces field-level security and sharing on top of
-                  Cardstack's config. Credentials are validated before anything is stored.
+                  Create a Connected App (or External Client App) with the web-server OAuth flow.
+                  The admin authorizes once for setup and metadata; each product user authorizes
+                  separately for their own records, list views, and writes.
                 </p>
+                <div className="rounded-[8px] border border-line-soft bg-paper p-2.5 text-[11px] text-ink-55">
+                  <div className="font-medium text-ink">Callback URLs</div>
+                  <div className="mt-1 space-y-1">
+                    <code className="block break-all rounded-[6px] bg-white px-2 py-1">
+                      {(origin || "http://localhost:3002")}/api/connections/salesforce/oauth/callback
+                    </code>
+                    <code className="block break-all rounded-[6px] bg-white px-2 py-1">
+                      {(origin || "http://localhost:3002")}/api/user-connections/salesforce/oauth/callback
+                    </code>
+                  </div>
+                  <div className="mt-1.5">
+                    OAuth scopes: <code className="st-chip-mono">api</code> and{" "}
+                    <code className="st-chip-mono">refresh_token/offline_access</code>.
+                  </div>
+                </div>
                 <input
                   className="st-input w-full"
-                  placeholder="Instance URL — https://yourdomain.my.salesforce.com"
-                  value={sf.instanceUrl}
-                  onChange={(e) => setSf({ ...sf, instanceUrl: e.target.value })}
+                  placeholder="Login URL — https://login.salesforce.com"
+                  value={sf.loginUrl}
+                  onChange={(e) => setSf({ ...sf, loginUrl: e.target.value })}
                 />
                 <div className="flex gap-2">
                   <input
@@ -393,12 +557,10 @@ export default function ConnectionsPage() {
                   <button
                     type="button"
                     className="st-btn st-btn--primary"
-                    disabled={busy || !sf.instanceUrl.trim() || !sf.clientId.trim() || !sf.clientSecret.trim()}
-                    onClick={() =>
-                      post({ action: "connect", kind: "salesforce", credentials: { ...sf } })
-                    }
+                    disabled={busy || !sf.loginUrl.trim() || !sf.clientId.trim() || !sf.clientSecret.trim()}
+                    onClick={startSalesforceAdminOAuth}
                   >
-                    {busy ? "Validating…" : "Connect"}
+                    {busy ? "Starting…" : "Authorize admin"}
                   </button>
                 </div>
               </div>

@@ -7,13 +7,15 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { MockCrmAdapter } from "@cardstack/crm-adapters";
 import type {
+  FlowRunPayload,
+  LayoutConfig,
   RecordCardPayload,
   ResultsTablePayload,
   UserContext,
   WriteReceiptPayload,
 } from "@cardstack/core";
 import { createCardstackServer } from "./server.js";
-import { DEMO_TENANT_ID, InMemoryConfigStore } from "./config/store.js";
+import { DEMO_TENANT_ID, InMemoryConfigStore, demoDealsLayout } from "./config/store.js";
 import { InMemoryAuditLog } from "./audit.js";
 import { InMemoryPreferenceStore } from "./config/preferences.js";
 
@@ -407,6 +409,41 @@ describe("connection gate (empty canvas)", () => {
       expect(textOf(result)).toContain("No CRM is connected");
     }
   });
+
+  it("requires per-user auth when Salesforce runtime OAuth is missing", async () => {
+    const configStore = new InMemoryConfigStore();
+    await configStore.setConnection({
+      tenantId: DEMO_TENANT_ID,
+      status: "connected",
+      crm: "salesforce",
+      label: "admin OAuth",
+      changedAt: new Date().toISOString(),
+      credentials: { authType: "oauth", clientId: "app", clientSecret: "secret", refreshToken: "admin" },
+    });
+    const server = await createCardstackServer({
+      adapter: new MockCrmAdapter(),
+      configStore,
+      auditLog: new InMemoryAuditLog(),
+      preferences: new InMemoryPreferenceStore(),
+      tenantId: DEMO_TENANT_ID,
+      runtimeAuth: {
+        missingUserAuth: true,
+        crmLabel: "Salesforce",
+        connectUrl: "http://localhost:3002/api/user-connections/salesforce/oauth/start",
+      },
+    });
+    const missing = new Client({ name: "test-host", version: "0.0.1" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverTransport), missing.connect(clientTransport)]);
+
+    const result = await missing.callTool({
+      name: "crm_search",
+      arguments: { object: "deals" },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("Connect your Salesforce account");
+    expect(textOf(result)).toContain("/api/user-connections/salesforce/oauth/start");
+  });
 });
 
 describe("custom lists (Cardstack-native filters)", () => {
@@ -520,5 +557,100 @@ describe("custom lists (Cardstack-native filters)", () => {
     });
     expect(hidden.isError).toBe(true);
     expect(textOf(hidden)).toContain("No exposed view matches");
+  });
+});
+
+describe("flow runtime (HANDOFF rung)", () => {
+  async function serverWithFlowLayout() {
+    const configStore = new InMemoryConfigStore();
+    const layout: LayoutConfig = {
+      ...structuredClone(demoDealsLayout),
+      recordCard: {
+        ...structuredClone(demoDealsLayout.recordCard),
+        actions: [
+          ...structuredClone(demoDealsLayout.recordCard.actions),
+          {
+            type: "screen_flow",
+            flowApiName: "Renewal_Playbook",
+            label: "Run renewal playbook",
+            embed: "auto",
+            inputs: {
+              recordId: { source: "context", key: "recordId" },
+              renewalDate: {
+                source: "ask",
+                prompt: "What is the renewal date?",
+                required: true,
+                valueType: "date",
+              },
+            },
+          },
+        ],
+      },
+    };
+    await configStore.saveDraft(layout);
+    await configStore.publish(DEMO_TENANT_ID, "deals");
+    const server = await createCardstackServer({
+      adapter: new MockCrmAdapter(),
+      configStore,
+      auditLog: new InMemoryAuditLog(),
+      preferences: new InMemoryPreferenceStore(),
+      tenantId: DEMO_TENANT_ID,
+    });
+    const local = new Client({ name: "test-host", version: "0.0.1" });
+    const [c, s] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(s), local.connect(c)]);
+    return local;
+  }
+
+  it("crm_flow_start withholds launch until the required ask input is collected", async () => {
+    const local = await serverWithFlowLayout();
+    const start = await local.callTool({
+      name: "crm_flow_start",
+      arguments: { object: "deals", recordId: "d-001", flowApiName: "Renewal_Playbook" },
+    });
+    expect(start.isError).toBeFalsy();
+    const p = start.structuredContent as unknown as FlowRunPayload;
+    expect(p.kind).toBe("flow-run");
+    expect(p.status).toBe("needs-input");
+    expect(p.launchUrl).toBeNull(); // launch withheld while a required input is missing
+    expect(p.pendingInputs.map((i) => i.name)).toContain("renewalDate");
+    expect(p.resolvedInputs.find((i) => i.name === "recordId")?.value).toBe("d-001");
+    expect(textOf(start)).toContain("crm_flow_continue");
+  });
+
+  it("crm_flow_continue resolves the ask and exposes the CRM launch URL", async () => {
+    const local = await serverWithFlowLayout();
+    const start = await local.callTool({
+      name: "crm_flow_start",
+      arguments: { object: "deals", recordId: "d-001", flowApiName: "Renewal_Playbook" },
+    });
+    const sid = (start.structuredContent as unknown as FlowRunPayload).actionSessionId;
+    const cont = await local.callTool({
+      name: "crm_flow_continue",
+      arguments: {
+        object: "deals",
+        recordId: "d-001",
+        flowApiName: "Renewal_Playbook",
+        actionSessionId: sid,
+        answers: { renewalDate: "2026-08-01" },
+      },
+    });
+    const p = cont.structuredContent as unknown as FlowRunPayload;
+    expect(p.status).toBe("ready");
+    expect(p.launchUrl).toContain("/flow/Renewal_Playbook");
+    expect(p.pendingInputs).toHaveLength(0);
+    expect(p.resolvedInputs.map((i) => i.name)).toEqual(
+      expect.arrayContaining(["recordId", "renewalDate"]),
+    );
+  });
+
+  it("crm_flow_start rejects a flow not configured on the card", async () => {
+    const local = await serverWithFlowLayout();
+    const result = await local.callTool({
+      name: "crm_flow_start",
+      arguments: { object: "deals", recordId: "d-001", flowApiName: "Not_Configured" },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("not configured");
   });
 });

@@ -17,6 +17,8 @@ import type {
 } from "./crm-types.js";
 import type {
   DescribeMetaMap,
+  FlowRunPayload,
+  FlowRunResolvedInput,
   RecordCardPayload,
   ResultsTablePayload,
   WidgetProvenance,
@@ -120,6 +122,39 @@ export async function buildRecordCardPayload(args: {
       ...provenanceFor(config),
       connectedUser: await source.getConnectedUser(),
     },
+  };
+}
+
+/**
+ * Assemble the flow-run payload (design 10a). The HANDOFF rung: `resolved`
+ * inputs come from resolveActionInputs; `pending` are the `ask` inputs chat
+ * must still collect. The launch button is withheld until every required input
+ * is in — a rep should never open a flow that will immediately reject.
+ */
+export function buildFlowRunPayload(args: {
+  actionSessionId: string;
+  flow: { api: string; label: string; screens: number; writesSummary: string };
+  renderMode: FlowRunPayload["renderMode"];
+  launchUrl: string | null;
+  resolved: FlowRunResolvedInput[];
+  pending: { name: string; prompt: string; required: boolean }[];
+  missing: string[];
+  provenance: WidgetProvenance;
+}): FlowRunPayload {
+  const blocked = args.pending.some((p) => p.required) || args.missing.length > 0;
+  return {
+    kind: "flow-run",
+    actionSessionId: args.actionSessionId,
+    flowApiName: args.flow.api,
+    flowLabel: args.flow.label,
+    screens: args.flow.screens,
+    writesSummary: args.flow.writesSummary,
+    renderMode: args.renderMode,
+    launchUrl: blocked ? null : args.launchUrl,
+    resolvedInputs: args.resolved,
+    pendingInputs: args.pending,
+    status: blocked ? "needs-input" : "ready",
+    provenance: args.provenance,
   };
 }
 

@@ -36,7 +36,10 @@ function applyHostAppearance(ctx: Partial<McpUiHostContext>) {
   if (ctx.styles?.css?.fonts) applyHostFonts(ctx.styles.css.fonts);
 }
 
-export function useWidget<Payload>(name: string): WidgetState<Payload> {
+export function useWidget<Payload>(
+  name: string,
+  capabilities: Record<string, unknown> = {},
+): WidgetState<Payload> {
   const [payload, setPayload] = useState<Payload | ErrorPayload | null>(null);
   const [toolError, setToolError] = useState<string | null>(null);
   const [hostContext, setHostContext] = useState<McpUiHostContext | null>(null);
@@ -61,7 +64,7 @@ export function useWidget<Payload>(name: string): WidgetState<Payload> {
 
   const { app, error: connectionError } = useApp({
     appInfo: { name: `Cardstack ${name}`, version: "0.0.1" },
-    capabilities: {},
+    capabilities,
     onAppCreated: (app) => {
       app.ontoolresult = handleResult;
       app.onhostcontextchanged = (ctx) => {

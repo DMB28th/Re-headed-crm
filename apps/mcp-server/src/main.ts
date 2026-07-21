@@ -5,11 +5,12 @@
 import express from "express";
 import cors from "cors";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createAdapterForConnection } from "@cardstack/crm-adapters";
+import { createAdapterForConnection, salesforceUsesOAuth } from "@cardstack/crm-adapters";
 import { createPostgresConfigStore, type ConfigStore } from "@cardstack/config-store";
 import { createCardstackServer } from "./server.js";
 import { defaultConfigPath, FileConfigStore, DEMO_TENANT_ID } from "./config/store.js";
 import { userContextFromHeaders } from "./auth.js";
+import { resolveMcpAuth } from "./auth-config.js";
 import {
   InMemoryAuditLog,
   FileAuditLog,
@@ -62,9 +63,11 @@ app.get("/healthz", (_req, res) => {
   res.json({ ok: true });
 });
 
-// Shared-secret gate on /mcp. When MCP_SHARED_SECRET is unset the endpoint is
-// OPEN (today's behavior, so the live demo keeps working) — but we warn loudly.
-const MCP_SECRET = process.env.MCP_SHARED_SECRET;
+// Shared-secret gate on /mcp. In production MCP_SHARED_SECRET is REQUIRED —
+// resolveMcpAuth throws at boot when it's missing, so the server never serves
+// /mcp internet-open. Outside production, unset is allowed (the live demo) but
+// warned about.
+const { secret: MCP_SECRET } = resolveMcpAuth(process.env);
 if (!MCP_SECRET) {
   console.warn(
     "⚠ /mcp is UNAUTHENTICATED — set MCP_SHARED_SECRET and pass it as x-cardstack-key from the chat host.",
@@ -108,13 +111,53 @@ app.all("/mcp", async (req, res) => {
   }
   const userContext = userContextFromHeaders({ get: (name) => req.header(name) });
   const connection = await configStore.getConnection(userContext.tenantId);
-  const adapter = createAdapterForConnection({
+  let adapterSettings = {
     crm: connection.crm,
     ...(connection.credentials ? { credentials: connection.credentials } : {}),
     // Shared with Studio via the store: a refresh bumps changedAt, which busts
     // this process's cached adapter on its next request too.
     cacheNonce: connection.changedAt,
-  });
+  };
+  let runtimeAuth: Parameters<typeof createCardstackServer>[0]["runtimeAuth"] | undefined;
+  if (
+    connection.status === "connected" &&
+    connection.crm === "salesforce" &&
+    salesforceUsesOAuth(connection.credentials)
+  ) {
+    const userConnection = await configStore.getUserConnection(
+      userContext.tenantId,
+      userContext.userId,
+      "salesforce",
+    );
+    const sameOauthApp =
+      !!userConnection?.credentials?.clientId &&
+      userConnection.credentials.clientId === connection.credentials?.clientId;
+    if (userConnection?.status === "connected" && userConnection.credentials && sameOauthApp) {
+      adapterSettings = {
+        crm: "salesforce",
+        credentials: {
+          ...userConnection.credentials,
+          // The client secret is stored once on the admin connection, not per
+          // user — merge it in here so the per-user adapter can refresh tokens.
+          ...(connection.credentials?.clientSecret
+            ? { clientSecret: connection.credentials.clientSecret }
+            : {}),
+        },
+        cacheNonce: userConnection.changedAt,
+      };
+    } else {
+      const studioBase = (process.env.CARDSTACK_STUDIO_URL ?? "http://localhost:3002").replace(/\/$/, "");
+      // Point at the Studio connections page (a GET-able page), not the OAuth
+      // start endpoint — that is now POST-only so a rep clicking a link can't
+      // trigger it. The page's "Connect my Salesforce user" button POSTs.
+      runtimeAuth = {
+        missingUserAuth: true,
+        crmLabel: "Salesforce",
+        connectUrl: `${studioBase}/connections`,
+      };
+    }
+  }
+  const adapter = createAdapterForConnection(adapterSettings);
   const server = await createCardstackServer({
     adapter,
     configStore,
@@ -122,6 +165,7 @@ app.all("/mcp", async (req, res) => {
     preferences,
     tenantId: userContext.tenantId,
     userContext,
+    ...(runtimeAuth ? { runtimeAuth } : {}),
   });
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   res.on("close", () => {
