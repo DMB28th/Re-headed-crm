@@ -167,6 +167,12 @@ export async function POST(req: Request) {
     // Same credential set may have been cached with pre-scope-change state.
     invalidateAdapterCache({ crm: state.crm, credentials: state.credentials });
   }
+  // Connecting a CRM whose object model differs from the existing config (e.g. the
+  // demo "deals"/hubspot seed when a Salesforce org connects) leaves stale layouts,
+  // lists, and home cards behind. Wipe them so the workspace starts clean.
+  const existingCrm = await store.tenantConfigCrm(tenantId);
+  const clearedStaleConfig = !!existingCrm && existingCrm !== state.crm;
+  if (clearedStaleConfig) await store.clearTenantConfig(tenantId);
   await store.setConnection(state);
-  return NextResponse.json({ connection: redact(state), connectedUser, scopeGaps });
+  return NextResponse.json({ connection: redact(state), connectedUser, scopeGaps, clearedStaleConfig });
 }

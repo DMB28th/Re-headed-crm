@@ -1,4 +1,5 @@
 import type {
+  CrmKind,
   CustomScreenConfig,
   CustomScreenRecord,
   CustomList,
@@ -69,6 +70,12 @@ export interface ConfigStore {
     audience?: string,
   ): Promise<LayoutConfig | undefined>;
   listConfiguredObjects(tenantId: string): Promise<string[]>;
+  /**
+   * CRM the tenant's existing config was built for (from any layout), or
+   * undefined when there's no config. Used on connect to detect a CRM switch
+   * (e.g. demo "deals"/hubspot config left over when a Salesforce org connects).
+   */
+  tenantConfigCrm(tenantId: string): Promise<CrmKind | undefined>;
   /** Exposed saved-view config only (unexposed views stay invisible to chat). */
   getViewExposures(tenantId: string, object: string): Promise<ViewExposure[]>;
   /** Full exposure config for user-scoped reads; callers must filter before display. */
@@ -146,6 +153,14 @@ export interface AdminConfigStore extends ConfigStore {
    * simply returns to "available to add". Idempotent.
    */
   removeObject(tenantId: string, object: string): Promise<void>;
+  /**
+   * Wipe ALL of a tenant's Cardstack config — layouts, view exposures / custom
+   * lists, home cards, flow render modes, custom screens, publish events.
+   * Connections (admin + per-user auth) are left intact. Called when a new CRM
+   * connects over config built for a different CRM, so the workspace starts
+   * clean instead of showing the previous CRM's objects/lists. Idempotent.
+   */
+  clearTenantConfig(tenantId: string): Promise<void>;
 }
 
 export const layoutKey = (tenantId: string, object: string, audience = "default"): string =>

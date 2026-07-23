@@ -26,6 +26,7 @@ import {
   CustomScreenConfig as CustomScreenSchema,
   FlowRenderModeConfig as FlowRenderModeSchema,
   ViewExposuresConfig as ViewExposuresSchema,
+  type CrmKind,
   type CustomScreenConfig,
   type CustomScreenRecord,
   type CustomList,
@@ -333,6 +334,42 @@ export class PostgresConfigStore implements AdminConfigStore {
         tenantId,
         object,
       ]);
+      await this.sql.query("COMMIT");
+    } catch (error) {
+      await this.sql.query("ROLLBACK");
+      throw error;
+    }
+  }
+
+  async tenantConfigCrm(tenantId: string): Promise<CrmKind | undefined> {
+    await this.ready;
+    const { rows } = await this.sql.query(
+      "SELECT config->>'crm' AS crm FROM layout_configs WHERE tenant_id=$1 LIMIT 1",
+      [tenantId],
+    );
+    const crm = rows[0]?.crm;
+    return crm === "salesforce" || crm === "hubspot" ? crm : undefined;
+  }
+
+  async clearTenantConfig(tenantId: string): Promise<void> {
+    await this.ready;
+    const tables = [
+      "layout_configs",
+      "view_exposures",
+      "home_cards",
+      "flow_render_modes",
+      "custom_screens",
+      "publish_events",
+    ];
+    const run = async (sql: Pick<SqlSession, "query">): Promise<void> => {
+      for (const table of tables) {
+        await sql.query(`DELETE FROM ${table} WHERE tenant_id=$1`, [tenantId]);
+      }
+    };
+    if (this.sql.transaction) return this.sql.transaction(run);
+    await this.sql.query("BEGIN");
+    try {
+      await run(this.sql);
       await this.sql.query("COMMIT");
     } catch (error) {
       await this.sql.query("ROLLBACK");

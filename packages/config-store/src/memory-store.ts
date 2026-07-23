@@ -2,6 +2,7 @@ import {
   CustomScreenConfig as CustomScreenSchema,
   FlowRenderModeConfig as FlowRenderModeSchema,
   ViewExposuresConfig as ViewExposuresSchema,
+  type CrmKind,
   type CustomScreenConfig,
   type CustomScreenRecord,
   type CustomList,
@@ -189,6 +190,34 @@ export abstract class BaseConfigStore implements AdminConfigStore {
     state.publishes = state.publishes.filter(
       (p) => !(p.tenantId === tenantId && p.object === object),
     );
+    await this.save(state);
+  }
+
+  async tenantConfigCrm(tenantId: string): Promise<CrmKind | undefined> {
+    const state = await this.load();
+    for (const [key, record] of Object.entries(state.layouts)) {
+      if (key.split("::")[0] !== tenantId) continue;
+      const cfg = record.published ?? record.draft;
+      if (cfg?.crm) return cfg.crm;
+    }
+    return undefined;
+  }
+
+  async clearTenantConfig(tenantId: string): Promise<void> {
+    const state = await this.load();
+    const prefix = `${tenantId}::`;
+    const purge = (map: Record<string, unknown> | undefined): void => {
+      if (!map) return;
+      for (const key of Object.keys(map)) {
+        if (key.startsWith(prefix)) delete map[key];
+      }
+    };
+    purge(state.layouts);
+    purge(state.viewExposures);
+    purge(state.homeCards);
+    purge(state.flowRenderModes);
+    purge(state.customScreens);
+    state.publishes = state.publishes.filter((p) => p.tenantId !== tenantId);
     await this.save(state);
   }
 

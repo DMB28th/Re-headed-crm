@@ -181,15 +181,22 @@ export function NavRail() {
 
       <div>
         <div className="st-section-label px-2.5 pb-1.5">Shared</div>
-        <RailLink href="/home-card" active={pathname === "/home-card"}>
-          Home card
-        </RailLink>
-        <RailLink href="/custom-screens" active={pathname === "/custom-screens"}>
-          Custom screens
-        </RailLink>
-        <RailLink href="/flows" active={pathname === "/flows"}>
-          Flows
-        </RailLink>
+        {/* Home card / custom screens / flows all read from the connected CRM —
+            hide them until a CRM is connected so they can't render empty/broken.
+            Audit log is CRM-independent and always available. */}
+        {connected && (
+          <>
+            <RailLink href="/home-card" active={pathname === "/home-card"}>
+              Home card
+            </RailLink>
+            <RailLink href="/custom-screens" active={pathname === "/custom-screens"}>
+              Custom screens
+            </RailLink>
+            <RailLink href="/flows" active={pathname === "/flows"}>
+              Flows
+            </RailLink>
+          </>
+        )}
         <RailLink href="/audit" active={pathname === "/audit"}>
           Audit log
         </RailLink>

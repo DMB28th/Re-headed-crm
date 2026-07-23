@@ -54,6 +54,10 @@ export async function GET(req: Request) {
     const probe = new SalesforceAdapter(credentials);
     const connectedUser = await probe.validateConnection();
     invalidateAdapterCache({ crm: "salesforce", credentials: credentials as unknown as Record<string, string> });
+    // First Salesforce connect over the demo "deals"/hubspot seed (or any other
+    // CRM's config) must not leave stale layouts/lists/home cards behind.
+    const existingCrm = await store.tenantConfigCrm(tenantId);
+    if (existingCrm && existingCrm !== "salesforce") await store.clearTenantConfig(tenantId);
     const connection: ConnectionState = {
       tenantId,
       status: "connected",
