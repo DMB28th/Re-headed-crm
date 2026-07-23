@@ -50,7 +50,7 @@ export interface CrmAdapter {
    * flow URL (e.g. HubSpot workflows). Never drives an interview; the CRM owns
    * the screens and the write.
    */
-  getFlowLaunchUrl?(flowApiName: string): string | null;
+  getFlowLaunchUrl?(flowApiName: string, params?: Record<string, string>): string | null;
 
   // Auth
   refreshTokenIfNeeded(): Promise<void>;

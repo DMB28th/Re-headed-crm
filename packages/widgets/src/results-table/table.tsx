@@ -119,7 +119,11 @@ export function ResultsTable({
               const formatted = formatValue(row.fields[col], meta, locale);
               const isStage = meta?.type === "picklist";
               return (
-                <span key={col} role="cell" className="rt-cell">
+                <span
+                  key={col}
+                  role="cell"
+                  className={`rt-cell${col === nameCol ? " rt-cell--name" : ""}`}
+                >
                   {formatted === null ? (
                     <NullValue />
                   ) : isStage ? (

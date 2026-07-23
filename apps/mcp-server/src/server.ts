@@ -1064,7 +1064,15 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         selections: {},
       };
       const { resolved, pending, missing } = resolveActionInputs({ inputs, context, answers });
-      const launchUrl = adapter.getFlowLaunchUrl?.(args.flowApiName) ?? null;
+      // Pass the record id + resolved scalar inputs so the flow opens with context
+      // (embedded or handoff). Salesforce maps matching names to flow variables.
+      const launchParams: Record<string, string> = { recordId: args.recordId };
+      for (const r of resolved) {
+        if (!Array.isArray(r.value) && r.value != null && r.value !== "") {
+          launchParams[r.name] = String(r.value);
+        }
+      }
+      const launchUrl = adapter.getFlowLaunchUrl?.(args.flowApiName, launchParams) ?? null;
 
       const payload = buildFlowRunPayload({
         actionSessionId,

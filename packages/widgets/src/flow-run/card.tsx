@@ -37,6 +37,10 @@ export function FlowRunCard({
 
   const needsInput = payload.status === "needs-input";
   const canLaunch = payload.status === "ready" && !!payload.launchUrl;
+  // Embedded rung: render the CRM's own flow page inline (opt-in per flow). It
+  // only loads if the org allows this origin in its CSP/Trusted Sites and the
+  // rep has a live CRM session — the open-in-CRM fallback always works.
+  const embedded = payload.renderMode === "embedded" && canLaunch;
 
   const launch = () => {
     if (!payload.launchUrl) return;
@@ -88,8 +92,30 @@ export function FlowRunCard({
         </section>
       )}
 
+      {embedded && (
+        <section className="fr-section">
+          <div className="fr-embed">
+            <iframe
+              src={payload.launchUrl ?? ""}
+              title={payload.flowLabel || payload.flowApiName}
+              className="fr-embed-frame"
+              sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
+            />
+          </div>
+        </section>
+      )}
+
       <footer className="fr-footer">
-        {canLaunch ? (
+        {embedded ? (
+          <span className="cs-muted fr-note">
+            Embedded from {crmLabel}. If it doesn&apos;t load, allow this app&apos;s origin in{" "}
+            {crmLabel} (CSP / Trusted Sites) or{" "}
+            <button type="button" className="fr-inline-link" onClick={launch}>
+              open in {crmLabel} ↗
+            </button>
+            .
+          </span>
+        ) : canLaunch ? (
           <>
             <button type="button" className="fr-launch" onClick={launch}>
               {launched ? `Opened in ${crmLabel} ↗` : `Open in ${crmLabel} ↗`}

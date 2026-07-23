@@ -960,10 +960,16 @@ export class SalesforceAdapter implements CrmAdapter {
    * no instance URL is known yet (unauthorized). The CRM renders the screens and
    * owns the write — Cardstack only opens the door.
    */
-  getFlowLaunchUrl(flowApiName: string): string | null {
+  getFlowLaunchUrl(flowApiName: string, params?: Record<string, string>): string | null {
     const instance = (this.instanceUrl ?? this.credentials.instanceUrl)?.replace(/\/$/, "");
-    if (!instance) return null;
-    return `${instance}/flow/${encodeURIComponent(flowApiName)}`;
+    if (!instance || !SF_API_NAME.test(flowApiName)) return null;
+    // The flow runtime page accepts input variables as query params (recordId is
+    // the common one); Salesforce ignores params that aren't flow inputs.
+    const url = new URL(`${instance}/flow/${encodeURIComponent(flowApiName)}`);
+    for (const [k, v] of Object.entries(params ?? {})) {
+      if (v != null && v !== "") url.searchParams.set(k, v);
+    }
+    return url.toString();
   }
 
   async refreshTokenIfNeeded(): Promise<void> {

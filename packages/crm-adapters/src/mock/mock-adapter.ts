@@ -221,9 +221,11 @@ export class MockCrmAdapter implements CrmAdapter {
     return clone(fixtures.FLOWS);
   }
 
-  getFlowLaunchUrl(flowApiName: string): string | null {
+  getFlowLaunchUrl(flowApiName: string, params?: Record<string, string>): string | null {
     // Sample handoff target so the demo/preview shows a real-looking launch.
-    return `https://demo.my.salesforce.com/flow/${encodeURIComponent(flowApiName)}`;
+    const url = new URL(`https://demo.my.salesforce.com/flow/${encodeURIComponent(flowApiName)}`);
+    for (const [k, v] of Object.entries(params ?? {})) if (v) url.searchParams.set(k, v);
+    return url.toString();
   }
 
   async refreshTokenIfNeeded(): Promise<void> {
