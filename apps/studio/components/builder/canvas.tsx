@@ -422,6 +422,17 @@ export function Canvas({
                       {cols}
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    className="ml-1 rounded-[7px] px-1.5 py-0.5 text-[13px] leading-none text-ink-45 hover:text-drift-ink"
+                    aria-label={`Delete section ${section.label || sectionIdx + 1}`}
+                    title="Delete section"
+                    onClick={() =>
+                      mutateSections((sections) => sections.filter((_, i) => i !== sectionIdx))
+                    }
+                  >
+                    ×
+                  </button>
                 </span>
               </div>
 
@@ -611,7 +622,8 @@ export function Canvas({
                       {
                         object: rel.relatedObject,
                         relationship: rel.api,
-                        columns: columns.length > 0 ? columns : ["name"],
+                        ...(rel.foreignKey ? { foreignKey: rel.foreignKey } : {}),
+                        columns: columns.length > 0 ? columns : ["Name"],
                         limit: 5,
                       },
                     ];

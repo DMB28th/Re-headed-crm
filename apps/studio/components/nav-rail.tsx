@@ -6,7 +6,7 @@
  */
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const objectTabs = [
   { slug: "layouts", label: "Layouts" },
@@ -51,8 +51,24 @@ export function NavRail() {
   const router = useRouter();
   const [data, setData] = useState<ObjectsData | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState("");
   const [adding, setAdding] = useState<string | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  // Close the object picker on an outside click (org lists are long — it must
+  // not linger after you click away).
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setPickerOpen(false);
+        setPickerQuery("");
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [pickerOpen]);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/objects");
@@ -156,29 +172,61 @@ export function NavRail() {
             );
           })}
         {connected && (data?.available.length ?? 0) > 0 && (
-          <div className="relative">
+          <div className="relative" ref={pickerRef}>
             <button
               type="button"
               className="mt-2 ml-2.5 w-[calc(100%-20px)] rounded-[8px] border border-dashed border-line px-2.5 py-1.5 text-left text-[12px] text-ink-45 hover:text-ink"
-              onClick={() => setPickerOpen((o) => !o)}
+              onClick={() => {
+                setPickerOpen((o) => !o);
+                setPickerQuery("");
+              }}
             >
               + Add object
             </button>
-            {pickerOpen && (
-              <div className="absolute left-2.5 z-30 mt-1 w-[calc(100%-20px)] rounded-[10px] border border-line bg-surface p-1 shadow-lg">
-                {data?.available.map((object) => (
-                  <button
-                    key={object.api}
-                    type="button"
-                    className="block w-full rounded-[8px] px-2.5 py-1.5 text-left text-[12.5px] capitalize hover:bg-paper"
-                    disabled={adding !== null}
-                    onClick={() => addObject(object.api)}
-                  >
-                    {adding === object.api ? "Adding…" : object.labelPlural}
-                  </button>
-                ))}
-              </div>
-            )}
+            {pickerOpen &&
+              (() => {
+                const q = pickerQuery.trim().toLowerCase();
+                const all = data?.available ?? [];
+                const matches = q
+                  ? all.filter(
+                      (o) =>
+                        o.labelPlural.toLowerCase().includes(q) || o.api.toLowerCase().includes(q),
+                    )
+                  : all;
+                const shown = matches.slice(0, 10); // top 10; search to reach the rest
+                return (
+                  <div className="absolute left-2.5 z-30 mt-1 w-[calc(100%-20px)] rounded-[10px] border border-line bg-surface p-1 shadow-lg">
+                    <input
+                      autoFocus
+                      className="st-input mb-1 w-full py-1 text-[12px]"
+                      placeholder={`Search ${all.length} objects…`}
+                      value={pickerQuery}
+                      onChange={(e) => setPickerQuery(e.target.value)}
+                    />
+                    <div className="max-h-[260px] overflow-y-auto">
+                      {shown.map((object) => (
+                        <button
+                          key={object.api}
+                          type="button"
+                          className="block w-full rounded-[8px] px-2.5 py-1.5 text-left text-[12.5px] hover:bg-paper"
+                          disabled={adding !== null}
+                          onClick={() => addObject(object.api)}
+                        >
+                          {adding === object.api ? "Adding…" : object.labelPlural}
+                        </button>
+                      ))}
+                      {shown.length === 0 && (
+                        <div className="px-2.5 py-2 text-[11.5px] text-ink-45">No matches.</div>
+                      )}
+                    </div>
+                    {matches.length > shown.length && (
+                      <div className="px-2.5 py-1 text-[11px] text-ink-45">
+                        +{matches.length - shown.length} more — keep typing to narrow.
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
           </div>
         )}
         {connected && data?.customObjectsBlocked && (

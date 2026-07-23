@@ -171,8 +171,6 @@ export function RecordCard({
     host?.sendFollowup?.(
       `Create a new ${action.object} related to "${titleText}" (id ${record.id})`,
     );
-  const logNote = () =>
-    host?.sendFollowup?.(`Log a note on the ${layout.object} "${titleText}" (id ${record.id})`);
 
   const collapsed = mode.kind === "receipt" || mode.kind === "partial";
   const diffRows =
@@ -264,7 +262,6 @@ export function RecordCard({
           connectedUser={provenance.connectedUser}
           onEdit={() => setMode({ kind: "editing", draft: {} })}
           onCreateRelated={runCreateRelated}
-          onLogNote={logNote}
           onDiscard={() => setMode({ kind: "ready" })}
           onReview={() =>
             mode.kind === "editing" && setMode({ kind: "confirming", draft: mode.draft })
@@ -297,7 +294,6 @@ function FooterControls({
   connectedUser,
   onEdit,
   onCreateRelated,
-  onLogNote,
   onDiscard,
   onReview,
   onBack,
@@ -310,7 +306,6 @@ function FooterControls({
   connectedUser?: string | undefined;
   onEdit: () => void;
   onCreateRelated: (action: Extract<CardAction, { type: "create_related" }>) => void;
-  onLogNote: () => void;
   onDiscard: () => void;
   onReview: () => void;
   onBack: () => void;
@@ -318,19 +313,20 @@ function FooterControls({
 }) {
   switch (mode.kind) {
     case "ready": {
-      const editLabel =
-        actions.find((a): a is Extract<CardAction, { type: "update_record" }> => a.type === "update_record")
-          ?.label ?? "Edit fields";
       const createActions = actions.filter(
         (a): a is Extract<CardAction, { type: "create_related" }> => a.type === "create_related",
       );
       return (
         <span className="rc-footer-left">
+          {/* Ready state opens editing; the actual save happens in the confirm
+              diff. Labeled "Edit" so it doesn't read like a one-click save. */}
           {canEdit && (
             <button type="button" className="cs-btn cs-btn--primary" onClick={onEdit}>
-              {editLabel}
+              Edit fields
             </button>
           )}
+          {/* Actions are config-driven only — no hardcoded "Log a note". Add a
+              create-related action to log a task/note if you want one. */}
           {createActions.map((action) => (
             <button
               key={`${action.object}:${action.label}`}
@@ -341,9 +337,6 @@ function FooterControls({
               {action.label}
             </button>
           ))}
-          <button type="button" className="cs-btn" onClick={onLogNote}>
-            Log a note
-          </button>
         </span>
       );
     }

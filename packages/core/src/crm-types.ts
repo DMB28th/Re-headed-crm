@@ -76,10 +76,18 @@ export interface ObjectDescribe extends ObjectSummary {
 }
 
 export interface RelationshipDescribe {
-  /** Relationship / association API name. */
+  /** UNIQUE relationship API name (Salesforce relationshipName / HubSpot assoc). */
   api: string;
   label: string;
   relatedObject: string;
+  /**
+   * Salesforce only: the child's foreign-key FIELD that points back to the
+   * parent (from describe childRelationships). getRelated queries by it. Absent
+   * for HubSpot (which resolves related records via the associations API).
+   * Multiple relationships can share a foreign key (Contacts/Opportunities/Cases
+   * all use AccountId), which is why `api` — not this — is the unique id.
+   */
+  foreignKey?: string;
 }
 
 export type CrmFieldValue = string | number | boolean | null;

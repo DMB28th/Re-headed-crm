@@ -83,6 +83,7 @@ const OPP_DESCRIBE = {
       ],
     },
     { name: "IsWon", label: "Won", type: "boolean", nillable: false, createable: false, updateable: false, defaultedOnCreate: true },
+    { name: "OwnerId", label: "Owner", type: "reference", nillable: false, createable: false, updateable: true, defaultedOnCreate: false, relationshipName: "Owner" },
     { name: "BillingAddress", label: "Address", type: "address", nillable: true, createable: false, updateable: false, defaultedOnCreate: true },
   ],
 };
@@ -539,10 +540,66 @@ describe("Salesforce-first metadata (dynamic objects + relationships)", () => {
     expect(describe.api).toBe("Opportunity");
     expect(describe.labelPlural).toBe("Opportunities");
     expect(describe.relationships).toEqual([
-      { api: "OpportunityId", label: "Opportunity Products", relatedObject: "OpportunityLineItem" },
+      {
+        api: "OpportunityLineItems",
+        label: "Opportunity Products",
+        relatedObject: "OpportunityLineItem",
+        foreignKey: "OpportunityId",
+      },
     ]);
     // OpportunityHistory child is filtered out (not layoutable).
     expect(describe.relationships.some((r) => r.relatedObject === "OpportunityHistory")).toBe(false);
+  });
+
+  it("resolves reference ids to the related record's Name (OwnerId → Owner.Name)", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    const { impl } = fetchStub(
+      [
+        tokenHandler(),
+        globalHandler,
+        orgHandler,
+        (url) => (url.includes("/sobjects/Opportunity/describe") ? { status: 200, json: OPP_DESCRIBE } : undefined),
+        (url) =>
+          url.includes("/sobjects/Opportunity/006x")
+            ? { status: 200, json: { Id: "006x", OwnerId: "005z", Owner: { Name: "Dana K." } } }
+            : undefined,
+      ],
+      calls,
+    );
+    const adapter = new SalesforceAdapter(CREDS, impl);
+    const rec = await adapter.getRecord("Opportunity", "006x", ["Name", "OwnerId"]);
+    expect(rec.fields.OwnerId).toBe("Dana K."); // id replaced with the owner's name
+    const retrieve = calls.find((c) => c.url.includes("/sobjects/Opportunity/006x"));
+    expect(decodeURIComponent(retrieve?.url ?? "")).toContain("Owner.Name");
+  });
+
+  it("listFlows returns active screen flows from the Tooling API (empty on error)", async () => {
+    const { impl } = fetchStub([
+      tokenHandler(),
+      (url) =>
+        url.includes("/tooling/query") && decodeURIComponent(url).includes("FlowDefinitionView")
+          ? {
+              status: 200,
+              json: {
+                records: [
+                  { ApiName: "Renewal_Playbook", Label: "Renewal Playbook" },
+                  { ApiName: "Discount_Approval", Label: "Discount Approval" },
+                ],
+              },
+            }
+          : undefined,
+    ]);
+    const adapter = new SalesforceAdapter(CREDS, impl);
+    const flows = await adapter.listFlows();
+    expect(flows.map((f) => f.api)).toEqual(["Renewal_Playbook", "Discount_Approval"]);
+    expect(flows[0]?.label).toBe("Renewal Playbook");
+
+    // Tooling error (no perms) → empty, not a throw.
+    const { impl: impl2 } = fetchStub([
+      tokenHandler(),
+      (url) => (url.includes("/tooling/query") ? { status: 403, json: { error: "no access" } } : undefined),
+    ]);
+    expect(await new SalesforceAdapter(CREDS, impl2).listFlows()).toEqual([]);
   });
 
   it("getRelated queries the child object by its foreign-key field", async () => {
@@ -560,7 +617,8 @@ describe("Salesforce-first metadata (dynamic objects + relationships)", () => {
     const adapter = new SalesforceAdapter(CREDS, impl);
     const page = await adapter.getRelated("006x", {
       object: "OpportunityLineItem",
-      relationship: "OpportunityId",
+      relationship: "OpportunityLineItems",
+      foreignKey: "OpportunityId",
       columns: ["Name"],
       limit: 5,
     });

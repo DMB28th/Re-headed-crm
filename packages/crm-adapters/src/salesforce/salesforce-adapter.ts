@@ -169,6 +169,16 @@ interface SfDescribeField {
   defaultedOnCreate: boolean;
   inlineHelpText?: string | null;
   picklistValues?: { value: string; label?: string; active: boolean }[];
+  /** For reference fields: the relationship to traverse for `.Name` (Owner, Account, Foo__r). */
+  relationshipName?: string | null;
+}
+
+// Convention fallback when describe omits relationshipName: OwnerId→Owner,
+// AccountId→Account, Foo__c→Foo__r.
+function deriveRelationshipName(fieldApi: string): string | null {
+  if (fieldApi.endsWith("__c")) return `${fieldApi.slice(0, -3)}__r`;
+  if (fieldApi.endsWith("Id") && fieldApi.length > 2) return fieldApi.slice(0, -2);
+  return null;
 }
 
 interface SfDescribeResponse {
@@ -321,6 +331,8 @@ export class SalesforceAdapter implements CrmAdapter {
   private token: string | null = null;
   private instanceUrl: string | null = null;
   private describeCache = new Map<string, { describe: ObjectDescribe; fetchedAt: number }>();
+  /** Per object: reference field api → relationship to traverse for `.Name`. */
+  private refCache = new Map<string, Map<string, string>>();
   /** Global sObject list (from /sobjects), fetched once: the object picker + the
    *  label/layoutable lookups relationships need. */
   private globalCache: {
@@ -529,16 +541,18 @@ export class SalesforceAdapter implements CrmAdapter {
     const seen = new Set<string>();
     const out: RelationshipDescribe[] = [];
     for (const c of children) {
-      if (!c.field || !c.childSObject) continue;
+      // relationshipName is the UNIQUE id (many children share a FK like
+      // AccountId); the FK field is carried separately for the query.
+      if (!c.field || !c.childSObject || !c.relationshipName) continue;
       // Only real business children; if global describe is unavailable, keep all.
       if (global && !global.layoutable.has(c.childSObject)) continue;
-      const key = `${c.childSObject}.${c.field}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
+      if (seen.has(c.relationshipName)) continue;
+      seen.add(c.relationshipName);
       out.push({
-        api: c.field,
+        api: c.relationshipName,
         label: global?.byApi.get(c.childSObject)?.labelPlural ?? c.childSObject,
         relatedObject: c.childSObject,
+        foreignKey: c.field,
       });
       if (out.length >= 25) break;
     }
@@ -605,19 +619,49 @@ export class SalesforceAdapter implements CrmAdapter {
       ...(has("CloseDate") ? { closeDateField: "CloseDate" } : {}),
     };
     this.describeCache.set(objectApi, { describe, fetchedAt: this.now() });
+    // Reference field → relationship for name resolution (OwnerId → Owner.Name).
+    const refs = new Map<string, string>();
+    for (const f of data.fields) {
+      if (f.type !== "reference") continue;
+      const rel = f.relationshipName ?? deriveRelationshipName(f.name);
+      if (rel) refs.set(f.name, rel);
+    }
+    this.refCache.set(objectApi, refs);
     return describe;
+  }
+
+  /** Reference-field relationship map for an object (describes if not cached). */
+  private async refFields(objectApi: string): Promise<Map<string, string>> {
+    if (!this.refCache.has(objectApi)) await this.describeObject(objectApi).catch(() => undefined);
+    return this.refCache.get(objectApi) ?? new Map();
+  }
+
+  /** Expand a requested column into itself + `Relationship.Name` when it's a
+   *  reference, so an id displays as the related record's name. */
+  private refColumns(column: string, refs: Map<string, string>): string[] {
+    const rel = refs.get(column);
+    return rel ? [column, `${rel}.Name`] : [column];
   }
 
   private nameField(objectApi: string): string {
     return objectApi === "Case" ? "CaseNumber" : "Name";
   }
 
-  private recordFromSObject(raw: Record<string, unknown>): CrmRecord {
+  private recordFromSObject(raw: Record<string, unknown>, refs?: Map<string, string>): CrmRecord {
     const fields: Record<string, CrmFieldValue> = {};
     for (const [key, value] of Object.entries(raw)) {
       if (key === "attributes" || key === "Id") continue;
       if (value === null || ["string", "number", "boolean"].includes(typeof value)) {
         fields[key] = value as CrmFieldValue;
+      }
+    }
+    // Replace a reference id with the related record's Name (Owner.Name → OwnerId).
+    if (refs) {
+      for (const [fieldApi, rel] of refs) {
+        const nested = raw[rel] as { Name?: unknown } | null | undefined;
+        if (nested && typeof nested === "object" && typeof nested.Name === "string") {
+          fields[fieldApi] = nested.Name;
+        }
       }
     }
     return { id: String(raw.Id ?? ""), fields };
@@ -626,7 +670,14 @@ export class SalesforceAdapter implements CrmAdapter {
   async search(objectApi: string, query: SearchQuery): Promise<RecordPage> {
     const describe = await this.describeObject(objectApi);
     const typeOf = (api: string) => describe.fields.find((f) => f.api === api)?.type;
-    const selectable = describe.fields.filter((f) => f.type !== "reference").map((f) => f.api);
+    const refs = await this.refFields(objectApi);
+    // Reference fields are selected as `Relationship.Name` so ids display as names.
+    const selectCols = new Set<string>(["Id"]);
+    for (const f of describe.fields) {
+      if (f.api === "Id") continue;
+      if (f.type === "reference") for (const c of this.refColumns(f.api, refs)) selectCols.add(c);
+      else selectCols.add(f.api);
+    }
     // Reject filter/sort on fields not on the object — blocks MALFORMED_QUERY and
     // stops a prompt-injected model probing denied fields through the WHERE clause.
     const known = new Set(describe.fields.map((f) => f.api));
@@ -671,14 +722,14 @@ export class SalesforceAdapter implements CrmAdapter {
     const order = query.sort ? ` ORDER BY ${query.sort.field} ${query.sort.dir.toUpperCase()} NULLS LAST` : "";
     const limit = query.limit ?? 10;
     const offset = query.cursor ? Number.parseInt(query.cursor, 10) || 0 : 0;
-    const soql = `SELECT Id, ${selectable.filter((f) => f !== "Id").join(", ")} FROM ${objectApi}${where}${order} LIMIT ${limit} OFFSET ${offset}`;
+    const soql = `SELECT ${[...selectCols].join(", ")} FROM ${objectApi}${where}${order} LIMIT ${limit} OFFSET ${offset}`;
     const [page, count] = await Promise.all([
       this.soql<Record<string, unknown>>(soql),
       this.soql<never>(`SELECT COUNT() FROM ${objectApi}${where}`),
     ]);
     const total = count.totalSize;
     return {
-      rows: page.records.map((r) => this.recordFromSObject(r)),
+      rows: page.records.map((r) => this.recordFromSObject(r, refs)),
       total,
       hasMore: offset + limit < total,
       ...(offset + limit < total ? { cursor: String(offset + limit) } : {}),
@@ -687,30 +738,44 @@ export class SalesforceAdapter implements CrmAdapter {
 
   async getRecord(objectApi: string, id: string, fields: string[]): Promise<CrmRecord> {
     const describe = await this.describeObject(objectApi);
+    const refs = await this.refFields(objectApi);
     const wanted =
       fields.length > 0
         ? fields
         : describe.fields.filter((f) => f.type !== "reference").map((f) => f.api);
+    // Expand reference fields to also fetch the related Name (the retrieve
+    // endpoint supports Owner.Name traversal).
+    const cols = new Set<string>(["Id"]);
+    for (const f of wanted) {
+      if (f === "Id") continue;
+      for (const c of this.refColumns(f, refs)) cols.add(c);
+    }
     const raw = await this.request<Record<string, unknown>>(
       "GET",
-      `${API}/sobjects/${objectApi}/${id}?fields=${encodeURIComponent(["Id", ...wanted.filter((f) => f !== "Id")].join(","))}`,
+      `${API}/sobjects/${objectApi}/${id}?fields=${encodeURIComponent([...cols].join(","))}`,
     );
-    return this.recordFromSObject(raw);
+    return this.recordFromSObject(raw, refs);
   }
 
   async getRelated(parentId: string, rel: RelatedListConfig): Promise<RecordPage> {
-    // `rel.object` is the child sObject; `rel.relationship` is the foreign-key
-    // FIELD on it that points back to this record (from describe childRelationships).
-    // Both are identifiers that can't be quoted, so validate their shape first.
-    if (!SF_API_NAME.test(rel.object) || !SF_API_NAME.test(rel.relationship)) {
+    // `rel.object` is the child sObject; `rel.foreignKey` is the FK field on it
+    // that points back to this record (falls back to `relationship` for older
+    // configs). Both are SOQL identifiers that can't be quoted — validate shape.
+    const fk = rel.foreignKey ?? rel.relationship;
+    if (!SF_API_NAME.test(rel.object) || !SF_API_NAME.test(fk)) {
       return { rows: [], hasMore: false, total: 0 };
     }
-    const cols = ["Id", ...rel.columns.filter((c) => c !== "Id" && SF_COLUMN.test(c))];
+    const refs = await this.refFields(rel.object).catch(() => new Map<string, string>());
+    const cols = new Set<string>(["Id"]);
+    for (const c of rel.columns) {
+      if (c === "Id" || !SF_COLUMN.test(c)) continue;
+      for (const x of this.refColumns(c, refs)) cols.add(x);
+    }
     const { records, totalSize } = await this.soql<Record<string, unknown>>(
-      `SELECT ${cols.join(", ")} FROM ${rel.object} WHERE ${rel.relationship} = '${soqlEscape(parentId)}' LIMIT ${rel.limit}`,
+      `SELECT ${[...cols].join(", ")} FROM ${rel.object} WHERE ${fk} = '${soqlEscape(parentId)}' LIMIT ${rel.limit}`,
     ).catch(() => ({ records: [] as Record<string, unknown>[], totalSize: 0 }));
     return {
-      rows: records.map((r) => this.recordFromSObject(r)),
+      rows: records.map((r) => this.recordFromSObject(r, refs)),
       hasMore: totalSize > rel.limit,
       total: totalSize,
     };
@@ -862,7 +927,32 @@ export class SalesforceAdapter implements CrmAdapter {
   }
 
   async listFlows(): Promise<FlowSummary[]> {
-    return [];
+    // Active SCREEN flows from the org's metadata via the Tooling API. ProcessType
+    // 'Flow' is the screen-flow type (autolaunched/record-triggered are excluded).
+    // Requires the connected user's setup/metadata access — a 403 (no perms) or
+    // any Tooling error degrades to an empty list rather than failing the page.
+    try {
+      const q =
+        "SELECT ApiName, Label FROM FlowDefinitionView WHERE IsActive = true AND ProcessType = 'Flow' ORDER BY Label LIMIT 200";
+      const { records } = await this.request<{
+        records: { ApiName?: string; Label?: string }[];
+      }>("GET", `${API}/tooling/query?q=${encodeURIComponent(q)}`);
+      const seen = new Set<string>();
+      const flows: FlowSummary[] = [];
+      for (const r of records ?? []) {
+        if (!r.ApiName || seen.has(r.ApiName)) continue;
+        seen.add(r.ApiName);
+        flows.push({
+          api: r.ApiName,
+          label: r.Label || r.ApiName,
+          screens: 0, // screen count needs the flow definition; not fetched here
+          writesSummary: "Salesforce screen flow",
+        });
+      }
+      return flows;
+    } catch {
+      return [];
+    }
   }
 
   /**

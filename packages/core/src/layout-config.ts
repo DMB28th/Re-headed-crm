@@ -15,6 +15,11 @@
  * - 2026-07-20: screen_flow actions gain an `inputs` mapping contract. Existing
  *   actions default to no explicit inputs; runtimes can still inject their safe
  *   host context, while new Studio configs map variables intentionally.
+ * - 2026-07-23: RelatedListConfig gains optional `foreignKey` — the Salesforce
+ *   child FK field used to query the related records. `relationship` is now the
+ *   unique relationshipName (multiple relationships can share a foreign key).
+ *   Additive + optional; existing HubSpot configs (no foreignKey) parse and
+ *   resolve unchanged.
  */
 import { z } from "zod";
 
@@ -59,6 +64,8 @@ export const RelatedListConfig = z.object({
   object: z.string().min(1),
   /** Relationship / association API name, e.g. "OpportunityContactRoles". */
   relationship: z.string().min(1),
+  /** Salesforce child FK field to query by (see 2026-07-23 migration note). */
+  foreignKey: z.string().optional(),
   columns: z.array(z.string().min(1)).min(1),
   limit: z.number().int().positive().max(50).default(5),
 });

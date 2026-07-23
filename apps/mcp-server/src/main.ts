@@ -3,9 +3,10 @@
  * per request, nothing held in memory between calls (PLAN.md multi-tenancy rule).
  *
  * NOTE: runtime behavior also depends on @cardstack/crm-adapters (objects,
- * describe, relationships read from the CRM). Railway's deploy watch pattern only
- * covers /apps/**, so a packages-only change is SKIPPED — touch this file to force
- * a rebuild that picks up the bundled package change.
+ * describe, relationships, reference-name resolution read from the CRM) and on
+ * @cardstack/widgets (the inlined record card). Railway's deploy watch pattern
+ * only covers /apps/**, so a packages-only change is SKIPPED — touch this file to
+ * force a rebuild that picks up the bundled package changes.
  */
 import express from "express";
 import cors from "cors";
