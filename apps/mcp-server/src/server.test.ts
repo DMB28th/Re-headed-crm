@@ -79,7 +79,8 @@ describe("golden path 1: search → record card", () => {
       arguments: { object: "deals", openOnly: true, minAmount: 50000 },
     });
     expect(result.isError).toBeFalsy();
-    expect(textOf(result)).toContain("7 open deals over $50,000");
+    // Object display label (plural), not the raw api name.
+    expect(textOf(result)).toContain("7 open Deals over $50,000");
     expect(textOf(result)).toContain("Meridian Health");
 
     const payload = result.structuredContent as unknown as ResultsTablePayload;

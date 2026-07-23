@@ -605,6 +605,8 @@ function ActivityTimeline({ entries, locale }: { entries: ActivityEntry[]; local
     call: "☎",
     note: "✎",
     meeting: "◷",
+    task: "☑",
+    update: "Δ",
   };
   return (
     <section className="rc-related">

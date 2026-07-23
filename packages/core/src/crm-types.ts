@@ -212,7 +212,8 @@ export interface RecentRecord {
 
 export interface ActivityEntry {
   id: string;
-  kind: "email" | "call" | "note" | "meeting";
+  /** "update" = a field change from CRM history; "task" = a CRM task/to-do. */
+  kind: "email" | "call" | "note" | "meeting" | "task" | "update";
   summary: string;
   timestamp: string;
 }

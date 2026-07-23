@@ -51,6 +51,7 @@ export function provenanceFor(config: LayoutConfig): WidgetProvenance {
     crmLabel: CRM_LABELS[config.crm],
     ...(config.name ? { layoutName: config.name } : {}),
     layoutRevision: config.revision,
+    fetchedAt: new Date().toISOString(),
   };
 }
 
@@ -91,7 +92,22 @@ export async function buildRecordCardPayload(args: {
   record: CrmRecord;
 }): Promise<RecordCardPayload> {
   const { source } = args;
-  const config = applyDenylist(args.config);
+  const denied = applyDenylist(args.config);
+  // Render-side hygiene: "Id" and the FK back to the parent are useful for
+  // fetching but noise as columns (the FK repeats the parent's own name on
+  // every row) — strip them from the layout the widget receives.
+  const config = {
+    ...denied,
+    recordCard: {
+      ...denied.recordCard,
+      relatedLists: denied.recordCard.relatedLists.map((rel) => ({
+        ...rel,
+        columns: rel.columns.filter(
+          (c) => c !== "Id" && c !== (rel.foreignKey ?? rel.relationship),
+        ),
+      })),
+    },
+  };
   const describe = await source.describeObject(config.object);
   const allowed = new Set(recordCardFieldPaths(config));
 

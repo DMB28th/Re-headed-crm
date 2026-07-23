@@ -624,7 +624,9 @@ export class SalesforceAdapter implements CrmAdapter {
         );
         return {
           api: f.name,
-          label: f.label,
+          // Reference values render as resolved names, so "Owner ID" reads
+          // wrong as a column header — present the label without the suffix.
+          label: f.type === "reference" ? f.label.replace(/\s+ID$/i, "") : f.label,
           type: mapType(f),
           required: !f.nillable && f.createable && !f.defaultedOnCreate,
           readOnly: !f.updateable,
@@ -821,7 +823,10 @@ export class SalesforceAdapter implements CrmAdapter {
     const refs = await this.refFields(rel.object).catch(() => new Map<string, string>());
     const cols = new Set<string>(["Id"]);
     for (const c of rel.columns) {
-      if (c === "Id" || !SF_COLUMN.test(c)) continue;
+      // Skip the FK back to the parent: it's the record the card already
+      // shows, repeated on every row (rendered live as a whole column of
+      // the parent's own name).
+      if (c === "Id" || c === fk || !SF_COLUMN.test(c)) continue;
       for (const x of this.refColumns(c, refs)) cols.add(x);
     }
     const { records, totalSize } = await this.soql<Record<string, unknown>>(
@@ -834,8 +839,78 @@ export class SalesforceAdapter implements CrmAdapter {
     };
   }
 
-  async getActivity(): Promise<ActivityEntry[]> {
-    return [];
+  /** Recent field changes (from the object's history entity, when tracking is
+   *  on) merged with recent tasks. Each source degrades to [] on its own —
+   *  orgs without history tracking still get tasks, and vice versa. */
+  async getActivity(objectApi: string, id: string, limit: number): Promise<ActivityEntry[]> {
+    const describe = await this.describeObject(objectApi).catch(() => null);
+    const labelOf = (api: string) =>
+      describe?.fields.find((f) => f.api === api)?.label ?? api;
+    // History entity naming: Opportunity→OpportunityFieldHistory (special),
+    // Foo__c→Foo__History (FK ParentId), else {Object}History (FK {Object}Id).
+    const custom = objectApi.endsWith("__c");
+    const historyEntity =
+      objectApi === "Opportunity"
+        ? "OpportunityFieldHistory"
+        : custom
+          ? objectApi.replace(/__c$/, "__History")
+          : `${objectApi}History`;
+    const historyFk = custom ? "ParentId" : `${objectApi}Id`;
+    const fmt = (v: unknown) => (v === null || v === undefined || v === "" ? "(empty)" : String(v));
+
+    const changes = this.soql<{
+      Id: string;
+      Field: string;
+      OldValue: unknown;
+      NewValue: unknown;
+      CreatedDate: string;
+      CreatedBy: { Name?: string } | null;
+    }>(
+      `SELECT Id, Field, OldValue, NewValue, CreatedDate, CreatedBy.Name FROM ${historyEntity} ` +
+        `WHERE ${historyFk} = '${soqlEscape(id)}' ORDER BY CreatedDate DESC LIMIT ${limit}`,
+    )
+      .then(({ records }) =>
+        records.map((h): ActivityEntry => {
+          const by = h.CreatedBy?.Name ? ` — ${h.CreatedBy.Name}` : "";
+          const summary =
+            h.Field === "created"
+              ? `Created${by}`
+              : `${labelOf(h.Field)}: ${fmt(h.OldValue)} → ${fmt(h.NewValue)}${by}`;
+          return { id: h.Id, kind: "update", summary, timestamp: h.CreatedDate };
+        }),
+      )
+      .catch(() => [] as ActivityEntry[]);
+
+    const tasks = this.soql<{
+      Id: string;
+      Subject: string | null;
+      Status: string | null;
+      TaskSubtype: string | null;
+      ActivityDate: string | null;
+      CreatedDate: string;
+    }>(
+      `SELECT Id, Subject, Status, TaskSubtype, ActivityDate, CreatedDate FROM Task ` +
+        `WHERE WhatId = '${soqlEscape(id)}' ORDER BY CreatedDate DESC LIMIT ${limit}`,
+    )
+      .then(({ records }) =>
+        records.map((t): ActivityEntry => {
+          const kind: ActivityEntry["kind"] =
+            t.TaskSubtype === "Call" ? "call" : t.TaskSubtype === "Email" ? "email" : "task";
+          const status = t.Status ? ` (${t.Status})` : "";
+          return {
+            id: t.Id,
+            kind,
+            summary: `${t.Subject ?? "Task"}${status}`,
+            timestamp: t.ActivityDate ?? t.CreatedDate,
+          };
+        }),
+      )
+      .catch(() => [] as ActivityEntry[]);
+
+    return (await Promise.all([changes, tasks]))
+      .flat()
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      .slice(0, limit);
   }
 
   async updateRecord(objectApi: string, id: string, patch: FieldPatch): Promise<CrmRecord> {

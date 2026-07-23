@@ -35,6 +35,9 @@ export interface WidgetProvenance {
   layoutRevision: number;
   /** CRM user writes are attributed to ("Written as Demo rep" in the diff footer). */
   connectedUser?: string;
+  /** ISO timestamp of when this payload's data was read from the CRM — lets
+   *  the model reason about staleness instead of guessing. */
+  fetchedAt?: string;
 }
 
 /** structuredContent for crm_get_record → the record-card widget. */

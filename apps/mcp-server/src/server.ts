@@ -403,7 +403,10 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
 
         const page = await adapter.search(config.object, query);
         const currency = amountField ? byApi.get(amountField)?.currencyCode : undefined;
-        const title = searchTitle(args, page.total ?? page.rows.length, config.object, currency);
+        const total = page.total ?? page.rows.length;
+        // "31 Opportunities", not "31 Opportunity".
+        const objectLabel = total === 1 ? describe.label : describe.labelPlural;
+        const title = searchTitle(args, total, objectLabel || config.object, currency);
         const payload = await buildResultsTablePayload({ source: adapter, config, page, title });
 
         const top = page.rows[0];
@@ -465,7 +468,15 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           }
         }
 
-        const record = await adapter.getRecord(config.object, id, []);
+        // Pass the layout's field paths explicitly: the adapters' no-fields
+        // default excludes reference fields, which silently blanked the
+        // header subtitle (AccountId) and any reference section field
+        // (OwnerId) on the live card.
+        const record = await adapter.getRecord(
+          config.object,
+          id,
+          recordCardFieldPaths(applyDenylist(config)),
+        );
         const payload = await buildRecordCardPayload({ source: adapter, config, record });
         const recDescribe = await adapter.describeObject(config.object);
         const recByApi = new Map(recDescribe.fields.map((f) => [f.api, f]));
@@ -937,7 +948,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
 
         const sanitized = applyDenylist(config);
         const fresh = filterRecord(
-          await adapter.getRecord(config.object, args.id, []),
+          await adapter.getRecord(config.object, args.id, recordCardFieldPaths(sanitized)),
           new Set(recordCardFieldPaths(sanitized)),
         );
         const recordName = String(fresh.fields[config.recordCard.header.title] ?? args.id);
