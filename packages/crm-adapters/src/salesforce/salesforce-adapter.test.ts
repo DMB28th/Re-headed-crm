@@ -551,6 +551,55 @@ describe("Salesforce-first metadata (dynamic objects + relationships)", () => {
     expect(describe.relationships.some((r) => r.relatedObject === "OpportunityHistory")).toBe(false);
   });
 
+  it("getActivity merges field history with tasks, newest first", async () => {
+    const { impl } = fetchStub([
+      tokenHandler(),
+      globalHandler,
+      orgHandler,
+      (url) =>
+        url.includes("/sobjects/Opportunity/describe") ? { status: 200, json: OPP_DESCRIBE } : undefined,
+      (url) => {
+        if (!url.includes("/query")) return undefined;
+        const q = decodeURIComponent(url);
+        if (q.includes("FROM OpportunityFieldHistory"))
+          return {
+            status: 200,
+            json: {
+              records: [
+                {
+                  Id: "h1", Field: "Amount", OldValue: 15000, NewValue: 35000,
+                  CreatedDate: "2026-07-23T10:00:00.000+0000", CreatedBy: { Name: "Dan" },
+                },
+              ],
+              totalSize: 1, done: true,
+            },
+          };
+        if (q.includes("FROM Task"))
+          return {
+            status: 200,
+            json: {
+              records: [
+                {
+                  Id: "t1", Subject: "Call Andy", Status: "Completed", TaskSubtype: "Call",
+                  ActivityDate: "2026-07-22", CreatedDate: "2026-07-20T00:00:00.000+0000",
+                },
+              ],
+              totalSize: 1, done: true,
+            },
+          };
+        return undefined;
+      },
+    ]);
+    const adapter = new SalesforceAdapter(CREDS, impl);
+    const entries = await adapter.getActivity("Opportunity", "006x", 6);
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({ kind: "update" });
+    expect(entries[0]!.summary).toContain("15000 → 35000");
+    expect(entries[0]!.summary).toContain("Dan");
+    expect(entries[1]).toMatchObject({ kind: "call" });
+    expect(entries[1]!.summary).toBe("Call Andy (Completed)");
+  });
+
   it("never emits .Name traversal for non-name-bearing reference targets", async () => {
     // Seen live: LastAmountChangedHistory.Name → "No such column 'Name' on
     // entity 'OpportunityHistory'" — one bad traversal 500s the whole SELECT.

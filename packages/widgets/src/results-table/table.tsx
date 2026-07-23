@@ -3,10 +3,11 @@
  * home-card drill-in preview (one render codepath, like the record card).
  */
 import { useEffect, useState, type CSSProperties } from "react";
-import type { CrmRecord, ResultsTablePayload } from "@cardstack/core";
+import type { CrmRecord, RecordCardPayload, ResultsTablePayload } from "@cardstack/core";
 import { LayoutChip, MakerChip, MessageCard, NullValue, StagePill } from "../shared/components.tsx";
 import { formatValue, stageTone } from "../shared/format.ts";
-import type { WidgetHost } from "../record-card/card.tsx";
+import { RecordCard, type WidgetHost } from "../record-card/card.tsx";
+import "../record-card/record-card.css";
 
 export function ResultsTable({
   payload,
@@ -21,22 +22,45 @@ export function ResultsTable({
   const [cursor, setCursor] = useState(payload.page.cursor);
   const [hasMore, setHasMore] = useState(payload.page.hasMore);
   const [loadingMore, setLoadingMore] = useState(false);
+  // One-screen drill-in: a clicked row's record card renders INSIDE this
+  // widget (with a back button) instead of spawning a new card in the chat.
+  const [detail, setDetail] = useState<RecordCardPayload | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
 
   // A fresh tool result (host re-render) replaces any locally-paginated rows.
   useEffect(() => {
     setRows(payload.page.rows);
     setCursor(payload.page.cursor);
     setHasMore(payload.page.hasMore);
+    setDetail(null);
   }, [payload]);
 
   const columns = payload.listView.columns;
   const total = payload.page.total ?? rows.length;
   const nameCol = columns[0] ?? "name";
 
-  const openRecord = (row: CrmRecord) => {
+  const openRecord = async (row: CrmRecord) => {
     const name = String(row.fields[nameCol] ?? row.id);
-    // Followup through the chat — the model calls crm_get_record and the
-    // record card renders as its own widget (Golden Path 1).
+    if (host?.callTool && !openingId) {
+      setOpeningId(row.id);
+      try {
+        const result = await host.callTool("crm_get_record", {
+          object: payload.object,
+          id: row.id,
+        });
+        const data = result.structuredContent as RecordCardPayload | undefined;
+        if (!result.isError && data?.kind === "record-card") {
+          setDetail(data);
+          return;
+        }
+      } catch {
+        // fall through to the chat followup below
+      } finally {
+        setOpeningId(null);
+      }
+    }
+    // Fallback (no callTool, or the call failed): followup through the chat —
+    // the model calls crm_get_record and renders its own widget.
     host?.sendFollowup?.(`Open the ${payload.object} record "${name}" (id ${row.id})`);
   };
 
@@ -58,6 +82,19 @@ export function ResultsTable({
       setLoadingMore(false);
     }
   };
+
+  // Drill-in view: the REAL record card, same component as its own widget,
+  // rendered in place of the table until the rep goes back.
+  if (detail) {
+    return (
+      <div className="rt-detail">
+        <button type="button" className="rt-back" onClick={() => setDetail(null)}>
+          ← Back to {payload.savedViewName ?? payload.title}
+        </button>
+        <RecordCard payload={detail} setPayload={(p) => setDetail(p)} locale={locale} host={host} />
+      </div>
+    );
+  }
 
   if (rows.length === 0) {
     return (
@@ -135,7 +172,7 @@ export function ResultsTable({
               );
             })}
             <span className="rt-cell rt-cell--action" aria-hidden="true">
-              Open card ↗
+              {openingId === row.id ? "Opening…" : "Open card ↗"}
             </span>
           </button>
         ))}

@@ -201,3 +201,25 @@
   min-width: 0;
   flex: 1;
 }
+
+/* One-screen drill-in: the record card replaces the table until "Back". */
+.rt-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rt-back {
+  align-self: flex-start;
+  border: none;
+  background: none;
+  padding: 4px 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--cs-text-secondary);
+  cursor: pointer;
+}
+.rt-back:hover {
+  color: var(--cs-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
