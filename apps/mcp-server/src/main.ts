@@ -69,8 +69,16 @@ if (corsOrigins.length > 0) {
 }
 app.use(express.json({ limit: "4mb" }));
 
+// Reports the running build so "is my change actually live?" is one curl —
+// Railway injects RAILWAY_GIT_COMMIT_SHA (deploys from a pushed commit) but
+// not for `railway up` tarball deploys, hence the fallback.
+const BOOTED_AT = new Date().toISOString();
 app.get("/healthz", (_req, res) => {
-  res.json({ ok: true });
+  res.json({
+    ok: true,
+    commit: process.env.RAILWAY_GIT_COMMIT_SHA ?? "untracked-upload",
+    bootedAt: BOOTED_AT,
+  });
 });
 
 // Shared-secret gate on /mcp. Setting MCP_SHARED_SECRET requires a bearer on

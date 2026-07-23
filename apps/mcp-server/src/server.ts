@@ -703,7 +703,13 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       try {
         await requireConnection();
         const homeCard = await configStore.getHomeCard(tenantId);
-        if (!homeCard) throw new Error("No home card is configured for this workspace.");
+        if (!homeCard) {
+          throw new Error(
+            "No home card is configured for this workspace. An admin can enable one in " +
+              "Cardstack Studio → Home card. Meanwhile, use crm_list_view for saved views " +
+              "or crm_search for ad-hoc asks.",
+          );
+        }
 
         const listsBlock = homeCard.blocks.find((b) => b.type === "lists");
         const lists: HomeListTile[] = [];
