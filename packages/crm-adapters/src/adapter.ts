@@ -34,7 +34,9 @@ export interface CrmAdapter {
 
   // Saved views (design 5a/5b)
   listSavedViews(objectApi: string): Promise<SavedView[]>;
-  getViewRows(viewId: string, cursor?: string): Promise<RecordPage>;
+  /** `columns` mirrors SearchQuery.columns — the fields the caller renders;
+   *  adapters should restrict the fetch to them when provided. */
+  getViewRows(viewId: string, cursor?: string, columns?: string[]): Promise<RecordPage>;
 
   // Tasks / follow-ups + recents (home card, 7a)
   listTasks(userScope: string): Promise<TaskPage>;

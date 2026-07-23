@@ -184,6 +184,25 @@ interface SfDescribeField {
   picklistValues?: { value: string; label?: string; active: boolean }[];
   /** For reference fields: the relationship to traverse for `.Name` (Owner, Account, Foo__r). */
   relationshipName?: string | null;
+  /** For reference fields: target sObject(s). */
+  referenceTo?: string[];
+}
+
+// Entities we KNOW carry a queryable Name — `.Name` traversal is only emitted
+// for these (plus custom objects, which always have Name). System targets like
+// OpportunityHistory have no Name; one such column MALFORMED_QUERYs the whole
+// SELECT (seen live via LastAmountChangedHistory.Name).
+const NAME_BEARING_TARGETS = new Set([
+  "User", "Group", "Account", "Contact", "Opportunity", "Lead", "Campaign",
+  "Product2", "Pricebook2", "Asset", "RecordType",
+]);
+
+function canTraverseName(f: SfDescribeField): boolean {
+  const targets = f.referenceTo ?? [];
+  return (
+    targets.length > 0 &&
+    targets.every((t) => t.endsWith("__c") || NAME_BEARING_TARGETS.has(t))
+  );
 }
 
 // Convention fallback when describe omits relationshipName — custom fields ONLY
@@ -636,7 +655,7 @@ export class SalesforceAdapter implements CrmAdapter {
     // Reference field → relationship for name resolution (OwnerId → Owner.Name).
     const refs = new Map<string, string>();
     for (const f of data.fields) {
-      if (f.type !== "reference") continue;
+      if (f.type !== "reference" || !canTraverseName(f)) continue;
       const rel = f.relationshipName ?? deriveRelationshipName(f.name);
       if (rel) refs.set(f.name, rel);
     }
@@ -681,15 +700,28 @@ export class SalesforceAdapter implements CrmAdapter {
     return { id: String(raw.Id ?? ""), fields };
   }
 
-  /** All queryable columns for an object, with reference fields expanded to
+  /** SELECT columns for an object, with reference fields expanded to
    *  `Relationship.Name` so ids display as names. Shared by search() and
-   *  getViewRows() so both paths return identical shapes. */
-  private selectColumns(describe: ObjectDescribe, refs: Map<string, string>): Set<string> {
-    const selectCols = new Set<string>(["Id"]);
-    for (const f of describe.fields) {
-      if (f.api === "Id") continue;
-      if (f.type === "reference") for (const c of this.refColumns(f.api, refs)) selectCols.add(c);
-      else selectCols.add(f.api);
+   *  getViewRows() so both paths return identical shapes. When `requested`
+   *  is provided (the layout's columns), the fetch is restricted to it —
+   *  selecting the full field list drags in system references (e.g.
+   *  LastAmountChangedHistoryId) that can break the whole query. */
+  private selectColumns(
+    objectApi: string,
+    describe: ObjectDescribe,
+    refs: Map<string, string>,
+    requested?: string[],
+  ): Set<string> {
+    const byApi = new Map(describe.fields.map((f) => [f.api, f]));
+    const wanted = requested?.length
+      ? requested.filter((c) => byApi.has(c))
+      : describe.fields.map((f) => f.api);
+    const selectCols = new Set<string>(["Id", this.nameField(objectApi)]);
+    for (const api of wanted) {
+      if (api === "Id") continue;
+      if (byApi.get(api)?.type === "reference")
+        for (const c of this.refColumns(api, refs)) selectCols.add(c);
+      else selectCols.add(api);
     }
     return selectCols;
   }
@@ -698,7 +730,7 @@ export class SalesforceAdapter implements CrmAdapter {
     const describe = await this.describeObject(objectApi);
     const typeOf = (api: string) => describe.fields.find((f) => f.api === api)?.type;
     const refs = await this.refFields(objectApi);
-    const selectCols = this.selectColumns(describe, refs);
+    const selectCols = this.selectColumns(objectApi, describe, refs, query.columns);
     // Reject filter/sort on fields not on the object — blocks MALFORMED_QUERY and
     // stops a prompt-injected model probing denied fields through the WHERE clause.
     const known = new Set(describe.fields.map((f) => f.api));
@@ -843,7 +875,7 @@ export class SalesforceAdapter implements CrmAdapter {
     throw new CrmRecordNotFoundError("saved view", viewId);
   }
 
-  async getViewRows(viewId: string, cursor?: string): Promise<RecordPage> {
+  async getViewRows(viewId: string, cursor?: string, columns?: string[]): Promise<RecordPage> {
     const objectApi = await this.objectForView(viewId);
     const offset = cursor ? Number.parseInt(cursor, 10) || 0 : 0;
     const limit = 25;
@@ -862,7 +894,7 @@ export class SalesforceAdapter implements CrmAdapter {
 
     const describe = await this.describeObject(objectApi);
     const refs = await this.refFields(objectApi);
-    const cols = this.selectColumns(describe, refs);
+    const cols = this.selectColumns(objectApi, describe, refs, columns);
     const soql = `SELECT ${[...cols].join(", ")} FROM ${objectApi}${tail} LIMIT ${limit} OFFSET ${offset}`;
     // COUNT() rejects ORDER BY — count against the tail without it.
     const countTail = tail.replace(/\s+ORDER\s+BY[\s\S]*$/i, "");

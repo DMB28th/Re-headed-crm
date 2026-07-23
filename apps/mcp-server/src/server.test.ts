@@ -263,6 +263,28 @@ describe("M2.5: saved views (crm_list_view)", () => {
     expect(payload.savedViewName).toBe("My open deals");
   });
 
+  it("broad possessive ask resolves to the default view, not an error", async () => {
+    // Seen live: "my opportunities" errored though All Opportunities existed.
+    const result = await client.callTool({
+      name: "crm_list_view",
+      arguments: { object: "deals", query: "my deals" },
+    });
+    expect(result.isError).toBeFalsy();
+    const payload = result.structuredContent as unknown as ResultsTablePayload;
+    expect(payload.kind).toBe("results-table");
+    expect(payload.savedViewName).toBe("My open deals");
+  });
+
+  it("broad ask crosses CRM vocabulary via synonyms (opportunities→deals)", async () => {
+    const result = await client.callTool({
+      name: "crm_list_view",
+      arguments: { object: "deals", query: "my opportunities" },
+    });
+    expect(result.isError).toBeFalsy();
+    const payload = result.structuredContent as unknown as ResultsTablePayload;
+    expect(payload.savedViewName).toBe("My open deals");
+  });
+
   it("ambiguous ask → picker payload; explicit pick is remembered (5b)", async () => {
     const ambiguous = await client.callTool({
       name: "crm_list_view",

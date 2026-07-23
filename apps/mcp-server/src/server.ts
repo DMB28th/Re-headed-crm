@@ -48,6 +48,7 @@ import type { AuditLog } from "./audit.js";
 import {
   describeExposedViews,
   resolveViewAsk,
+  OBJECT_SYNONYMS,
   type ExposedView,
 } from "./views.js";
 import {
@@ -141,16 +142,22 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     });
   };
 
-  /** Rows for an exposed view — CRM views via the adapter's saved-view API, custom lists via search. */
-  const rowsForView = async (entry: ExposedView, cursor?: string): Promise<RecordPage> => {
+  /** Rows for an exposed view — CRM views via the adapter's saved-view API, custom lists via search.
+   *  `columns` (the layout's list columns) restricts the fetch to what renders. */
+  const rowsForView = async (
+    entry: ExposedView,
+    cursor?: string,
+    columns?: string[],
+  ): Promise<RecordPage> => {
     if (entry.custom) {
       return adapter.search(entry.view.object, {
         ...(entry.custom.filters.length > 0 ? { filters: entry.custom.filters } : {}),
         ...(entry.custom.sort ? { sort: entry.custom.sort } : {}),
+        ...(columns?.length ? { columns } : {}),
         ...(cursor ? { cursor } : {}),
       });
     }
-    return adapter.getViewRows(entry.view.id, cursor);
+    return adapter.getViewRows(entry.view.id, cursor, columns);
   };
 
   // Resilience: one object's unreadable exposures (e.g. a config written by a
@@ -169,18 +176,10 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         )
       ).flat();
 
-  // Chat-language synonym groups: a model asking for "deals" in a Salesforce
-  // workspace (or "opportunities" in a HubSpot one) resolves to whatever IS
-  // configured instead of erroring. Matching is against configured objects
-  // only — never invents an object.
-  const OBJECT_SYNONYMS: string[][] = [
-    ["deal", "deals", "opportunity", "opportunities"],
-    ["company", "companies", "account", "accounts"],
-    ["contact", "contacts", "person", "people"],
-    ["lead", "leads"],
-    ["case", "cases", "ticket", "tickets"],
-  ];
-
+  // Chat-language object resolution: a model asking for "deals" in a
+  // Salesforce workspace (or "opportunities" in a HubSpot one) resolves to
+  // whatever IS configured instead of erroring. Matching is against
+  // configured objects only — never invents an object.
   const resolveObjectName = (requested: string | undefined, configured: string[]): string | undefined => {
     if (!requested) return configured[0]; // omitted → workspace default
     const lower = requested.toLowerCase();
@@ -396,6 +395,8 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
             : config.listView.defaultSort
               ? { sort: config.listView.defaultSort }
               : {}),
+          // Fetch only what the table renders.
+          columns: config.listView.columns,
           limit: args.limit ?? 10,
           ...(args.cursor ? { cursor: args.cursor } : {}),
         };
@@ -640,7 +641,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         }
 
         if (!match) throw new Error("Could not resolve a saved view.");
-        const page = await rowsForView(match, args.cursor);
+        const page = await rowsForView(match, args.cursor, config.listView.columns);
         const payload = await buildResultsTablePayload({
           source: adapter,
           config,
@@ -708,7 +709,8 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
               filterSummary: entry.view.filterSummary,
             };
             try {
-              const page = await rowsForView(entry);
+              // Tiles only render a count — fetch the minimum column set.
+              const page = await rowsForView(entry, undefined, ["Id"]);
               return { ...base, count: page.total ?? page.rows.length };
             } catch {
               // One broken view/list degrades its tile, not the whole card —

@@ -111,6 +111,13 @@ export interface SearchQuery {
   /** Simple field filters, ANDed. */
   filters?: FieldFilter[];
   sort?: { field: string; dir: "asc" | "desc" };
+  /**
+   * Fields the caller actually renders (e.g. the layout's list columns).
+   * Adapters SHOULD restrict their fetch to these — selecting an object's
+   * full field list drags in system references whose traversal can be
+   * unqueryable (seen live: OpportunityHistory has no Name). Absent = all.
+   */
+  columns?: string[];
   limit?: number;
   cursor?: string;
 }

@@ -83,7 +83,7 @@ const OPP_DESCRIBE = {
       ],
     },
     { name: "IsWon", label: "Won", type: "boolean", nillable: false, createable: false, updateable: false, defaultedOnCreate: true },
-    { name: "OwnerId", label: "Owner", type: "reference", nillable: false, createable: false, updateable: true, defaultedOnCreate: false, relationshipName: "Owner" },
+    { name: "OwnerId", label: "Owner", type: "reference", nillable: false, createable: false, updateable: true, defaultedOnCreate: false, relationshipName: "Owner", referenceTo: ["User"] },
     { name: "BillingAddress", label: "Address", type: "address", nillable: true, createable: false, updateable: false, defaultedOnCreate: true },
   ],
 };
@@ -549,6 +549,46 @@ describe("Salesforce-first metadata (dynamic objects + relationships)", () => {
     ]);
     // OpportunityHistory child is filtered out (not layoutable).
     expect(describe.relationships.some((r) => r.relatedObject === "OpportunityHistory")).toBe(false);
+  });
+
+  it("never emits .Name traversal for non-name-bearing reference targets", async () => {
+    // Seen live: LastAmountChangedHistory.Name → "No such column 'Name' on
+    // entity 'OpportunityHistory'" — one bad traversal 500s the whole SELECT.
+    const describeWithHistory = {
+      ...OPP_DESCRIBE,
+      fields: [
+        ...OPP_DESCRIBE.fields,
+        {
+          name: "LastAmountChangedHistoryId", label: "Last Amount Changed", type: "reference",
+          nillable: true, createable: false, updateable: false, defaultedOnCreate: false,
+          relationshipName: "LastAmountChangedHistory", referenceTo: ["OpportunityHistory"],
+        },
+      ],
+    };
+    const calls: { url: string; init?: RequestInit }[] = [];
+    const { impl } = fetchStub(
+      [
+        tokenHandler(),
+        globalHandler,
+        orgHandler,
+        (url) =>
+          url.includes("/sobjects/Opportunity/describe")
+            ? { status: 200, json: describeWithHistory }
+            : undefined,
+        (url) =>
+          url.includes("/query") ? { status: 200, json: { records: [], totalSize: 0, done: true } } : undefined,
+      ],
+      calls,
+    );
+    const adapter = new SalesforceAdapter(CREDS, impl);
+    await adapter.search("Opportunity", {});
+    const soqlCalls = calls.filter((c) => c.url.includes("/query")).map((c) => decodeURIComponent(c.url));
+    expect(soqlCalls.length).toBeGreaterThan(0);
+    for (const q of soqlCalls) {
+      expect(q).not.toContain("LastAmountChangedHistory.Name");
+    }
+    // Owner is name-bearing (referenceTo User) — traversal still happens.
+    expect(soqlCalls.some((q) => q.includes("Owner.Name"))).toBe(true);
   });
 
   it("resolves reference ids to the related record's Name (OwnerId → Owner.Name)", async () => {
