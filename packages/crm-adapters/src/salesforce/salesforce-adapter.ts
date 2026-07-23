@@ -22,10 +22,13 @@
  */
 import type {
   ActivityEntry,
+  AggregateBucket,
+  AggregateQuery,
   CrmFieldValue,
   CrmRecord,
   CrmTask,
   FieldDescribe,
+  FieldFilter,
   FieldPatch,
   FieldType,
   FlowSummary,
@@ -728,13 +731,15 @@ export class SalesforceAdapter implements CrmAdapter {
     return selectCols;
   }
 
-  async search(objectApi: string, query: SearchQuery): Promise<RecordPage> {
-    const describe = await this.describeObject(objectApi);
+  /** WHERE builder shared by search() and aggregate(). Rejects filter fields
+   *  not on the object — blocks MALFORMED_QUERY and stops a prompt-injected
+   *  model probing denied fields through the WHERE clause. */
+  private whereClause(
+    objectApi: string,
+    describe: ObjectDescribe,
+    query: { text?: string; filters?: FieldFilter[] },
+  ): string {
     const typeOf = (api: string) => describe.fields.find((f) => f.api === api)?.type;
-    const refs = await this.refFields(objectApi);
-    const selectCols = this.selectColumns(objectApi, describe, refs, query.columns);
-    // Reject filter/sort on fields not on the object — blocks MALFORMED_QUERY and
-    // stops a prompt-injected model probing denied fields through the WHERE clause.
     const known = new Set(describe.fields.map((f) => f.api));
     const requireField = (api: string) => {
       if (!known.has(api)) throw new CrmValidationError(`Unknown field "${api}" on ${objectApi}.`);
@@ -772,8 +777,47 @@ export class SalesforceAdapter implements CrmAdapter {
           clauses.push(`${f.field} ${{ gt: ">", gte: ">=", lt: "<", lte: "<=" }[f.op]} ${literal}`);
       }
     }
-    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
-    if (query.sort) requireField(query.sort.field);
+    return clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+  }
+
+  /** Aggregate SOQL — the whole point is that totals never depend on paging
+   *  rows into the model's context. */
+  async aggregate(objectApi: string, q: AggregateQuery): Promise<AggregateBucket[]> {
+    const describe = await this.describeObject(objectApi);
+    const known = new Set(describe.fields.map((f) => f.api));
+    for (const api of [q.groupBy, q.sumField]) {
+      if (api && !known.has(api)) {
+        throw new CrmValidationError(`Unknown field "${api}" on ${objectApi}.`);
+      }
+    }
+    const where = this.whereClause(objectApi, describe, {
+      ...(q.filters ? { filters: q.filters } : {}),
+    });
+    const select = [
+      ...(q.groupBy ? [q.groupBy] : []),
+      "COUNT(Id) cnt",
+      ...(q.sumField ? [`SUM(${q.sumField}) total`] : []),
+    ].join(", ");
+    const group = q.groupBy ? ` GROUP BY ${q.groupBy} ORDER BY COUNT(Id) DESC` : "";
+    const { records } = await this.soql<Record<string, unknown>>(
+      `SELECT ${select} FROM ${objectApi}${where}${group} LIMIT 200`,
+    );
+    return records.map((r) => ({
+      group: q.groupBy ? ((r[q.groupBy] as string | null) ?? null) : null,
+      count: Number(r.cnt ?? 0),
+      ...(q.sumField ? { sum: r.total == null ? null : Number(r.total) } : {}),
+    }));
+  }
+
+  async search(objectApi: string, query: SearchQuery): Promise<RecordPage> {
+    const describe = await this.describeObject(objectApi);
+    const typeOf = (api: string) => describe.fields.find((f) => f.api === api)?.type;
+    const refs = await this.refFields(objectApi);
+    const selectCols = this.selectColumns(objectApi, describe, refs, query.columns);
+    const where = this.whereClause(objectApi, describe, query);
+    if (query.sort && !describe.fields.some((f) => f.api === query.sort!.field)) {
+      throw new CrmValidationError(`Unknown field "${query.sort.field}" on ${objectApi}.`);
+    }
     const order = query.sort ? ` ORDER BY ${query.sort.field} ${query.sort.dir.toUpperCase()} NULLS LAST` : "";
     const limit = query.limit ?? 10;
     const offset = query.cursor ? Number.parseInt(query.cursor, 10) || 0 : 0;

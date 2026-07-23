@@ -210,6 +210,21 @@ export interface RecentRecord {
   timestamp: string;
 }
 
+/** One row of a server-side aggregation (crm_aggregate). */
+export interface AggregateBucket {
+  /** The groupBy field's value; null for the ungrouped total. */
+  group: string | null;
+  count: number;
+  /** Present when a sum field was requested. */
+  sum?: number | null;
+}
+
+export interface AggregateQuery {
+  groupBy?: string;
+  sumField?: string;
+  filters?: FieldFilter[];
+}
+
 export interface ActivityEntry {
   id: string;
   /** "update" = a field change from CRM history; "task" = a CRM task/to-do. */

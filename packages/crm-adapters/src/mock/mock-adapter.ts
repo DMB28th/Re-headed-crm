@@ -5,6 +5,8 @@
  */
 import type {
   ActivityEntry,
+  AggregateBucket,
+  AggregateQuery,
   CrmFieldValue,
   CrmRecord,
   CrmTask,
@@ -87,6 +89,33 @@ export class MockCrmAdapter implements CrmAdapter {
       total: sorted.length,
       ...(offset + limit < sorted.length ? { cursor: String(offset + limit) } : {}),
     };
+  }
+
+  async aggregate(objectApi: string, q: AggregateQuery): Promise<AggregateBucket[]> {
+    const rows = this.table(objectApi).filter((r) =>
+      this.matches(r, { ...(q.filters?.length ? { filters: q.filters } : {}) }),
+    );
+    const buckets = new Map<string | null, { count: number; sum: number; sawSum: boolean }>();
+    for (const row of rows) {
+      const key = q.groupBy ? String(row.fields[q.groupBy] ?? "") || null : null;
+      const bucket = buckets.get(key) ?? { count: 0, sum: 0, sawSum: false };
+      bucket.count += 1;
+      if (q.sumField) {
+        const v = row.fields[q.sumField];
+        if (typeof v === "number") {
+          bucket.sum += v;
+          bucket.sawSum = true;
+        }
+      }
+      buckets.set(key, bucket);
+    }
+    return [...buckets.entries()]
+      .sort((a, b) => b[1].count - a[1].count)
+      .map(([group, b]) => ({
+        group,
+        count: b.count,
+        ...(q.sumField ? { sum: b.sawSum ? b.sum : null } : {}),
+      }));
   }
 
   async getRecord(objectApi: string, id: string, fields: string[]): Promise<CrmRecord> {

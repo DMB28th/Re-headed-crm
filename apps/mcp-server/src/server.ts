@@ -189,6 +189,72 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     return group && configured.find((o) => group.includes(o.toLowerCase()));
   };
 
+  /**
+   * Concept args → concrete FieldFilters via the describe's semantic hints
+   * (never hardcoded field names) — shared by crm_search and crm_aggregate.
+   */
+  const semanticFilters = (
+    describe: Awaited<ReturnType<CrmAdapter["describeObject"]>>,
+    args: {
+      stage?: string;
+      openOnly?: boolean;
+      owner?: string;
+      minAmount?: number;
+      maxAmount?: number;
+      closingAfter?: string;
+      closingBefore?: string;
+    },
+  ): FieldFilter[] => {
+    const byApi = new Map(describe.fields.map((f) => [f.api, f]));
+    const { stageField, amountField, ownerField, closeDateField } = describe;
+    const stageMeta = stageField ? byApi.get(stageField) : undefined;
+    // Map a stage label to its internal value (case-insensitive), so a model
+    // passing "Discovery" or "Closed won · EU" matches real ids.
+    const resolveStageValue = (input: string): string => {
+      const labels = stageMeta?.valueLabels ?? {};
+      const hit = Object.entries(labels).find(
+        ([, label]) => label.toLowerCase() === input.toLowerCase(),
+      );
+      return hit ? hit[0] : input;
+    };
+    // Reverse an owner name to an owner id via the owner field's valueLabels.
+    const resolveOwnerValue = (input: string): string => {
+      const labels = (ownerField ? byApi.get(ownerField)?.valueLabels : undefined) ?? {};
+      const hit = Object.entries(labels).find(
+        ([, label]) => label.toLowerCase() === input.toLowerCase(),
+      );
+      return hit ? hit[0] : input;
+    };
+
+    const filters: FieldFilter[] = [];
+    if (args.stage && stageField) {
+      filters.push({ field: stageField, op: "eq", value: resolveStageValue(args.stage) });
+    }
+    if (args.openOnly && stageField) {
+      // Exclude the actual closed stage ids (from describe), not label guesses.
+      const closed = stageMeta?.closedValues ?? [];
+      if (closed.length > 0) {
+        filters.push({ field: stageField, op: "not_in", values: closed });
+      }
+    }
+    if (args.owner && ownerField) {
+      filters.push({ field: ownerField, op: "eq", value: resolveOwnerValue(args.owner) });
+    }
+    if (args.minAmount !== undefined && amountField) {
+      filters.push({ field: amountField, op: "gte", value: args.minAmount });
+    }
+    if (args.maxAmount !== undefined && amountField) {
+      filters.push({ field: amountField, op: "lte", value: args.maxAmount });
+    }
+    if (args.closingAfter && closeDateField) {
+      filters.push({ field: closeDateField, op: "gte", value: args.closingAfter });
+    }
+    if (args.closingBefore && closeDateField) {
+      filters.push({ field: closeDateField, op: "lte", value: args.closingBefore });
+    }
+    return filters;
+  };
+
   const requireLayout = async (requested?: string): Promise<LayoutConfig> => {
     const configured = await configStore.listConfiguredObjects(tenantId);
     const object = resolveObjectName(requested, configured);
@@ -334,58 +400,8 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         const config = await requireLayout(args.object);
         const describe = await adapter.describeObject(config.object);
         const byApi = new Map(describe.fields.map((f) => [f.api, f]));
-        // Resolve filter fields from the describe's semantic hints, never
-        // hardcoded HubSpot names — so the same tool works on Salesforce.
-        const stageField = describe.stageField;
         const amountField = describe.amountField;
-        const ownerField = describe.ownerField;
-        const closeDateField = describe.closeDateField;
-        const stageMeta = stageField ? byApi.get(stageField) : undefined;
-
-        // Map a stage label to its internal value (case-insensitive), so a model
-        // passing "Discovery" or "Closed won · EU" matches real ids.
-        const resolveStageValue = (input: string): string => {
-          const labels = stageMeta?.valueLabels ?? {};
-          const hit = Object.entries(labels).find(
-            ([, label]) => label.toLowerCase() === input.toLowerCase(),
-          );
-          return hit ? hit[0] : input;
-        };
-        // Reverse an owner name to an owner id via the owner field's valueLabels.
-        const resolveOwnerValue = (input: string): string => {
-          const labels = (ownerField ? byApi.get(ownerField)?.valueLabels : undefined) ?? {};
-          const hit = Object.entries(labels).find(
-            ([, label]) => label.toLowerCase() === input.toLowerCase(),
-          );
-          return hit ? hit[0] : input;
-        };
-
-        const filters: FieldFilter[] = [];
-        if (args.stage && stageField) {
-          filters.push({ field: stageField, op: "eq", value: resolveStageValue(args.stage) });
-        }
-        if (args.openOnly && stageField) {
-          // Exclude the actual closed stage ids (from describe), not label guesses.
-          const closed = stageMeta?.closedValues ?? [];
-          if (closed.length > 0) {
-            filters.push({ field: stageField, op: "not_in", values: closed });
-          }
-        }
-        if (args.owner && ownerField) {
-          filters.push({ field: ownerField, op: "eq", value: resolveOwnerValue(args.owner) });
-        }
-        if (args.minAmount !== undefined && amountField) {
-          filters.push({ field: amountField, op: "gte", value: args.minAmount });
-        }
-        if (args.maxAmount !== undefined && amountField) {
-          filters.push({ field: amountField, op: "lte", value: args.maxAmount });
-        }
-        if (args.closingAfter && closeDateField) {
-          filters.push({ field: closeDateField, op: "gte", value: args.closingAfter });
-        }
-        if (args.closingBefore && closeDateField) {
-          filters.push({ field: closeDateField, op: "lte", value: args.closingBefore });
-        }
+        const filters = semanticFilters(describe, args);
         const query: SearchQuery = {
           ...(args.query ? { text: args.query } : {}),
           ...(filters.length > 0 ? { filters } : {}),
@@ -427,6 +443,89 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         };
       } catch (error) {
         return asToolError(error, { tool: "crm_search", args, readOnly: true });
+      }
+    },
+  );
+
+  // --- crm_aggregate → server-side totals (no widget; numbers for the model) ---
+  server.registerTool(
+    "crm_aggregate",
+    {
+      title: "Aggregate CRM records",
+      description:
+        "Server-side count — and sum of a numeric field — across ALL matching records, optionally " +
+        "grouped by a field. Use for questions like \"total pipeline\", \"deals by stage\", " +
+        "\"count by owner\": totals computed here are exact even when a row listing would paginate. " +
+        "Accepts the same filters as crm_search (openOnly, stage, owner, amount and close-date bounds).",
+      inputSchema: {
+        object: z.string().optional().describe("Object API name; omit for the workspace default"),
+        groupBy: z.string().optional().describe("Field API name to group by, e.g. the stage field"),
+        sum: z
+          .string()
+          .optional()
+          .describe("Numeric field API name to sum; defaults to the object's amount field"),
+        stage: z.string().optional(),
+        openOnly: z.boolean().optional(),
+        owner: z.string().optional(),
+        minAmount: z.number().optional(),
+        maxAmount: z.number().optional(),
+        closingAfter: z.string().optional(),
+        closingBefore: z.string().optional(),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (args): Promise<CallToolResult> => {
+      try {
+        await requireConnection();
+        const config = await requireLayout(args.object);
+        if (!adapter.aggregate) {
+          throw new Error(
+            `Aggregation isn't supported for ${config.crm} yet. Use crm_search and page through rows.`,
+          );
+        }
+        const describe = await adapter.describeObject(config.object);
+        const sumField = args.sum ?? describe.amountField;
+        // Denylist applies to aggregation inputs too — a hidden field must not
+        // leak through group keys or sums (hard rule 2).
+        const denied = new Set(config.permissions.fieldDenylist);
+        for (const api of [args.groupBy, sumField]) {
+          if (api && denied.has(api)) {
+            throw new Error(`Field "${api}" is not available on this layout.`);
+          }
+        }
+        const filters = semanticFilters(describe, args);
+        const buckets = await adapter.aggregate(config.object, {
+          ...(args.groupBy ? { groupBy: args.groupBy } : {}),
+          ...(sumField ? { sumField } : {}),
+          ...(filters.length > 0 ? { filters } : {}),
+        });
+        const currency = sumField
+          ? describe.fields.find((f) => f.api === sumField)?.currencyCode
+          : undefined;
+        const lines = buckets.map((b) => {
+          const sumPart =
+            b.sum === undefined ? "" : ` · sum ${b.sum === null ? "—" : `${b.sum}${currency ? ` ${currency}` : ""}`}`;
+          return `${b.group ?? (args.groupBy ? "(none)" : "all")}: ${b.count}${sumPart}`;
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                `${describe.labelPlural || config.object}${args.groupBy ? ` by ${args.groupBy}` : ""}` +
+                ` — ${lines.join("; ") || "no matching records"}`,
+            },
+          ],
+          structuredContent: {
+            kind: "aggregate",
+            object: config.object,
+            ...(args.groupBy ? { groupBy: args.groupBy } : {}),
+            ...(sumField ? { sumField, ...(currency ? { currencyCode: currency } : {}) } : {}),
+            buckets,
+          } as unknown as Record<string, unknown>,
+        };
+      } catch (error) {
+        return asToolError(error, { tool: "crm_aggregate", args, readOnly: true });
       }
     },
   );

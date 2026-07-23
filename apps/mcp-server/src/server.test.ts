@@ -90,6 +90,27 @@ describe("golden path 1: search → record card", () => {
     expect(payload.meta.amount?.description).toContain("ARR");
   });
 
+  it("crm_aggregate returns exact grouped totals without paging rows", async () => {
+    const result = await client.callTool({
+      name: "crm_aggregate",
+      arguments: { object: "deals", groupBy: "dealstage", openOnly: true },
+    });
+    expect(result.isError).toBeFalsy();
+    const payload = result.structuredContent as {
+      kind: string;
+      buckets: { group: string | null; count: number; sum?: number | null }[];
+      sumField?: string;
+    };
+    expect(payload.kind).toBe("aggregate");
+    expect(payload.sumField).toBe("amount"); // defaults to the amount field
+    // 13 open deals in the fixture (15 minus closed won/lost).
+    expect(payload.buckets.reduce((n, b) => n + b.count, 0)).toBe(13);
+    // No closed stages in an openOnly grouping.
+    expect(payload.buckets.some((b) => b.group === "Closed won" || b.group === "Closed lost")).toBe(false);
+    // Sums are real numbers, so "total pipeline" never depends on pagination.
+    for (const b of payload.buckets) expect(typeof b.sum).toBe("number");
+  });
+
   it("crm_get_record renders the configured card with related + activity", async () => {
     const result = await client.callTool({
       name: "crm_get_record",

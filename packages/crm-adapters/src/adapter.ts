@@ -4,6 +4,8 @@
  */
 import type {
   ActivityEntry,
+  AggregateBucket,
+  AggregateQuery,
   CrmRecord,
   CrmTask,
   FieldPatch,
@@ -26,6 +28,10 @@ export interface CrmAdapter {
 
   // Data
   search(objectApi: string, query: SearchQuery): Promise<RecordPage>;
+  /** Server-side count/sum over ALL matching records (optionally grouped) —
+   *  totals must not depend on paging rows into context. Optional: CRMs
+   *  without a native aggregate surface may omit it. */
+  aggregate?(objectApi: string, query: AggregateQuery): Promise<AggregateBucket[]>;
   getRecord(objectApi: string, id: string, fields: string[]): Promise<CrmRecord>;
   getRelated(parentId: string, rel: RelatedListConfig): Promise<RecordPage>;
   getActivity(objectApi: string, id: string, limit: number): Promise<ActivityEntry[]>;

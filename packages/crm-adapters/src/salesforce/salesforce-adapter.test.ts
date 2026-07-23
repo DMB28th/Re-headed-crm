@@ -551,6 +551,64 @@ describe("Salesforce-first metadata (dynamic objects + relationships)", () => {
     expect(describe.relationships.some((r) => r.relatedObject === "OpportunityHistory")).toBe(false);
   });
 
+  it("aggregate builds GROUP BY SOQL and parses buckets", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    const { impl } = fetchStub(
+      [
+        tokenHandler(),
+        globalHandler,
+        orgHandler,
+        (url) =>
+          url.includes("/sobjects/Opportunity/describe") ? { status: 200, json: OPP_DESCRIBE } : undefined,
+        (url) =>
+          url.includes("/query")
+            ? {
+                status: 200,
+                json: {
+                  records: [
+                    { StageName: "Qualification", cnt: 12, total: 500000 },
+                    { StageName: "Closed Won", cnt: 3, total: null },
+                  ],
+                  totalSize: 2,
+                  done: true,
+                },
+              }
+            : undefined,
+      ],
+      calls,
+    );
+    const adapter = new SalesforceAdapter(CREDS, impl);
+    const buckets = await adapter.aggregate("Opportunity", {
+      groupBy: "StageName",
+      sumField: "Amount",
+      filters: [{ field: "Amount", op: "gte", value: 1000 }],
+    });
+    const q = decodeURIComponent(
+      calls.find((c) => c.url.includes("/query") && c.url.includes("COUNT"))?.url ?? "",
+    );
+    expect(q).toContain("SELECT StageName, COUNT(Id) cnt, SUM(Amount) total FROM Opportunity");
+    expect(q).toContain("WHERE Amount >= 1000");
+    expect(q).toContain("GROUP BY StageName");
+    expect(buckets).toEqual([
+      { group: "Qualification", count: 12, sum: 500000 },
+      { group: "Closed Won", count: 3, sum: null },
+    ]);
+  });
+
+  it("aggregate rejects unknown fields before any SOQL is sent", async () => {
+    const { impl } = fetchStub([
+      tokenHandler(),
+      globalHandler,
+      orgHandler,
+      (url) =>
+        url.includes("/sobjects/Opportunity/describe") ? { status: 200, json: OPP_DESCRIBE } : undefined,
+    ]);
+    const adapter = new SalesforceAdapter(CREDS, impl);
+    await expect(
+      adapter.aggregate("Opportunity", { groupBy: "NotAField" }),
+    ).rejects.toThrow('Unknown field "NotAField"');
+  });
+
   it("getActivity merges field history with tasks, newest first", async () => {
     const { impl } = fetchStub([
       tokenHandler(),
