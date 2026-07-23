@@ -1,6 +1,10 @@
 /**
  * HTTP entry: streamable HTTP, stateless JSON — a fresh McpServer + transport
  * per request, nothing held in memory between calls (PLAN.md multi-tenancy rule).
+ *
+ * NOTE: runtime behavior also depends on @cardstack/crm-adapters. Railway's deploy
+ * watch pattern only covers /apps/**, so a packages-only change is SKIPPED — touch
+ * this file to force a rebuild that picks up the bundled package change.
  */
 import express from "express";
 import cors from "cors";
