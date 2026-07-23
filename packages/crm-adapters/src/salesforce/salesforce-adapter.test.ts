@@ -716,6 +716,7 @@ describe("Salesforce-first metadata (dynamic objects + relationships)", () => {
     const adapter = new SalesforceAdapter(CREDS, impl);
     const rec = await adapter.getRecord("Opportunity", "006x", ["Name", "OwnerId"]);
     expect(rec.fields.OwnerId).toBe("Dana K."); // id replaced with the owner's name
+    expect(rec.refs?.OwnerId).toBe("005z"); // …and the id kept for drill-through
     const retrieve = calls.find((c) => c.url.includes("/sobjects/Opportunity/006x"));
     expect(decodeURIComponent(retrieve?.url ?? "")).toContain("Owner.Name");
   });

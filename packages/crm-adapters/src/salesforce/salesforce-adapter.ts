@@ -638,6 +638,7 @@ export class SalesforceAdapter implements CrmAdapter {
           ...(Object.keys(valueLabels).length > 0 ? { valueLabels } : {}),
           ...(f.type === "currency" ? { currencyCode: currency } : {}),
           ...(f.name === "StageName" && closedStages.length > 0 ? { closedValues: closedStages } : {}),
+          ...(f.type === "reference" && f.referenceTo?.length ? { referenceTo: f.referenceTo } : {}),
         };
       });
     // Global describe gives child-object labels + filters out system children;
@@ -693,16 +694,24 @@ export class SalesforceAdapter implements CrmAdapter {
         fields[key] = value as CrmFieldValue;
       }
     }
-    // Replace a reference id with the related record's Name (Owner.Name → OwnerId).
+    // Replace a reference id with the related record's Name (Owner.Name →
+    // OwnerId) — keeping the id in `refs` so the widget can drill through.
+    const refIds: Record<string, string> = {};
     if (refs) {
       for (const [fieldApi, rel] of refs) {
         const nested = raw[rel] as { Name?: unknown } | null | undefined;
         if (nested && typeof nested === "object" && typeof nested.Name === "string") {
+          const rawId = raw[fieldApi];
+          if (typeof rawId === "string" && rawId) refIds[fieldApi] = rawId;
           fields[fieldApi] = nested.Name;
         }
       }
     }
-    return { id: String(raw.Id ?? ""), fields };
+    return {
+      id: String(raw.Id ?? ""),
+      fields,
+      ...(Object.keys(refIds).length > 0 ? { refs: refIds } : {}),
+    };
   }
 
   /** SELECT columns for an object, with reference fields expanded to

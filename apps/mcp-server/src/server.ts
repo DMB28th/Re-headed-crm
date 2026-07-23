@@ -15,6 +15,7 @@ import { z } from "zod";
 import {
   applyDenylist,
   buildCapabilities,
+  genericLayoutConfig,
   recordCardFieldPaths,
   filterRecord,
   summarizeCustomFilters,
@@ -267,6 +268,51 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       );
     }
     return config;
+  };
+
+  /**
+   * Objects reachable by drilling FROM a configured layout: its related-list
+   * objects plus the reference targets of fields the layout shows. This is the
+   * governance boundary for the generic all-fields fallback — without it,
+   * crm_get_record would silently invert the configured-objects allowlist
+   * into "any object the credential can describe" (review finding, R7).
+   */
+  const reachableObjects = async (): Promise<Set<string>> => {
+    const reachable = new Set<string>();
+    const configured = await configStore.listConfiguredObjects(tenantId);
+    for (const obj of configured) {
+      const config = await configStore.getLayout(tenantId, obj, userContext.audience);
+      if (!config) continue;
+      for (const rel of config.recordCard.relatedLists) reachable.add(rel.object.toLowerCase());
+      const describe = await adapter.describeObject(config.object).catch(() => null);
+      if (!describe) continue;
+      const shown = new Set([...recordCardFieldPaths(config), ...config.listView.columns]);
+      for (const f of describe.fields) {
+        if (f.type === "reference" && shown.has(f.api) && f.referenceTo?.length === 1) {
+          reachable.add(f.referenceTo[0]!.toLowerCase());
+        }
+      }
+    }
+    return reachable;
+  };
+
+  /** Layout for a record GET: the configured one, else the generic read-only
+   *  fallback — but ONLY for objects reachable from a configured layout. */
+  const layoutForRecordGet = async (requested?: string): Promise<LayoutConfig> => {
+    const configured = await configStore.listConfiguredObjects(tenantId);
+    if (resolveObjectName(requested, configured) || !requested) {
+      return requireLayout(requested);
+    }
+    const reachable = await reachableObjects();
+    if (!reachable.has(requested.toLowerCase())) {
+      throw new Error(
+        `"${requested}" has no configured layout and isn't referenced by any configured card. ` +
+          `Configured objects: ${configured.join(", ")}`,
+      );
+    }
+    const connection = await configStore.getConnection(tenantId);
+    const describe = await adapter.describeObject(requested);
+    return genericLayoutConfig({ tenantId, crm: connection.crm, object: requested, describe });
   };
 
   /**
@@ -537,8 +583,9 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     {
       title: "Show a CRM record card",
       description:
-        "Render the configured record card for a single CRM record, with related lists and activity. " +
-        "Pass id when known, otherwise a name query.",
+        "Render the record card for a single CRM record, with related lists and activity. " +
+        "Pass id when known, otherwise a name query. Objects without a configured layout " +
+        "(related records, reference targets) render a read-only all-fields card.",
       inputSchema: {
         object: z.string().optional().describe("Object API name; omit for the workspace default"),
         id: z.string().optional().describe("Record id, when known"),
@@ -550,11 +597,21 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     async (args): Promise<CallToolResult> => {
       try {
         await requireConnection();
-        const config = await requireLayout(args.object);
+        // Drill-through: unconfigured objects get a generated read-only
+        // all-fields card instead of an error.
+        const config = await layoutForRecordGet(args.object);
         let id = args.id;
         let disambiguation = "";
         if (!id) {
           if (!args.query) throw new Error("Provide id or query.");
+          // Fallback layouts serve drill-through only (the widget always has
+          // the id) — no name search, or the generic path becomes an
+          // enumeration surface over unconfigured objects.
+          if (config.generatedFallback) {
+            throw new Error(
+              `Name search isn't available for "${config.object}" (no configured layout). Pass a record id.`,
+            );
+          }
           const matches = await adapter.search(config.object, { text: args.query, limit: 3 });
           const first = matches.rows[0];
           if (!first) throw new Error(`No ${config.object} record matches "${args.query}".`);

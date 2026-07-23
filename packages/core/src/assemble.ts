@@ -45,6 +45,53 @@ export interface PayloadSource {
 
 const CRM_LABELS = { salesforce: "Salesforce", hubspot: "HubSpot" } as const;
 
+/**
+ * Runtime all-fields layout for drill-through into an object no admin has
+ * configured (a related list's line item, a reference field's target).
+ * Strictly read-only — writes stay layout-gated — and flagged so the widget
+ * renders a field-name filter instead of curated sections. Shared by the MCP
+ * server and Studio's preview (one codepath).
+ */
+export function genericLayoutConfig(args: {
+  tenantId: string;
+  crm: LayoutConfig["crm"];
+  object: string;
+  describe: ObjectDescribe;
+}): LayoutConfig {
+  const { tenantId, crm, object, describe } = args;
+  const nameField =
+    describe.fields.find((f) => f.api === "Name")?.api ??
+    describe.fields.find((f) => f.api === "CaseNumber")?.api ??
+    describe.fields.find((f) => f.type === "string")?.api ??
+    "Id";
+  return {
+    version: 1,
+    tenantId,
+    crm,
+    object,
+    audience: "default",
+    name: `${describe.label} · all fields`,
+    revision: 1,
+    generatedFallback: true,
+    listView: { columns: [nameField], rowActions: [] },
+    recordCard: {
+      header: { title: nameField },
+      actions: [],
+      sections: [
+        {
+          label: "All fields",
+          columns: 2,
+          fields: describe.fields
+            .filter((f) => f.api !== "Id")
+            .map((f) => ({ api: f.api, editable: false })),
+        },
+      ],
+      relatedLists: [],
+    },
+    permissions: { writeEnabled: false, fieldDenylist: [], requireConfirmation: true },
+  };
+}
+
 export function provenanceFor(config: LayoutConfig): WidgetProvenance {
   return {
     crm: config.crm,

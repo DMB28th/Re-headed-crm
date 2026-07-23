@@ -111,6 +111,45 @@ describe("golden path 1: search → record card", () => {
     for (const b of payload.buckets) expect(typeof b.sum).toBe("number");
   });
 
+  it("drill-through: unconfigured object gets a generated read-only all-fields card", async () => {
+    // "contacts" has no configured layout in this fixture — clicking a related
+    // contact from a deal card must open a generated card, not an error.
+    const result = await client.callTool({
+      name: "crm_get_record",
+      arguments: { object: "contacts", id: "c-001" },
+    });
+    expect(result.isError).toBeFalsy();
+    const payload = result.structuredContent as unknown as RecordCardPayload;
+    expect(payload.kind).toBe("record-card");
+    expect(payload.layout.generatedFallback).toBe(true);
+    expect(payload.layout.permissions.writeEnabled).toBe(false);
+    expect(payload.capabilities.editableFields).toEqual([]);
+    // All fields, not a curated subset.
+    expect(payload.layout.recordCard.sections).toHaveLength(1);
+    expect(Object.keys(payload.meta).length).toBeGreaterThan(3);
+    expect(payload.record.fields.name).toBe("Rachel Sato");
+  });
+
+  it("drill-through fallback is gated to objects reachable from configured layouts", async () => {
+    // "companies" exists in the CRM but no configured card references it —
+    // the generic path must NOT invert the allowlist into allow-everything.
+    const result = await client.callTool({
+      name: "crm_get_record",
+      arguments: { object: "companies", id: "co-001" },
+    });
+    expect(result.isError).toBeTruthy();
+    expect(textOf(result)).toContain("isn't referenced by any configured card");
+  });
+
+  it("drill-through fallback refuses name search (id only — no enumeration)", async () => {
+    const result = await client.callTool({
+      name: "crm_get_record",
+      arguments: { object: "contacts", query: "Rachel" },
+    });
+    expect(result.isError).toBeTruthy();
+    expect(textOf(result)).toContain("Pass a record id");
+  });
+
   it("crm_get_record renders the configured card with related + activity", async () => {
     const result = await client.callTool({
       name: "crm_get_record",

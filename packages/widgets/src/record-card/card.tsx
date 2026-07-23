@@ -62,10 +62,52 @@ export function RecordCard({
   const [mode, setMode] = useState<CardMode>({ kind: "ready" });
   // Attempted values survive a partial failure so "Edit & retry" can restore them.
   const [lastDraft, setLastDraft] = useState<Draft>({});
+  // Drill-through: a clicked reference field or related row opens ITS card in
+  // place of this one (recursive RecordCard = unlimited depth, one screen).
+  const [drill, setDrill] = useState<RecordCardPayload | null>(null);
+  const [drillLoading, setDrillLoading] = useState<string | null>(null);
+  const [drillError, setDrillError] = useState<string | null>(null);
+  // Field-name filter for big/generated all-fields cards.
+  const [fieldQuery, setFieldQuery] = useState("");
+  useEffect(() => {
+    setDrill(null);
+    setDrillError(null);
+    setFieldQuery("");
+  }, [payload]);
 
   const { layout, meta, record, provenance, capabilities } = payload;
   const { header, sections, relatedLists } = layout.recordCard;
   const objectLabel = layout.object.charAt(0).toUpperCase() + layout.object.slice(1);
+
+  const openDrill = async (object: string, id: string) => {
+    if (!host || drillLoading) return;
+    setDrillLoading(id);
+    setDrillError(null);
+    try {
+      // Through the host as a tool call — the server decides layout vs
+      // generated all-fields fallback; the widget never fetches directly.
+      const result = await host.callTool("crm_get_record", { object, id });
+      const data = result.structuredContent as RecordCardPayload | undefined;
+      if (!result.isError && data?.kind === "record-card") {
+        setDrill(data);
+      } else {
+        const text = result.content?.find((c) => c.type === "text")?.text;
+        setDrillError(text ?? `Couldn't open that ${object} record.`);
+      }
+    } catch (error) {
+      // Transport-level failure — surface it; never an unhandled rejection.
+      setDrillError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDrillLoading(null);
+    }
+  };
+  // A reference field is drillable when we have the target record's id and an
+  // unambiguous target object (polymorphic refs like Owner stay plain text).
+  const drillTargetFor = (api: string): { object: string; id: string } | null => {
+    const id = record.refs?.[api];
+    const targets = meta[api]?.referenceTo;
+    return id && targets?.length === 1 ? { object: targets[0]!, id } : null;
+  };
 
   if (sections.length === 0) {
     return (
@@ -115,10 +157,17 @@ export function RecordCard({
         return;
       }
       const receipt = result.structuredContent as WriteReceiptPayload;
-      // Fresh values into the card; the model gets the same summary the receipt shows.
+      // Fresh values into the card; the model gets the same summary the receipt
+      // shows. refs merge alongside fields so drill targets track the write.
       setPayload({
         ...payload,
-        record: { ...record, fields: { ...record.fields, ...receipt.record.fields } },
+        record: {
+          ...record,
+          fields: { ...record.fields, ...receipt.record.fields },
+          ...(record.refs || receipt.record.refs
+            ? { refs: { ...record.refs, ...receipt.record.refs } }
+            : {}),
+        },
       });
       const summary = result.content?.find((c) => c.type === "text");
       if (summary?.text) host.updateModelContext(summary.text);
@@ -172,6 +221,32 @@ export function RecordCard({
       `Create a new ${action.object} related to "${titleText}" (id ${record.id})`,
     );
 
+  // Drill-through view replaces this card until "Back" (recursive: the nested
+  // card has its own drill, related lists, even edit flow if its layout allows).
+  if (drill) {
+    return (
+      <div className="rc-drill">
+        <button type="button" className="rc-back" onClick={() => setDrill(null)}>
+          ← Back to {titleText}
+        </button>
+        <RecordCard payload={drill} setPayload={(p) => setDrill(p)} locale={locale} host={host} />
+      </div>
+    );
+  }
+
+  const totalFieldCount = sections.reduce((n, s) => n + s.fields.length, 0);
+  // Ready mode only: while EDITING, every field stays visible — a filter that
+  // hides a dirty field mid-edit would still write it, invisibly.
+  const showFieldFilter =
+    (layout.generatedFallback || totalFieldCount > 12) && mode.kind === "ready";
+  const fieldMatches = (api: string): boolean => {
+    if (mode.kind !== "ready" || !fieldQuery.trim()) return true;
+    const q = fieldQuery.trim().toLowerCase();
+    return (
+      api.toLowerCase().includes(q) || (meta[api]?.label ?? "").toLowerCase().includes(q)
+    );
+  };
+
   const collapsed = mode.kind === "receipt" || mode.kind === "partial";
   const diffRows =
     mode.kind === "confirming" || mode.kind === "writing"
@@ -220,19 +295,52 @@ export function RecordCard({
         </section>
       )}
 
-      {(mode.kind === "ready" || mode.kind === "editing") &&
-        sections.map((section) => (
-          <Section
-            key={section.label}
-            section={section}
-            payload={payload}
-            locale={locale}
-            editing={mode.kind === "editing"}
-            draft={mode.kind === "editing" ? mode.draft : undefined}
-            editableSet={editableSet}
-            onChange={setDraftValue}
+      {drillError && (
+        <div className="wd-write-error" role="alert">
+          {drillError}
+        </div>
+      )}
+
+      {showFieldFilter && (
+        <div className="rc-field-filter">
+          <input
+            type="search"
+            className="rc-field-filter-input"
+            placeholder={`Filter ${totalFieldCount} fields…`}
+            value={fieldQuery}
+            onChange={(e) => setFieldQuery(e.target.value)}
+            aria-label="Filter fields by name"
           />
-        ))}
+        </div>
+      )}
+
+      {(mode.kind === "ready" || mode.kind === "editing") &&
+        sections
+          .map((section) => ({
+            ...section,
+            fields: section.fields.filter((f) => fieldMatches(f.api)),
+          }))
+          .filter((section) => section.fields.length > 0)
+          .map((section) => (
+            <Section
+              key={section.label}
+              section={section}
+              payload={payload}
+              locale={locale}
+              editing={mode.kind === "editing"}
+              draft={mode.kind === "editing" ? mode.draft : undefined}
+              editableSet={editableSet}
+              onChange={setDraftValue}
+              drillTargetFor={drillTargetFor}
+              onOpenRef={(object, id) => void openDrill(object, id)}
+              drillLoadingId={drillLoading}
+            />
+          ))}
+      {showFieldFilter &&
+        fieldQuery.trim() !== "" &&
+        sections.every((s) => s.fields.every((f) => !fieldMatches(f.api))) && (
+          <div className="cs-muted rc-filter-empty">No fields match “{fieldQuery.trim()}”.</div>
+        )}
 
       {!collapsed &&
         mode.kind === "ready" &&
@@ -245,6 +353,8 @@ export function RecordCard({
                 page={payload.related[rel.relationship] ?? { rows: [], hasMore: false }}
                 payload={payload}
                 host={host}
+                {...(host ? { onOpenRow: (object: string, id: string) => void openDrill(object, id) } : {})}
+                drillLoadingId={drillLoading}
               />
             ))}
             {payload.activity.length > 0 && (
@@ -403,6 +513,9 @@ function Section({
   draft,
   editableSet,
   onChange,
+  drillTargetFor,
+  onOpenRef,
+  drillLoadingId,
 }: {
   section: LayoutSection;
   payload: RecordCardPayload;
@@ -411,6 +524,10 @@ function Section({
   draft: Draft | undefined;
   editableSet: Set<string>;
   onChange: (api: string, value: CrmFieldValue) => void;
+  /** Unambiguous drill target for a reference field, or null. */
+  drillTargetFor?: (api: string) => { object: string; id: string } | null;
+  onOpenRef?: (object: string, id: string) => void;
+  drillLoadingId?: string | null;
 }) {
   const { record } = payload;
   return (
@@ -458,6 +575,27 @@ function Section({
                     <NullValue />
                   ) : fieldMeta?.type === "textarea" ? (
                     <ClampedText text={formatted} />
+                  ) : fieldMeta?.type === "reference" &&
+                    !editing &&
+                    drillTargetFor?.(field.api) &&
+                    onOpenRef ? (
+                    // Drill-through: open the referenced record's card in place.
+                    (() => {
+                      const target = drillTargetFor(field.api)!;
+                      return (
+                        <button
+                          type="button"
+                          className="rc-ref-link"
+                          onClick={() => onOpenRef(target.object, target.id)}
+                          disabled={drillLoadingId != null}
+                        >
+                          {formatted}
+                          <span aria-hidden="true">
+                            {drillLoadingId === target.id ? " …" : " ↗"}
+                          </span>
+                        </button>
+                      );
+                    })()
                   ) : (
                     formatted
                   )}
@@ -481,11 +619,16 @@ function RelatedList({
   page,
   payload,
   host,
+  onOpenRow,
+  drillLoadingId,
 }: {
   rel: RelatedListConfig;
   page: RecordPage;
   payload: RecordCardPayload;
   host: WidgetHost | null;
+  /** Drill-through: open a related record's card in place of this one. */
+  onOpenRow?: (object: string, id: string) => void;
+  drillLoadingId?: string | null;
 }) {
   const [rows, setRows] = useState(page.rows);
   const [hasMore, setHasMore] = useState(page.hasMore);
@@ -524,8 +667,8 @@ function RelatedList({
       {rows.map((row) => {
         const name = String(row.fields[rel.columns[0] ?? "name"] ?? "");
         const detailCols = rel.columns.slice(1);
-        return (
-          <div key={row.id} className="rc-contact">
+        const body = (
+          <>
             <span className="rc-avatar" aria-hidden="true">
               {initials(name)}
             </span>
@@ -538,6 +681,25 @@ function RelatedList({
                   .join(" · ") || " "}
               </span>
             </span>
+          </>
+        );
+        // Clickable when the host can drill; static in hostless previews.
+        return onOpenRow ? (
+          <button
+            key={row.id}
+            type="button"
+            className="rc-contact rc-contact--clickable"
+            onClick={() => onOpenRow(rel.object, row.id)}
+            disabled={drillLoadingId != null}
+          >
+            {body}
+            <span className="rc-contact-open" aria-hidden="true">
+              {drillLoadingId === row.id ? "Opening…" : "Open ↗"}
+            </span>
+          </button>
+        ) : (
+          <div key={row.id} className="rc-contact">
+            {body}
           </div>
         );
       })}

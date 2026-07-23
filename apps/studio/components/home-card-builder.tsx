@@ -550,7 +550,12 @@ function HomeCardPreview({
         return { structuredContent: result.payload as Record<string, unknown> };
       }
       if (name === "crm_get_record") {
-        const result = await previewCall({ kind: "record", object: drilled.object, recordId: args.id });
+        const result = await previewCall({
+          kind: "record",
+          // Drill-through may target another object — forward it.
+          object: (args.object as string | undefined) ?? drilled.object,
+          recordId: args.id,
+        });
         if (result.error) return { isError: true, content: [{ type: "text", text: result.error }] };
         return { structuredContent: result.payload as Record<string, unknown> };
       }

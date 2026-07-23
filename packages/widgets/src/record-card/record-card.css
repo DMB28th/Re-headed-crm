@@ -450,3 +450,87 @@
     display: none;
   }
 }
+
+/* Drill-through (R7): reference fields + related rows open cards in place. */
+.rc-drill {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rc-back {
+  align-self: flex-start;
+  border: none;
+  background: none;
+  padding: 4px 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--cs-text-secondary);
+  cursor: pointer;
+}
+.rc-back:hover {
+  color: var(--cs-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.rc-ref-link {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--cs-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--cs-border);
+  cursor: pointer;
+  text-align: left;
+}
+.rc-ref-link:hover {
+  text-decoration-color: currentColor;
+}
+.rc-ref-link:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+button.rc-contact--clickable {
+  width: 100%;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  align-items: center;
+}
+button.rc-contact--clickable:hover {
+  background: var(--cs-bg-hover, rgba(127, 127, 127, 0.08));
+  border-radius: 8px;
+}
+.rc-contact-open {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--cs-text-secondary);
+  white-space: nowrap;
+}
+
+/* Field-name filter on big / generated all-fields cards. */
+.rc-field-filter {
+  margin-top: 4px;
+}
+.rc-field-filter-input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--cs-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cs-text);
+}
+.rc-field-filter-input:focus {
+  outline: none;
+  border-color: var(--cs-text-secondary);
+}
+.rc-filter-empty {
+  font-size: 12.5px;
+  padding: 6px 0;
+}

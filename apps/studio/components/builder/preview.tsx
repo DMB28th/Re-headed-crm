@@ -89,7 +89,10 @@ export function Preview({ config }: { config: LayoutConfig }) {
         if (name === "crm_get_record") {
           const result = await previewCall({
             kind: "record",
-            object: config.object,
+            // Drill-through targets another object (a related row, a reference
+            // field) — forward it; the API generates a fallback layout for
+            // objects the workspace hasn't configured.
+            object: (args.object as string | undefined) ?? config.object,
             config: JSON.parse(configJson),
             recordId: args.id,
           });

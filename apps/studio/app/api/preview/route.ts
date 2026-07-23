@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   buildRecordCardPayload,
   buildResultsTablePayload,
+  genericLayoutConfig,
   parseLayoutConfig,
   summarizeCustomFilters,
   type CrmFieldValue,
@@ -58,7 +59,26 @@ export async function POST(req: Request) {
 
     if (body.kind === "record") {
       if (!body.object) throw new Error("object required");
-      const config = await layoutFor(tenantId, body.object, body.config);
+      // Drill-through in a preview can target an object other than the layout
+      // under edit (a related row, a reference field). Use the posted config
+      // only when it matches; otherwise the stored layout; otherwise the same
+      // generated read-only all-fields fallback the MCP server serves.
+      const posted = body.config ? parseLayoutConfig(body.config) : undefined;
+      let config: LayoutConfig;
+      if (posted && posted.object === body.object) {
+        config = posted;
+      } else {
+        const stored = await store.getLayoutRecord(tenantId, body.object);
+        const storedConfig = stored.published ?? stored.draft;
+        config =
+          storedConfig ??
+          genericLayoutConfig({
+            tenantId,
+            crm: connection.crm,
+            object: body.object,
+            describe: await adapter.describeObject(body.object),
+          });
+      }
       const record = body.recordId
         ? await adapter.getRecord(config.object, body.recordId, [])
         : (await adapter.search(config.object, { limit: 1 })).rows[0];

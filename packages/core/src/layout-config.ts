@@ -20,6 +20,12 @@
  *   unique relationshipName (multiple relationships can share a foreign key).
  *   Additive + optional; existing HubSpot configs (no foreignKey) parse and
  *   resolve unchanged.
+ * - 2026-07-23 (b): LayoutConfig gains optional `generatedFallback` — true only
+ *   on layouts the SERVER generates at runtime for objects with no configured
+ *   layout (record-card drill-through to e.g. OpportunityLineItem). These are
+ *   read-only, all-fields, never persisted by Studio, and the widget shows a
+ *   field-name filter box for them. Additive + optional; stored configs never
+ *   carry it.
  */
 import { z } from "zod";
 
@@ -201,6 +207,9 @@ export const LayoutConfig = z.object({
   listView: ListViewConfig,
   recordCard: RecordCardConfig,
   permissions: PermissionsConfig,
+  /** Server-generated all-fields fallback (drill-through to an unconfigured
+   *  object). Never persisted; widgets render a field-name filter for it. */
+  generatedFallback: z.boolean().optional(),
 });
 export type LayoutConfig = z.infer<typeof LayoutConfig>;
 

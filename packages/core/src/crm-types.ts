@@ -48,6 +48,8 @@ export interface FieldDescribe {
    * openOnly filter instead of guessing by label.
    */
   closedValues?: string[];
+  /** For reference fields: target object api name(s) — drill-through target. */
+  referenceTo?: string[];
 }
 
 import type { ActionInputValueType } from "./layout-config.js";
@@ -96,6 +98,12 @@ export interface CrmRecord {
   id: string;
   /** Field API name → value. Dot-path columns are pre-flattened by the adapter. */
   fields: Record<string, CrmFieldValue>;
+  /**
+   * For reference fields whose value was resolved to a display name: the
+   * referenced record's id, so the widget can open it (drill-through).
+   * Only present for fields also present in `fields`.
+   */
+  refs?: Record<string, string>;
 }
 
 export interface RecordPage {
