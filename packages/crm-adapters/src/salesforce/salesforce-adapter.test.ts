@@ -456,4 +456,37 @@ describe("Salesforce OAuth hardening (PKCE + loginUrl allowlist)", () => {
     expect(refreshed[0]?.refreshToken).toBe("RT2");
     expect(refreshed[0]?.accessToken).toBe("new-access");
   });
+
+  it("validateConnection does not refresh (burn rotation) when it already has an access token", async () => {
+    const { impl, calls } = fetchStub([
+      (url) =>
+        url.includes("/services/oauth2/userinfo")
+          ? { status: 200, json: { name: "Real User" } }
+          : undefined,
+      (url) =>
+        decodeURIComponent(url).includes("FROM Organization")
+          ? { status: 200, json: { totalSize: 1, records: [{ IsSandbox: true }] } }
+          : undefined,
+      (url, init) =>
+        url.includes("/services/oauth2/token") && init?.method === "POST"
+          ? { status: 200, json: { access_token: "should-not-be-used" } }
+          : undefined,
+    ]);
+    const adapter = new SalesforceAdapter(
+      {
+        authType: "oauth",
+        loginUrl: "https://login.salesforce.com",
+        clientId: "k",
+        clientSecret: "s",
+        refreshToken: "RT1",
+        accessToken: "A0", // fresh from the OAuth exchange — no refresh needed
+        instanceUrl: "https://x.my.salesforce.com",
+      },
+      impl,
+    );
+    const user = await adapter.validateConnection();
+    expect(user).toBe("Real User");
+    // Crucially: no token refresh happened, so the rotation token RT1 stays valid.
+    expect(calls.some((c) => c.url.includes("/services/oauth2/token"))).toBe(false);
+  });
 });

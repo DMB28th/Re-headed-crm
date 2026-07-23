@@ -809,8 +809,18 @@ export class SalesforceAdapter implements CrmAdapter {
 
   /** Connect-time validation: token grant + identity in one go. */
   async validateConnection(): Promise<string> {
-    await this.fetchToken();
+    // Only fetch a token if we don't already have one. A fresh OAuth exchange
+    // hands us a valid access token; forcing a refresh here would consume the
+    // just-issued refresh token under a rotation policy and store a dead one.
+    if (!this.token) await this.fetchToken();
     await this.ensureOrgInfo().catch(() => undefined);
-    return this.getConnectedUser();
+    // Hit the identity endpoint DIRECTLY (not the error-swallowing
+    // getConnectedUser) so an invalid token fails the connect loudly instead of
+    // silently storing a dead connection labeled "Salesforce integration user".
+    const info = await this.request<{ name?: string; preferred_username?: string }>(
+      "GET",
+      "/services/oauth2/userinfo",
+    );
+    return info.name ?? info.preferred_username ?? "Salesforce user";
   }
 }
