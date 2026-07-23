@@ -31,6 +31,7 @@ import type {
   FlowSummary,
   ObjectDescribe,
   ObjectSummary,
+  RelationshipDescribe,
   RecentRecord,
   RecordPage,
   RelatedListConfig,
@@ -74,17 +75,38 @@ type FetchLike = typeof fetch;
 const API = "/services/data/v61.0";
 const DEFAULT_LOGIN_URL = "https://login.salesforce.com";
 
-const OBJECTS: ObjectSummary[] = [
-  { api: "Opportunity", label: "Opportunity", labelPlural: "Opportunities", custom: false },
-  { api: "Contact", label: "Contact", labelPlural: "Contacts", custom: false },
-  { api: "Account", label: "Account", labelPlural: "Accounts", custom: false },
-];
+// Standard business objects surfaced first in the object picker; every other
+// layoutable object (including ALL custom objects) follows alphabetically.
+const COMMON_OBJECT_ORDER = ["Account", "Contact", "Opportunity", "Lead", "Case", "Campaign"];
 
-const RELATIONSHIPS: Record<string, { api: string; label: string; relatedObject: string }[]> = {
-  Opportunity: [{ api: "opportunity_contacts", label: "Contacts", relatedObject: "Contact" }],
-  Contact: [],
-  Account: [{ api: "account_opportunities", label: "Opportunities", relatedObject: "Opportunity" }],
-};
+// System / audit / internal sObjects that are never useful as a card or a
+// related list (Shares, Histories, Feeds, platform events, metadata types, …).
+const SYSTEM_SOBJECT =
+  /(Share|History|Feed|ChangeEvent|Tag)$|__(mdt|e|b|x|p|ka|kav|Share|History|Feed|Tag|ChangeEvent)$/;
+
+// Object / field API-name shape — guards SOQL identifiers that can't be quoted.
+const SF_API_NAME = /^[A-Za-z][A-Za-z0-9_]*$/;
+const SF_COLUMN = /^[A-Za-z][A-Za-z0-9_.]*$/; // allows Parent.Field traversal
+
+interface SfGlobalSObject {
+  name: string;
+  label: string;
+  labelPlural?: string;
+  custom: boolean;
+  queryable: boolean;
+  createable: boolean;
+  deprecatedAndHidden: boolean;
+}
+
+function isLayoutableSObject(s: SfGlobalSObject): boolean {
+  return s.queryable && s.createable && !s.deprecatedAndHidden && !SYSTEM_SOBJECT.test(s.name);
+}
+
+interface SfChildRelationship {
+  childSObject: string;
+  field: string | null;
+  relationshipName: string | null;
+}
 
 function mapType(sf: { type: string }): FieldType {
   switch (sf.type) {
@@ -147,6 +169,15 @@ interface SfDescribeField {
   defaultedOnCreate: boolean;
   inlineHelpText?: string | null;
   picklistValues?: { value: string; label?: string; active: boolean }[];
+}
+
+interface SfDescribeResponse {
+  name: string;
+  label: string;
+  labelPlural?: string;
+  custom: boolean;
+  fields: SfDescribeField[];
+  childRelationships?: SfChildRelationship[];
 }
 
 const DESCRIBE_TTL_MS = 10 * 60 * 1000;
@@ -290,6 +321,13 @@ export class SalesforceAdapter implements CrmAdapter {
   private token: string | null = null;
   private instanceUrl: string | null = null;
   private describeCache = new Map<string, { describe: ObjectDescribe; fetchedAt: number }>();
+  /** Global sObject list (from /sobjects), fetched once: the object picker + the
+   *  label/layoutable lookups relationships need. */
+  private globalCache: {
+    objects: ObjectSummary[];
+    byApi: Map<string, ObjectSummary>;
+    layoutable: Set<string>;
+  } | null = null;
   private viewObjectById = new Map<string, string>();
   /** Opportunity stage ApiName → IsClosed, fetched once. */
   private closedStageValues: string[] | null = null;
@@ -448,20 +486,83 @@ export class SalesforceAdapter implements CrmAdapter {
     return this.request("GET", `${API}/query?q=${encodeURIComponent(query)}`);
   }
 
+  /** All layoutable sObjects (standard + custom) from the org's global describe. */
+  private async ensureGlobal(): Promise<{
+    objects: ObjectSummary[];
+    byApi: Map<string, ObjectSummary>;
+    layoutable: Set<string>;
+  }> {
+    if (this.globalCache) return this.globalCache;
+    const data = await this.request<{ sobjects: SfGlobalSObject[] }>("GET", `${API}/sobjects`);
+    const byApi = new Map<string, ObjectSummary>();
+    const layoutable = new Set<string>();
+    const objects: ObjectSummary[] = [];
+    for (const s of data.sobjects) {
+      const summary: ObjectSummary = {
+        api: s.name,
+        label: s.label,
+        labelPlural: s.labelPlural || s.label,
+        custom: s.custom,
+      };
+      byApi.set(s.name, summary);
+      if (isLayoutableSObject(s)) {
+        layoutable.add(s.name);
+        objects.push(summary);
+      }
+    }
+    const rank = (api: string) => {
+      const i = COMMON_OBJECT_ORDER.indexOf(api);
+      return i === -1 ? COMMON_OBJECT_ORDER.length : i;
+    };
+    objects.sort((a, b) => rank(a.api) - rank(b.api) || a.labelPlural.localeCompare(b.labelPlural));
+    this.globalCache = { objects, byApi, layoutable };
+    return this.globalCache;
+  }
+
+  /** Map Salesforce childRelationships → related-list descriptors. `api` is the
+   *  child's foreign-key FIELD (what getRelated queries by); system/audit child
+   *  objects are filtered out. */
+  private buildRelationships(
+    children: SfChildRelationship[],
+    global: { byApi: Map<string, ObjectSummary>; layoutable: Set<string> } | null,
+  ): RelationshipDescribe[] {
+    const seen = new Set<string>();
+    const out: RelationshipDescribe[] = [];
+    for (const c of children) {
+      if (!c.field || !c.childSObject) continue;
+      // Only real business children; if global describe is unavailable, keep all.
+      if (global && !global.layoutable.has(c.childSObject)) continue;
+      const key = `${c.childSObject}.${c.field}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        api: c.field,
+        label: global?.byApi.get(c.childSObject)?.labelPlural ?? c.childSObject,
+        relatedObject: c.childSObject,
+      });
+      if (out.length >= 25) break;
+    }
+    return out;
+  }
+
   async listObjects(): Promise<ObjectSummary[]> {
-    return OBJECTS;
+    return (await this.ensureGlobal()).objects;
   }
 
   async describeObject(objectApi: string): Promise<ObjectDescribe> {
-    const summary = OBJECTS.find((o) => o.api === objectApi);
-    if (!summary) throw new CrmObjectNotFoundError(objectApi);
+    if (!SF_API_NAME.test(objectApi)) throw new CrmObjectNotFoundError(objectApi);
     const cached = this.describeCache.get(objectApi);
     // TTL so an FLS/picklist change in Setup propagates without a redeploy.
     if (cached && this.now() - cached.fetchedAt < DESCRIBE_TTL_MS) return cached.describe;
-    const data = await this.request<{ fields: SfDescribeField[] }>(
+    const data = await this.request<SfDescribeResponse>(
       "GET",
       `${API}/sobjects/${objectApi}/describe`,
-    );
+    ).catch((err) => {
+      if (err instanceof CrmRecordNotFoundError || err instanceof CrmObjectNotFoundError) {
+        throw new CrmObjectNotFoundError(objectApi);
+      }
+      throw err;
+    });
     const currency = (await this.ensureOrgInfo()).currency ?? "USD";
     const closedStages = objectApi === "Opportunity" ? await this.ensureClosedStageValues() : [];
     const has = (api: string) => data.fields.some((f) => f.name === api);
@@ -487,10 +588,16 @@ export class SalesforceAdapter implements CrmAdapter {
           ...(f.name === "StageName" && closedStages.length > 0 ? { closedValues: closedStages } : {}),
         };
       });
+    // Global describe gives child-object labels + filters out system children;
+    // best-effort so a describe still works if the global call is unavailable.
+    const global = await this.ensureGlobal().catch(() => null);
     const describe: ObjectDescribe = {
-      ...summary,
+      api: data.name,
+      label: data.label,
+      labelPlural: data.labelPlural || data.label,
+      custom: !!data.custom,
       fields,
-      relationships: RELATIONSHIPS[objectApi] ?? [],
+      relationships: this.buildRelationships(data.childRelationships ?? [], global),
       // Semantic hints so the server builds filters from concepts, not literals.
       ...(has("StageName") ? { stageField: "StageName" } : {}),
       ...(has("Amount") ? { amountField: "Amount" } : {}),
@@ -592,30 +699,21 @@ export class SalesforceAdapter implements CrmAdapter {
   }
 
   async getRelated(parentId: string, rel: RelatedListConfig): Promise<RecordPage> {
-    const cols = rel.columns.join(", ");
-    if (rel.relationship === "opportunity_contacts") {
-      const { records, totalSize } = await this.soql<{ Contact: Record<string, unknown> }>(
-        `SELECT Contact.Id, ${rel.columns.map((c) => `Contact.${c}`).join(", ")} FROM OpportunityContactRole WHERE OpportunityId = '${soqlEscape(parentId)}' LIMIT ${rel.limit}`,
-      );
-      return {
-        rows: records
-          .filter((r) => r.Contact)
-          .map((r) => this.recordFromSObject(r.Contact)),
-        hasMore: totalSize > rel.limit,
-        total: totalSize,
-      };
+    // `rel.object` is the child sObject; `rel.relationship` is the foreign-key
+    // FIELD on it that points back to this record (from describe childRelationships).
+    // Both are identifiers that can't be quoted, so validate their shape first.
+    if (!SF_API_NAME.test(rel.object) || !SF_API_NAME.test(rel.relationship)) {
+      return { rows: [], hasMore: false, total: 0 };
     }
-    if (rel.relationship === "account_opportunities") {
-      const { records, totalSize } = await this.soql<Record<string, unknown>>(
-        `SELECT Id, ${cols} FROM Opportunity WHERE AccountId = '${soqlEscape(parentId)}' LIMIT ${rel.limit}`,
-      );
-      return {
-        rows: records.map((r) => this.recordFromSObject(r)),
-        hasMore: totalSize > rel.limit,
-        total: totalSize,
-      };
-    }
-    return { rows: [], hasMore: false, total: 0 };
+    const cols = ["Id", ...rel.columns.filter((c) => c !== "Id" && SF_COLUMN.test(c))];
+    const { records, totalSize } = await this.soql<Record<string, unknown>>(
+      `SELECT ${cols.join(", ")} FROM ${rel.object} WHERE ${rel.relationship} = '${soqlEscape(parentId)}' LIMIT ${rel.limit}`,
+    ).catch(() => ({ records: [] as Record<string, unknown>[], totalSize: 0 }));
+    return {
+      rows: records.map((r) => this.recordFromSObject(r)),
+      hasMore: totalSize > rel.limit,
+      total: totalSize,
+    };
   }
 
   async getActivity(): Promise<ActivityEntry[]> {
@@ -649,8 +747,10 @@ export class SalesforceAdapter implements CrmAdapter {
   private async objectForView(viewId: string): Promise<string> {
     const cached = this.viewObjectById.get(viewId);
     if (cached) return cached;
-    for (const object of OBJECTS) {
-      await this.listSavedViews(object.api).catch(() => []);
+    // Saved views are almost always on the common CRM objects; probe those to
+    // resolve the view's object without fanning out across every sObject.
+    for (const api of COMMON_OBJECT_ORDER) {
+      await this.listSavedViews(api).catch(() => []);
       const found = this.viewObjectById.get(viewId);
       if (found) return found;
     }
@@ -743,15 +843,14 @@ export class SalesforceAdapter implements CrmAdapter {
     const items = await this.request<
       { Id: string; Name?: string; attributes: { type: string } }[]
     >("GET", `${API}/recent?limit=${limit}`);
-    const known = new Set(OBJECTS.map((o) => o.api));
+    const global = await this.ensureGlobal().catch(() => null);
     return items
-      .filter((i) => known.has(i.attributes.type))
+      .filter((i) => !global || global.layoutable.has(i.attributes.type))
       .slice(0, limit)
       .map((i) => ({
         id: i.Id,
         object: i.attributes.type,
-        objectLabel:
-          OBJECTS.find((o) => o.api === i.attributes.type)?.label ?? i.attributes.type,
+        objectLabel: global?.byApi.get(i.attributes.type)?.label ?? i.attributes.type,
         name: i.Name ?? i.Id,
         note: "Recently viewed",
         timestamp: new Date().toISOString(),

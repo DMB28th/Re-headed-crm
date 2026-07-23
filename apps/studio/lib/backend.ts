@@ -8,7 +8,8 @@
  * mock portal; live HubSpot/Salesforce credentials build the real adapter
  * (cached per credential set by the factory).
  *
- * NOTE: adapter/token behavior also depends on @cardstack/crm-adapters. Railway's
+ * NOTE: adapter/token/metadata behavior also depends on @cardstack/crm-adapters
+ * (objects, describe, relationships are all read from the CRM there). Railway's
  * deploy watch pattern only covers /apps/**, so a packages-only change is SKIPPED
  * — touch this file to force a rebuild that picks up the bundled package change.
  */

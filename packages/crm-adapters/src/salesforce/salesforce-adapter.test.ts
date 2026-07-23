@@ -63,6 +63,14 @@ const orgHandler: Handler = (url) => {
 };
 
 const OPP_DESCRIBE = {
+  name: "Opportunity",
+  label: "Opportunity",
+  labelPlural: "Opportunities",
+  custom: false,
+  childRelationships: [
+    { childSObject: "OpportunityLineItem", field: "OpportunityId", relationshipName: "OpportunityLineItems" },
+    { childSObject: "OpportunityHistory", field: "OpportunityId", relationshipName: "Histories" },
+  ],
   fields: [
     { name: "Id", label: "ID", type: "id", nillable: false, createable: false, updateable: false, defaultedOnCreate: true },
     { name: "Name", label: "Name", type: "string", nillable: false, createable: true, updateable: true, defaultedOnCreate: false, inlineHelpText: "Deal name" },
@@ -488,5 +496,76 @@ describe("Salesforce OAuth hardening (PKCE + loginUrl allowlist)", () => {
     expect(user).toBe("Real User");
     // Crucially: no token refresh happened, so the rotation token RT1 stays valid.
     expect(calls.some((c) => c.url.includes("/services/oauth2/token"))).toBe(false);
+  });
+});
+
+const GLOBAL_SOBJECTS = {
+  sobjects: [
+    { name: "Account", label: "Account", labelPlural: "Accounts", custom: false, queryable: true, createable: true, deprecatedAndHidden: false },
+    { name: "Opportunity", label: "Opportunity", labelPlural: "Opportunities", custom: false, queryable: true, createable: true, deprecatedAndHidden: false },
+    { name: "OpportunityLineItem", label: "Opportunity Product", labelPlural: "Opportunity Products", custom: false, queryable: true, createable: true, deprecatedAndHidden: false },
+    { name: "OpportunityHistory", label: "History", labelPlural: "Histories", custom: false, queryable: false, createable: false, deprecatedAndHidden: false },
+    { name: "AccountShare", label: "Account Share", labelPlural: "Account Shares", custom: false, queryable: true, createable: true, deprecatedAndHidden: false },
+    { name: "Widget__c", label: "Widget", labelPlural: "Widgets", custom: true, queryable: true, createable: true, deprecatedAndHidden: false },
+  ],
+};
+
+const globalHandler: Handler = (url) =>
+  url.endsWith("/sobjects") ? { status: 200, json: GLOBAL_SOBJECTS } : undefined;
+
+describe("Salesforce-first metadata (dynamic objects + relationships)", () => {
+  it("listObjects returns layoutable objects incl. custom, filters system objects, common first", async () => {
+    const { impl } = fetchStub([tokenHandler(), globalHandler]);
+    const adapter = new SalesforceAdapter(CREDS, impl);
+    const objects = await adapter.listObjects();
+    const apis = objects.map((o) => o.api);
+    expect(apis).toContain("Widget__c"); // custom object addable
+    expect(apis).toContain("Account");
+    expect(apis).not.toContain("OpportunityHistory"); // *History → system
+    expect(apis).not.toContain("AccountShare"); // *Share → system
+    // Common CRM objects sort ahead of others.
+    expect(apis.indexOf("Account")).toBeLessThan(apis.indexOf("Widget__c"));
+  });
+
+  it("describeObject builds related lists from childRelationships (FK field as api), skipping system children", async () => {
+    const { impl } = fetchStub([
+      tokenHandler(),
+      globalHandler,
+      orgHandler,
+      (url) => (url.includes("/sobjects/Opportunity/describe") ? { status: 200, json: OPP_DESCRIBE } : undefined),
+    ]);
+    const adapter = new SalesforceAdapter(CREDS, impl);
+    const describe = await adapter.describeObject("Opportunity");
+    expect(describe.api).toBe("Opportunity");
+    expect(describe.labelPlural).toBe("Opportunities");
+    expect(describe.relationships).toEqual([
+      { api: "OpportunityId", label: "Opportunity Products", relatedObject: "OpportunityLineItem" },
+    ]);
+    // OpportunityHistory child is filtered out (not layoutable).
+    expect(describe.relationships.some((r) => r.relatedObject === "OpportunityHistory")).toBe(false);
+  });
+
+  it("getRelated queries the child object by its foreign-key field", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    const { impl } = fetchStub(
+      [
+        tokenHandler(),
+        (url) =>
+          decodeURIComponent(url).includes("FROM OpportunityLineItem")
+            ? { status: 200, json: { totalSize: 1, records: [{ Id: "0QLx", Name: "Line 1" }] } }
+            : undefined,
+      ],
+      calls,
+    );
+    const adapter = new SalesforceAdapter(CREDS, impl);
+    const page = await adapter.getRelated("006x", {
+      object: "OpportunityLineItem",
+      relationship: "OpportunityId",
+      columns: ["Name"],
+      limit: 5,
+    });
+    expect(page.rows).toEqual([{ id: "0QLx", fields: { Name: "Line 1" } }]);
+    const q = decodeURIComponent(calls.find((c) => c.url.includes("/query"))?.url ?? "");
+    expect(q).toContain("FROM OpportunityLineItem WHERE OpportunityId = '006x'");
   });
 });
