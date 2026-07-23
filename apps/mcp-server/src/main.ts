@@ -11,6 +11,8 @@
 import express from "express";
 import cors from "cors";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { mcpAuthRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
+import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
 import {
   createAdapterForConnection,
   salesforceUsesOAuth,
@@ -21,6 +23,7 @@ import { createCardstackServer } from "./server.js";
 import { defaultConfigPath, FileConfigStore, DEMO_TENANT_ID } from "./config/store.js";
 import { userContextFromHeaders } from "./auth.js";
 import { resolveMcpAuth } from "./auth-config.js";
+import { CardstackOAuthProvider, userContextFromStoredUser } from "./oauth-provider.js";
 import {
   InMemoryAuditLog,
   FileAuditLog,
@@ -100,6 +103,56 @@ function authorized(req: express.Request): boolean {
   return bearer === `Bearer ${MCP_SECRET}`;
 }
 
+// --- Per-user OAuth (CARDSTACK_USER_AUTH=oauth): Salesforce is the IdP. ---
+// Opt-in by env so a half-configured deploy degrades to the shared-secret
+// mode instead of crash-looping (the 6a8913b lesson: never fail closed at
+// boot). Requires CARDSTACK_MCP_URL (public origin) and the Salesforce
+// Connected App to allowlist `<origin>/oauth/salesforce/callback`.
+const USER_AUTH_MODE = process.env.CARDSTACK_USER_AUTH === "oauth";
+const MCP_ORIGIN = (process.env.CARDSTACK_MCP_URL ?? "").trim().replace(/\/$/, "");
+const oauthProvider =
+  USER_AUTH_MODE && MCP_ORIGIN
+    ? new CardstackOAuthProvider({
+        store: configStore,
+        tenantId: process.env.CARDSTACK_TENANT_ID ?? DEMO_TENANT_ID,
+        mcpOrigin: MCP_ORIGIN,
+      })
+    : undefined;
+if (USER_AUTH_MODE && !oauthProvider) {
+  console.warn(
+    "⚠ CARDSTACK_USER_AUTH=oauth but CARDSTACK_MCP_URL is unset — per-user auth DISABLED, serving shared-secret mode.",
+  );
+}
+if (oauthProvider) {
+  app.use(
+    mcpAuthRouter({
+      provider: oauthProvider,
+      issuerUrl: new URL(MCP_ORIGIN),
+      resourceName: "Cardstack CRM",
+    }),
+  );
+  app.get("/oauth/salesforce/callback", async (req, res) => {
+    const { code, state, error, error_description } = req.query as Record<string, string | undefined>;
+    try {
+      if (error) throw new Error(error_description ?? error);
+      if (!code || !state) throw new Error("Salesforce callback was missing code or state.");
+      const { redirect } = await oauthProvider.completeSalesforceCallback(state, code);
+      res.redirect(redirect);
+    } catch (err) {
+      res
+        .status(400)
+        .send(
+          `<h3>Cardstack sign-in failed</h3><p>${
+            err instanceof Error ? err.message : String(err)
+          }</p><p>Close this tab and try connecting again from your chat app.</p>`,
+        );
+    }
+  });
+  const bearer = requireBearerAuth({ verifier: oauthProvider });
+  app.use("/mcp", (req, res, next) => bearer(req, res, next));
+  console.log("Per-user OAuth is ON — /mcp requires a Cardstack bearer token (Salesforce sign-in).");
+}
+
 // Fixed-window in-memory rate limit per IP (no new deps). Env-tunable; a
 // runaway or abusive caller can't burn the portal's CRM quota.
 const RATE_LIMIT = Number(process.env.MCP_RATE_LIMIT_PER_MIN ?? 120);
@@ -120,7 +173,9 @@ function rateLimited(ip: string): boolean {
 }
 
 app.all("/mcp", async (req, res) => {
-  if (!authorized(req)) {
+  // OAuth mode: requireBearerAuth already validated the user token (the
+  // Authorization header carries it, so the shared-secret check must not run).
+  if (!oauthProvider && !authorized(req)) {
     res.status(401).json({ error: "Unauthorized — missing or wrong x-cardstack-key." });
     return;
   }
@@ -128,7 +183,14 @@ app.all("/mcp", async (req, res) => {
     res.status(429).json({ error: "Rate limit exceeded — retry shortly." });
     return;
   }
-  const userContext = userContextFromHeaders({ get: (name) => req.header(name) });
+  // Identity: the VERIFIED token in OAuth mode; spoofable headers otherwise
+  // (legacy/demo mode only — per-user auth is the production posture).
+  const tokenUser = oauthProvider
+    ? (req.auth?.extra?.user as Parameters<typeof userContextFromStoredUser>[0] | undefined)
+    : undefined;
+  const userContext = tokenUser
+    ? userContextFromStoredUser(tokenUser)
+    : userContextFromHeaders({ get: (name) => req.header(name) });
   const connection = await configStore.getConnection(userContext.tenantId);
   let adapterSettings: ConnectionSettings = {
     crm: connection.crm,

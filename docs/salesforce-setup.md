@@ -61,25 +61,39 @@ Create one Connected App (or External Client App) with these OAuth settings:
 - Perform requests at any time (`refresh_token`, `offline_access`) — required, or no refresh
   token is issued.
 
-**Callback URLs** (add both — admin and user lanes have separate callbacks):
+**Callback URLs** (add all three — admin lane, Studio user lane, and the MCP
+chat sign-in):
 
 ```
 https://<studio-origin>/api/connections/salesforce/oauth/callback
 https://<studio-origin>/api/user-connections/salesforce/oauth/callback
+https://<mcp-origin>/oauth/salesforce/callback
 ```
 
-Both callbacks are **Studio** routes — use your **Studio** origin, *not* the MCP server's. On
-Railway that is the Studio service domain (e.g.
-`https://cardstackstudio-production.up.railway.app`). The MCP server domain is only for the
-chat-host connector (`/mcp`) and is never a callback. `<studio-origin>` must match
-`CARDSTACK_STUDIO_URL` (see Step 2), since that is what builds the `redirect_uri`.
+The first two are **Studio** routes (`<studio-origin>` must match
+`CARDSTACK_STUDIO_URL`, see Step 2). The third is the **MCP server** route used
+when a rep signs in from their chat app (per-user OAuth,
+`CARDSTACK_USER_AUTH=oauth`) — `<mcp-origin>` must match `CARDSTACK_MCP_URL`
+on the MCP service. On Railway: Studio =
+`https://cardstackstudio-production.up.railway.app`, MCP =
+`https://cardstackmcp-server-production.up.railway.app`.
 
 For local development:
 
 ```
 http://localhost:3002/api/connections/salesforce/oauth/callback
 http://localhost:3002/api/user-connections/salesforce/oauth/callback
+http://localhost:3001/oauth/salesforce/callback
 ```
+
+**Per-user MCP auth (chat sign-in).** With `CARDSTACK_USER_AUTH=oauth` and
+`CARDSTACK_MCP_URL` set on the MCP service, adding the Cardstack connector in a
+chat app walks the rep through Salesforce sign-in. One flow does both jobs:
+authenticates them to Cardstack (bearer tokens on `/mcp`, replacing header
+identity) AND stores their own Salesforce token, so reads/writes/audit run as
+them. Admins see everyone who has authenticated in Studio → Connections →
+Authenticated users. Without the env vars, the server keeps the shared-secret
+mode (`MCP_SHARED_SECRET`).
 
 **Security**
 - **Require Secret for Web Server Flow** — can stay **on**. Cardstack is a confidential

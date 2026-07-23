@@ -637,6 +637,75 @@ export default function ConnectionsPage() {
       )}
 
       {connected && <ScopeCoverage />}
+      {connected && <AuthenticatedUsers />}
+    </div>
+  );
+}
+
+/**
+ * Everyone authenticated to this workspace — Studio's user connect flow AND
+ * chat sign-ins through the MCP server's per-user OAuth. Read-only list;
+ * credentials never reach the browser (the API sends a `live` flag only).
+ */
+function AuthenticatedUsers() {
+  const [users, setUsers] = useState<
+    | {
+        userId: string;
+        status: string;
+        label: string;
+        changedAt: string;
+        connectedUser?: string;
+        crm: string;
+        live: boolean;
+      }[]
+    | null
+  >(null);
+  useEffect(() => {
+    void fetch("/api/user-connections")
+      .then((res) => (res.ok ? res.json() : { users: [] }))
+      .then((data: { users?: typeof users }) => setUsers(data.users ?? []))
+      .catch(() => setUsers([]));
+  }, []);
+  if (users === null) return null;
+  return (
+    <div className="mt-6">
+      <h2 className="st-section-label">Authenticated users</h2>
+      <div className="st-card mt-2 p-4">
+        {users.length === 0 ? (
+          <p className="text-[12.5px] text-ink-55">
+            No one has connected their own {`CRM`} login yet. Reps authenticate from Studio
+            (button above) or by signing in when they add Cardstack in their chat app.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {users.map((u) => (
+              <div
+                key={`${u.userId}:${u.crm}`}
+                className="flex items-center justify-between rounded-[10px] border border-line-soft px-3 py-2.5"
+              >
+                <span className="text-[12.5px]">
+                  <strong>{u.connectedUser ?? u.userId}</strong>
+                  <span className="ml-2 text-ink-55">{u.userId}</span>
+                  <span className="ml-2 text-ink-45">· {u.label}</span>
+                </span>
+                <span className="flex items-center gap-2">
+                  <span
+                    className={`inline-block h-2 w-2 rounded-full ${
+                      u.status === "connected" && u.live ? "bg-success-dot" : "bg-line"
+                    }`}
+                  />
+                  <span className="st-chip-mono bg-paper text-ink-45">
+                    {u.status === "connected" ? "connected" : "disconnected"}
+                  </span>
+                  <span className="text-[11.5px] text-ink-45">
+                    {new Date(u.changedAt).toLocaleString()}
+                  </span>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

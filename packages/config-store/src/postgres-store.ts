@@ -44,7 +44,7 @@ import type {
   UserConnectionState,
 } from "./types.js";
 import { defaultConnection, demoDealsLayout, demoHomeCard, demoViewExposures } from "./seed.js";
-import { openConnection, sealConnection } from "./crypto.js";
+import { openConnection, openKvValue, sealConnection, sealKvValue } from "./crypto.js";
 
 /**
  * Single logical SQL session (so BEGIN/COMMIT are safe). Satisfied by a pg
@@ -132,6 +132,18 @@ CREATE TABLE IF NOT EXISTS user_connections (
   crm       text NOT NULL,
   config    jsonb NOT NULL,
   PRIMARY KEY (tenant_id, user_id, crm)
+);
+
+-- 2026-07-23: namespaced KV for MCP per-user OAuth (registered clients,
+-- pending authorizations, codes, tokens). Values are sealed jsonb (they hold
+-- bearer secrets) and expires_at drives lazy expiry on read. Additive table.
+-- NOTE: init naively splits this SCHEMA on semicolons — keep them out of comments.
+CREATE TABLE IF NOT EXISTS kv_entries (
+  namespace  text NOT NULL,
+  key        text NOT NULL,
+  value      jsonb NOT NULL,
+  expires_at timestamptz,
+  PRIMARY KEY (namespace, key)
 );
 `;
 
@@ -280,6 +292,51 @@ export class PostgresConfigStore implements AdminConfigStore {
       "DELETE FROM user_connections WHERE tenant_id=$1 AND user_id=$2 AND crm=$3",
       [tenantId, userId, crm],
     );
+  }
+
+  async listUserConnections(tenantId: string): Promise<UserConnectionState[]> {
+    await this.ready;
+    const { rows } = await this.sql.query(
+      "SELECT config FROM user_connections WHERE tenant_id=$1",
+      [tenantId],
+    );
+    return rows
+      .map((r) => openConnection(this.parse<UserConnectionState>(r.config)))
+      .sort((a, b) => b.changedAt.localeCompare(a.changedAt));
+  }
+
+  async kvGet(namespace: string, key: string): Promise<Record<string, unknown> | undefined> {
+    await this.ready;
+    const { rows } = await this.sql.query(
+      "SELECT value, expires_at FROM kv_entries WHERE namespace=$1 AND key=$2",
+      [namespace, key],
+    );
+    if (!rows[0]) return undefined;
+    const expiresAt = rows[0].expires_at as Date | null;
+    if (expiresAt && expiresAt.getTime() <= Date.now()) {
+      await this.kvDelete(namespace, key);
+      return undefined;
+    }
+    return openKvValue(this.parse<Record<string, unknown>>(rows[0].value));
+  }
+
+  async kvSet(
+    namespace: string,
+    key: string,
+    value: Record<string, unknown>,
+    expiresAt?: string,
+  ): Promise<void> {
+    await this.ready;
+    await this.sql.query(
+      `INSERT INTO kv_entries (namespace, key, value, expires_at) VALUES ($1,$2,$3,$4)
+       ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value, expires_at = EXCLUDED.expires_at`,
+      [namespace, key, JSON.stringify(sealKvValue(value)), expiresAt ?? null],
+    );
+  }
+
+  async kvDelete(namespace: string, key: string): Promise<void> {
+    await this.ready;
+    await this.sql.query("DELETE FROM kv_entries WHERE namespace=$1 AND key=$2", [namespace, key]);
   }
 
   async getLayoutRecord(tenantId: string, object: string, audience = "default"): Promise<LayoutRecord> {

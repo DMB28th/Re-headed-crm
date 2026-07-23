@@ -141,11 +141,27 @@ export interface AdminConfigStore extends ConfigStore {
   listPublishes(tenantId: string): Promise<PublishEvent[]>;
   setConnection(state: ConnectionState): Promise<void>;
   setUserConnection(state: UserConnectionState): Promise<void>;
+  /** Every user who has authenticated to this workspace (admin visibility +
+   *  MCP per-user auth). Credentials are INCLUDED — API layers must redact. */
+  listUserConnections(tenantId: string): Promise<UserConnectionState[]>;
   deleteUserConnection(
     tenantId: string,
     userId: string,
     crm: UserConnectionState["crm"],
   ): Promise<void>;
+  /**
+   * Namespaced KV with optional expiry — backing for MCP OAuth state
+   * (registered clients, pending authorizations, codes, tokens). Reads of
+   * expired entries return undefined; stores may lazily purge.
+   */
+  kvGet(namespace: string, key: string): Promise<Record<string, unknown> | undefined>;
+  kvSet(
+    namespace: string,
+    key: string,
+    value: Record<string, unknown>,
+    expiresAt?: string,
+  ): Promise<void>;
+  kvDelete(namespace: string, key: string): Promise<void>;
   /**
    * Remove an object's Cardstack config entirely — every audience's layout
    * (draft + published + history), its view exposures / custom lists, and its

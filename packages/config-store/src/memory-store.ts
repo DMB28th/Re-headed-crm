@@ -39,6 +39,8 @@ interface StoreState {
   connections?: Record<string, ConnectionState>;
   /** Keyed tenant::userId::crm. Absent = user has not authorized that CRM. */
   userConnections?: Record<string, UserConnectionState>;
+  /** Namespaced KV (MCP OAuth clients/codes/tokens). Keyed namespace::key. */
+  kv?: Record<string, { value: Record<string, unknown>; expiresAt?: string }>;
   publishes: PublishEvent[];
 }
 
@@ -142,6 +144,46 @@ export abstract class BaseConfigStore implements AdminConfigStore {
     const state = await this.load();
     if (!state.userConnections) return;
     delete state.userConnections[userConnectionKey(tenantId, userId, crm)];
+    await this.save(state);
+  }
+
+  async listUserConnections(tenantId: string): Promise<UserConnectionState[]> {
+    const state = await this.load();
+    return Object.values(state.userConnections ?? {})
+      .filter((c) => c.tenantId === tenantId)
+      .sort((a, b) => b.changedAt.localeCompare(a.changedAt));
+  }
+
+  async kvGet(namespace: string, key: string): Promise<Record<string, unknown> | undefined> {
+    const state = await this.load();
+    const entry = state.kv?.[`${namespace}::${key}`];
+    if (!entry) return undefined;
+    if (entry.expiresAt && entry.expiresAt <= new Date().toISOString()) {
+      delete state.kv![`${namespace}::${key}`];
+      await this.save(state);
+      return undefined;
+    }
+    return entry.value;
+  }
+
+  async kvSet(
+    namespace: string,
+    key: string,
+    value: Record<string, unknown>,
+    expiresAt?: string,
+  ): Promise<void> {
+    const state = await this.load();
+    state.kv = {
+      ...(state.kv ?? {}),
+      [`${namespace}::${key}`]: { value, ...(expiresAt ? { expiresAt } : {}) },
+    };
+    await this.save(state);
+  }
+
+  async kvDelete(namespace: string, key: string): Promise<void> {
+    const state = await this.load();
+    if (!state.kv) return;
+    delete state.kv[`${namespace}::${key}`];
     await this.save(state);
   }
 
