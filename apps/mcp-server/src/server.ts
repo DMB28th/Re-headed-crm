@@ -83,9 +83,9 @@ const HOME_CARD_URI = "ui://cardstack/home-card";
 const FLOW_RUN_URI = "ui://cardstack/flow-run";
 
 /**
- * Async because tool descriptions are tenant-specific: the exposed views'
- * names + aliases are baked into crm_list_view's description so model routing
- * works ("show me my deals" → the view, not ad-hoc search).
+ * Async because the exposed-view list is resolved up front (home card tiles).
+ * Tool descriptions stay STATIC — clients cache them at load, so anything
+ * dynamic (which views exist) belongs in responses/errors, never descriptions.
  */
 export async function createCardstackServer(deps: ServerDeps): Promise<McpServer> {
   const server = new McpServer({ name: "Cardstack CRM", version: "0.0.1" });
@@ -169,12 +169,36 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         )
       ).flat();
 
-  const requireLayout = async (object: string): Promise<LayoutConfig> => {
-    const config = await configStore.getLayout(tenantId, object, userContext.audience);
+  // Chat-language synonym groups: a model asking for "deals" in a Salesforce
+  // workspace (or "opportunities" in a HubSpot one) resolves to whatever IS
+  // configured instead of erroring. Matching is against configured objects
+  // only — never invents an object.
+  const OBJECT_SYNONYMS: string[][] = [
+    ["deal", "deals", "opportunity", "opportunities"],
+    ["company", "companies", "account", "accounts"],
+    ["contact", "contacts", "person", "people"],
+    ["lead", "leads"],
+    ["case", "cases", "ticket", "tickets"],
+  ];
+
+  const resolveObjectName = (requested: string | undefined, configured: string[]): string | undefined => {
+    if (!requested) return configured[0]; // omitted → workspace default
+    const lower = requested.toLowerCase();
+    const ci = configured.find((o) => o.toLowerCase() === lower);
+    if (ci) return ci;
+    const group = OBJECT_SYNONYMS.find((g) => g.includes(lower));
+    return group && configured.find((o) => group.includes(o.toLowerCase()));
+  };
+
+  const requireLayout = async (requested?: string): Promise<LayoutConfig> => {
+    const configured = await configStore.listConfiguredObjects(tenantId);
+    const object = resolveObjectName(requested, configured);
+    const config = object
+      ? await configStore.getLayout(tenantId, object, userContext.audience)
+      : undefined;
     if (!config) {
-      const configured = await configStore.listConfiguredObjects(tenantId);
       throw new Error(
-        `No layout is configured for "${object}". Configured objects: ${configured.join(", ")}`,
+        `No layout is configured for "${requested ?? "(default)"}". Configured objects: ${configured.join(", ")}`,
       );
     }
     return config;
@@ -285,9 +309,10 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       description:
         "Search CRM records with ad-hoc filters and render an interactive results table. " +
         "Use openOnly to exclude closed/won/lost records; minAmount/maxAmount filter on the amount field. " +
+        "sortBy/sortDir order results server-side (\"biggest deals\" → sortBy the amount field, desc). " +
         "When the ask names a saved view (or is a broad ask like \"my deals\"), prefer crm_list_view.",
       inputSchema: {
-        object: z.string().default("deals").describe("Object API name, e.g. \"deals\""),
+        object: z.string().optional().describe("Object API name; omit for the workspace default"),
         query: z.string().optional().describe("Free-text search on record names"),
         stage: z.string().optional().describe("Stage filter — a stage LABEL or internal value; resolved either way"),
         openOnly: z.boolean().optional().describe("Only records not closed (won or lost)"),
@@ -296,6 +321,8 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         closingBefore: z.string().optional().describe("ISO date — only records with a close date on/before this"),
         minAmount: z.number().optional(),
         maxAmount: z.number().optional(),
+        sortBy: z.string().optional().describe("Field API name to sort by, e.g. the amount or close-date field"),
+        sortDir: z.enum(["asc", "desc"]).optional().describe("Sort direction; defaults to desc"),
         limit: z.number().int().positive().max(50).optional(),
         cursor: z.string().optional().describe("Opaque cursor from a previous page"),
       },
@@ -363,7 +390,12 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         const query: SearchQuery = {
           ...(args.query ? { text: args.query } : {}),
           ...(filters.length > 0 ? { filters } : {}),
-          ...(config.listView.defaultSort ? { sort: config.listView.defaultSort } : {}),
+          // Explicit ask beats the layout's default ordering.
+          ...(args.sortBy
+            ? { sort: { field: args.sortBy, dir: args.sortDir ?? "desc" } }
+            : config.listView.defaultSort
+              ? { sort: config.listView.defaultSort }
+              : {}),
           limit: args.limit ?? 10,
           ...(args.cursor ? { cursor: args.cursor } : {}),
         };
@@ -405,7 +437,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         "Render the configured record card for a single CRM record, with related lists and activity. " +
         "Pass id when known, otherwise a name query.",
       inputSchema: {
-        object: z.string().default("deals"),
+        object: z.string().optional().describe("Object API name; omit for the workspace default"),
         id: z.string().optional().describe("Record id, when known"),
         query: z.string().optional().describe("Name text to resolve when id is unknown"),
       },
@@ -463,7 +495,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       description:
         "Fetch related records for a parent record (pagination for record-card related lists).",
       inputSchema: {
-        object: z.string().default("deals"),
+        object: z.string().optional().describe("Object API name; omit for the workspace default"),
         recordId: z.string(),
         relationship: z.string().describe("Relationship API name, e.g. \"deal_contacts\""),
         limit: z.number().int().positive().max(50).optional(),
@@ -479,7 +511,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         );
         if (!rel) {
           throw new Error(
-            `Relationship "${args.relationship}" is not configured on the ${args.object} layout.`,
+            `Relationship "${args.relationship}" is not configured on the ${config.object} layout.`,
           );
         }
         const page = await adapter.getRelated(args.recordId, {
@@ -518,13 +550,15 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     {
       title: "Open a saved CRM view",
       description:
+        // NOTE: keep this description static — clients cache tool descriptions
+        // at load, so dynamic state (which views exist) baked in here goes
+        // stale. The live view list is returned in responses and errors.
         "Render a saved CRM view as an interactive table. PREFER this over crm_search when the ask " +
-        "names a saved view or is a broad possessive ask like \"my deals\"; use crm_search only for " +
-        "ad-hoc filters. Pass the user's phrasing as `query` — if it matches several views the widget " +
-        "shows a picker and the choice is remembered. Exposed views: " +
-        describeExposedViews(allExposedViews),
+        "names a saved view or is a broad possessive ask like \"my deals\" / \"my opportunities\"; use " +
+        "crm_search only for ad-hoc filters. Pass the user's phrasing as `query` — if it matches several " +
+        "views the widget shows a picker and the choice is remembered; responses list the exposed views.",
       inputSchema: {
-        object: z.string().default("deals"),
+        object: z.string().optional().describe("Object API name; omit for the workspace default"),
         view: z.string().optional().describe("Saved view id or exact name, when known"),
         query: z.string().optional().describe("The user's phrasing, for resolution + remembering"),
         cursor: z.string().optional().describe("Opaque cursor from a previous page"),
@@ -791,7 +825,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         "Write field changes to a CRM record. Only fields the layout marks editable are writable. " +
         "Returns per-field outcomes — a validation failure on one field does not block the others.",
       inputSchema: {
-        object: z.string().default("deals"),
+        object: z.string().optional().describe("Object API name; omit for the workspace default"),
         id: z.string(),
         patch: z
           .record(z.union([z.string(), z.number(), z.boolean(), z.null()]))
@@ -804,7 +838,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         await requireConnection();
         const config = await requireLayout(args.object);
         if (!config.permissions.writeEnabled) {
-          throw new Error(`Writes are disabled for ${args.object}.`);
+          throw new Error(`Writes are disabled for ${config.object}.`);
         }
         const describe = await adapter.describeObject(config.object);
         const describeByApi = new Map(describe.fields.map((f) => [f.api, f]));
@@ -941,7 +975,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       description:
         "Create a new CRM record. Denylisted and CRM read-only fields are not accepted.",
       inputSchema: {
-        object: z.string().default("deals"),
+        object: z.string().optional().describe("Object API name; omit for the workspace default"),
         fields: z
           .record(z.union([z.string(), z.number(), z.boolean(), z.null()]))
           .describe("Field API name → value"),
@@ -953,7 +987,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         await requireConnection();
         const config = await requireLayout(args.object);
         if (!config.permissions.writeEnabled) {
-          throw new Error(`Writes are disabled for ${args.object}.`);
+          throw new Error(`Writes are disabled for ${config.object}.`);
         }
         const describe = await adapter.describeObject(config.object);
         const describeByApi = new Map(describe.fields.map((f) => [f.api, f]));
@@ -961,7 +995,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         for (const field of Object.keys(args.fields)) {
           const meta = describeByApi.get(field);
           if (!meta || meta.readOnly || deny.some((d) => field === d || field.startsWith(`${d}.`))) {
-            throw new Error(`Field "${field}" is not writable for ${args.object}.`);
+            throw new Error(`Field "${field}" is not writable for ${config.object}.`);
           }
         }
         const created = await adapter.createRecord(
@@ -1006,7 +1040,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
   // HANDOFF rung is wired — the flow opens in the CRM, which owns the screens and
   // the write. Native/Embedded rungs are gated behind their spikes.
   const runFlow = async (
-    args: { object: string; recordId: string; flowApiName: string },
+    args: { object?: string; recordId: string; flowApiName: string },
     answers: Record<string, CrmFieldValue>,
     actionSessionId: string,
     tool: "crm_flow_start" | "crm_flow_continue",
@@ -1020,7 +1054,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       );
       if (!action) {
         throw new Error(
-          `Flow "${args.flowApiName}" is not configured on the ${args.object} card.`,
+          `Flow "${args.flowApiName}" is not configured on the ${config.object} card.`,
         );
       }
       const inputs = action.inputs ?? {};
@@ -1121,7 +1155,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         "chat, then call crm_flow_continue. When ready, the rep opens the flow in the CRM from the card. " +
         "Use when the user asks to run/start a named flow on a record.",
       inputSchema: {
-        object: z.string().default("deals"),
+        object: z.string().optional().describe("Object API name; omit for the workspace default"),
         recordId: z.string(),
         flowApiName: z.string(),
       },
@@ -1146,7 +1180,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         "Supply the answers a flow asked for (from crm_flow_start's pending inputs) and re-render the " +
         "flow-run card. Pass the actionSessionId from crm_flow_start and an answers map of input name → value.",
       inputSchema: {
-        object: z.string().default("deals"),
+        object: z.string().optional().describe("Object API name; omit for the workspace default"),
         recordId: z.string(),
         flowApiName: z.string(),
         actionSessionId: z.string(),

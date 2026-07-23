@@ -159,6 +159,19 @@ function soqlLiteral(value: CrmFieldValue | undefined, type?: FieldType): string
   return `'${soqlEscape(value)}'`;
 }
 
+/** Everything after `FROM <object>` in a listview describe's SOQL (USING SCOPE
+ *  + WHERE + ORDER BY), minus any trailing LIMIT — or null when the query is
+ *  missing/unparseable so the caller can fall back to the /results endpoint. */
+function soqlFromTail(query: string | undefined, objectApi: string): string | null {
+  if (!query) return null;
+  const m = new RegExp(`\\bFROM\\s+${objectApi}\\b`, "i").exec(query);
+  if (!m) return null;
+  return query
+    .slice(m.index + m[0].length)
+    .replace(/\s+LIMIT\s+\d+\s*$/i, "")
+    .replace(/\s+$/, "");
+}
+
 interface SfDescribeField {
   name: string;
   label: string;
@@ -173,11 +186,12 @@ interface SfDescribeField {
   relationshipName?: string | null;
 }
 
-// Convention fallback when describe omits relationshipName: OwnerId→Owner,
-// AccountId→Account, Foo__c→Foo__r.
+// Convention fallback when describe omits relationshipName — custom fields ONLY
+// (Foo__c→Foo__r is a hard Salesforce naming rule). For standard fields a null
+// relationshipName means traversal is NOT supported; guessing (ContactId→Contact
+// on Opportunity) produces one bad token that MALFORMED_QUERYs the whole SELECT.
 function deriveRelationshipName(fieldApi: string): string | null {
   if (fieldApi.endsWith("__c")) return `${fieldApi.slice(0, -3)}__r`;
-  if (fieldApi.endsWith("Id") && fieldApi.length > 2) return fieldApi.slice(0, -2);
   return null;
 }
 
@@ -667,17 +681,24 @@ export class SalesforceAdapter implements CrmAdapter {
     return { id: String(raw.Id ?? ""), fields };
   }
 
-  async search(objectApi: string, query: SearchQuery): Promise<RecordPage> {
-    const describe = await this.describeObject(objectApi);
-    const typeOf = (api: string) => describe.fields.find((f) => f.api === api)?.type;
-    const refs = await this.refFields(objectApi);
-    // Reference fields are selected as `Relationship.Name` so ids display as names.
+  /** All queryable columns for an object, with reference fields expanded to
+   *  `Relationship.Name` so ids display as names. Shared by search() and
+   *  getViewRows() so both paths return identical shapes. */
+  private selectColumns(describe: ObjectDescribe, refs: Map<string, string>): Set<string> {
     const selectCols = new Set<string>(["Id"]);
     for (const f of describe.fields) {
       if (f.api === "Id") continue;
       if (f.type === "reference") for (const c of this.refColumns(f.api, refs)) selectCols.add(c);
       else selectCols.add(f.api);
     }
+    return selectCols;
+  }
+
+  async search(objectApi: string, query: SearchQuery): Promise<RecordPage> {
+    const describe = await this.describeObject(objectApi);
+    const typeOf = (api: string) => describe.fields.find((f) => f.api === api)?.type;
+    const refs = await this.refFields(objectApi);
+    const selectCols = this.selectColumns(describe, refs);
     // Reject filter/sort on fields not on the object — blocks MALFORMED_QUERY and
     // stops a prompt-injected model probing denied fields through the WHERE clause.
     const known = new Set(describe.fields.map((f) => f.api));
@@ -826,6 +847,47 @@ export class SalesforceAdapter implements CrmAdapter {
     const objectApi = await this.objectForView(viewId);
     const offset = cursor ? Number.parseInt(cursor, 10) || 0 : 0;
     const limit = 25;
+    // The listview describe's `query` is the executable SOQL for the view.
+    // Keep its FROM-tail (USING SCOPE + WHERE + ORDER BY — the view's actual
+    // semantics) but select our own columns through the same path as search(),
+    // so rows come back as typed sObjects (ISO dates, numeric currency,
+    // Owner.Name resolution) instead of the /results endpoint's display
+    // strings ("Mon May 18 00:00:00 GMT 2026", "235000.0", raw 005… ids).
+    const viewDescribe = await this.request<{ query?: string }>(
+      "GET",
+      `${API}/sobjects/${objectApi}/listviews/${viewId}/describe`,
+    ).catch(() => ({}) as { query?: string });
+    const tail = soqlFromTail(viewDescribe.query, objectApi);
+    if (tail === null) return this.getViewRowsRaw(objectApi, viewId, offset, limit);
+
+    const describe = await this.describeObject(objectApi);
+    const refs = await this.refFields(objectApi);
+    const cols = this.selectColumns(describe, refs);
+    const soql = `SELECT ${[...cols].join(", ")} FROM ${objectApi}${tail} LIMIT ${limit} OFFSET ${offset}`;
+    // COUNT() rejects ORDER BY — count against the tail without it.
+    const countTail = tail.replace(/\s+ORDER\s+BY[\s\S]*$/i, "");
+    const [page, count] = await Promise.all([
+      this.soql<Record<string, unknown>>(soql),
+      this.soql<never>(`SELECT COUNT() FROM ${objectApi}${countTail}`).catch(() => null),
+    ]);
+    const total = count?.totalSize;
+    const hasMore = total !== undefined ? offset + limit < total : page.records.length === limit;
+    return {
+      rows: page.records.map((r) => this.recordFromSObject(r, refs)),
+      ...(total !== undefined ? { total } : {}),
+      hasMore,
+      ...(hasMore ? { cursor: String(offset + limit) } : {}),
+    };
+  }
+
+  /** Legacy fallback when the view describe has no usable SOQL: the /results
+   *  endpoint's display values (pre-formatted strings, unresolved ids). */
+  private async getViewRowsRaw(
+    objectApi: string,
+    viewId: string,
+    offset: number,
+    limit: number,
+  ): Promise<RecordPage> {
     const data = await this.request<{
       done: boolean;
       records: {

@@ -230,13 +230,16 @@ describe("golden path 2: confirmed write → receipt → audit", () => {
 });
 
 describe("M2.5: saved views (crm_list_view)", () => {
-  it("bakes exposed views + aliases into the tool description for model routing", async () => {
+  it("keeps the tool description static — no dynamic view names baked in", async () => {
+    // Clients cache descriptions at load; a baked-in view list goes stale the
+    // moment exposures change (seen live: "No saved views are exposed" while
+    // views existed). Routing guidance stays; the live list rides in responses.
     const { tools } = await client.listTools();
     const listView = tools.find((t) => t.name === "crm_list_view")!;
-    expect(listView.description).toContain('"My open deals"');
-    expect(listView.description).toContain("my deals");
-    expect(listView.description).toContain("[default]");
-    expect(listView.description).not.toContain("Big deals"); // unexposed stays invisible
+    expect(listView.description).toContain("my deals"); // static routing guidance
+    expect(listView.description).not.toContain('"My open deals"');
+    expect(listView.description).not.toContain("[default]");
+    expect(listView.description).not.toContain("Big deals");
   });
 
   it("resolves a unique alias directly to the view's rows", async () => {
