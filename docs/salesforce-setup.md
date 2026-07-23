@@ -87,7 +87,8 @@ http://localhost:3002/api/user-connections/salesforce/oauth/callback
 - **Require Proof Key for Code Exchange (PKCE)** — can stay **on**. Cardstack sends an S256
   `code_challenge` on the authorize request and the matching `code_verifier` at token exchange
   (confidential client + PKCE). No Salesforce Support case is needed to relax this.
-- **Refresh Token Rotation** — optional; if on, validate a reconnect before locking controls.
+- **Refresh Token Rotation** — supported (on or off). Cardstack persists the rotated refresh
+  token on each refresh, so a rotation-enabled org keeps working past the first token refresh.
 
 **Permitted Users**
 - Development: *All users may self-authorize* is easiest.

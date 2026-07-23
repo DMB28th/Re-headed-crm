@@ -332,12 +332,24 @@ export class SalesforceAdapter implements CrmAdapter {
     return this.closedStageValues;
   }
 
+  /** Mutable so a ROTATED refresh token (Salesforce rotation policy) is used on
+   *  the next refresh and can be persisted via onRefresh. */
+  private refreshToken: string | null;
+
   constructor(
     private readonly credentials: SalesforceCredentials,
     private readonly fetchImpl: FetchLike = fetch,
+    /**
+     * Called after a successful OAuth refresh with the updated credentials
+     * (new access token, and — critically for rotation-enabled orgs — the new
+     * refresh token). The caller persists these so the connection survives past
+     * the first refresh. Fire-and-forget; failures must not break the request.
+     */
+    private readonly onRefresh?: (credentials: SalesforceCredentials) => void,
   ) {
     this.token = credentials.accessToken ?? null;
     this.instanceUrl = credentials.instanceUrl ?? null;
+    this.refreshToken = credentials.refreshToken ?? null;
   }
 
   private get base(): string {
@@ -350,17 +362,27 @@ export class SalesforceAdapter implements CrmAdapter {
 
   private async fetchToken(): Promise<string> {
     if (salesforceUsesOAuth(this.credentials as unknown as Record<string, string>)) {
-      if (!this.credentials.refreshToken) {
+      if (!this.refreshToken) {
         throw new CrmAuthError("Salesforce", "Salesforce authorization is missing a refresh token.");
       }
       const data = await postToken(this.fetchImpl, this.credentials.loginUrl, {
         grant_type: "refresh_token",
         client_id: this.credentials.clientId,
         client_secret: this.credentials.clientSecret,
-        refresh_token: this.credentials.refreshToken,
+        refresh_token: this.refreshToken,
       });
       this.token = data.access_token!;
       this.instanceUrl = data.instance_url ?? this.instanceUrl ?? this.credentials.instanceUrl ?? null;
+      // Rotation policy issues a NEW refresh token and invalidates the old one.
+      // Keep using it in-process, and persist so the NEXT cold adapter doesn't
+      // refresh with the now-dead token.
+      if (data.refresh_token) this.refreshToken = data.refresh_token;
+      this.onRefresh?.({
+        ...this.credentials,
+        accessToken: this.token,
+        refreshToken: this.refreshToken,
+        ...(this.instanceUrl ? { instanceUrl: this.instanceUrl } : {}),
+      });
       return this.token;
     }
 

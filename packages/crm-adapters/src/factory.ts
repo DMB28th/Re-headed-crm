@@ -22,6 +22,13 @@ export interface ConnectionSettings {
    * one that triggered it.
    */
   cacheNonce?: string;
+  /**
+   * Persist rotated Salesforce OAuth credentials (new access + refresh token)
+   * back to the store. Not part of the cache key — it's a side channel keyed to
+   * the same credential set. Without it, a rotation-enabled org's connection
+   * dies on the first token refresh.
+   */
+  onCredentialsRefreshed?: (credentials: Record<string, string>) => void;
 }
 
 let mockSingleton: MockCrmAdapter | undefined;
@@ -57,7 +64,13 @@ export function createAdapterForConnection(settings: ConnectionSettings): CrmAda
   const adapter =
     settings.crm === "hubspot"
       ? new HubSpotAdapter(settings.credentials as unknown as HubSpotCredentials)
-      : new SalesforceAdapter(settings.credentials as unknown as SalesforceCredentials);
+      : new SalesforceAdapter(
+          settings.credentials as unknown as SalesforceCredentials,
+          undefined,
+          settings.onCredentialsRefreshed
+            ? (creds) => settings.onCredentialsRefreshed!(creds as unknown as Record<string, string>)
+            : undefined,
+        );
   liveCache.set(key, adapter);
   return adapter;
 }

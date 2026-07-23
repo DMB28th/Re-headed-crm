@@ -418,4 +418,42 @@ describe("Salesforce OAuth hardening (PKCE + loginUrl allowlist)", () => {
     );
     expect(() => normalizeSalesforceLoginUrl("http://login.salesforce.com")).toThrow(/https/);
   });
+
+  it("persists a rotated refresh token via the onRefresh callback", async () => {
+    const refreshed: { accessToken?: string; refreshToken?: string }[] = [];
+    const { impl } = fetchStub([
+      (url, init) =>
+        url.includes("/services/oauth2/token") && init?.method === "POST"
+          ? {
+              status: 200,
+              json: {
+                access_token: "new-access",
+                refresh_token: "RT2", // rotation: a NEW refresh token
+                instance_url: "https://x.my.salesforce.com",
+              },
+            }
+          : undefined,
+      // userinfo (getConnectedUser) after the token refresh
+      (url) =>
+        url.includes("/services/oauth2/userinfo")
+          ? { status: 200, json: { name: "Rep", preferred_username: "rep@x.com" } }
+          : undefined,
+    ]);
+    const adapter = new SalesforceAdapter(
+      {
+        authType: "oauth",
+        loginUrl: "https://login.salesforce.com",
+        clientId: "k",
+        clientSecret: "s",
+        refreshToken: "RT1", // stale after rotation
+        instanceUrl: "https://x.my.salesforce.com",
+      },
+      impl,
+      (creds) => refreshed.push(creds),
+    );
+    await adapter.getConnectedUser().catch(() => undefined);
+    expect(refreshed.length).toBeGreaterThan(0);
+    expect(refreshed[0]?.refreshToken).toBe("RT2");
+    expect(refreshed[0]?.accessToken).toBe("new-access");
+  });
 });

@@ -5,8 +5,12 @@
 import express from "express";
 import cors from "cors";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createAdapterForConnection, salesforceUsesOAuth } from "@cardstack/crm-adapters";
-import { createPostgresConfigStore, type ConfigStore } from "@cardstack/config-store";
+import {
+  createAdapterForConnection,
+  salesforceUsesOAuth,
+  type ConnectionSettings,
+} from "@cardstack/crm-adapters";
+import { createPostgresConfigStore, type AdminConfigStore } from "@cardstack/config-store";
 import { createCardstackServer } from "./server.js";
 import { defaultConfigPath, FileConfigStore, DEMO_TENANT_ID } from "./config/store.js";
 import { userContextFromHeaders } from "./auth.js";
@@ -38,7 +42,7 @@ const auditLog: AuditLog = process.env.DATABASE_URL
     : new InMemoryAuditLog();
 console.log(`audit log: ${process.env.DATABASE_URL ? "postgres" : "file"}`);
 const preferences = new InMemoryPreferenceStore();
-const configStore: ConfigStore = process.env.DATABASE_URL
+const configStore: AdminConfigStore = process.env.DATABASE_URL
   ? await createPostgresConfigStore(process.env.DATABASE_URL)
   : new FileConfigStore(defaultConfigPath());
 console.log(`config store: ${process.env.DATABASE_URL ? "postgres" : "file"}`);
@@ -112,7 +116,7 @@ app.all("/mcp", async (req, res) => {
   }
   const userContext = userContextFromHeaders({ get: (name) => req.header(name) });
   const connection = await configStore.getConnection(userContext.tenantId);
-  let adapterSettings = {
+  let adapterSettings: ConnectionSettings = {
     crm: connection.crm,
     ...(connection.credentials ? { credentials: connection.credentials } : {}),
     // Shared with Studio via the store: a refresh bumps changedAt, which busts
@@ -134,6 +138,7 @@ app.all("/mcp", async (req, res) => {
       !!userConnection?.credentials?.clientId &&
       userConnection.credentials.clientId === connection.credentials?.clientId;
     if (userConnection?.status === "connected" && userConnection.credentials && sameOauthApp) {
+      const liveUserConnection = userConnection;
       adapterSettings = {
         crm: "salesforce",
         credentials: {
@@ -145,6 +150,16 @@ app.all("/mcp", async (req, res) => {
             : {}),
         },
         cacheNonce: userConnection.changedAt,
+        // Persist rotated tokens back to the per-user connection (minus the
+        // shared client secret, which is never stored per user).
+        onCredentialsRefreshed: (credentials) => {
+          const { clientSecret: _omit, ...userCreds } = credentials;
+          void configStore.setUserConnection({
+            ...liveUserConnection,
+            credentials: userCreds,
+            changedAt: new Date().toISOString(),
+          });
+        },
       };
     } else {
       const studioBase = (process.env.CARDSTACK_STUDIO_URL ?? "http://localhost:3002").replace(/\/$/, "");

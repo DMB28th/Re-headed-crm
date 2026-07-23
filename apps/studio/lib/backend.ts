@@ -46,12 +46,22 @@ export function getAuditLog(): Promise<AuditLog> {
 
 /** The tenant's adapter per its CURRENT connection (read fresh each call). */
 export async function getAdapter(tenantId = TENANT_ID): Promise<CrmAdapter> {
-  const connection = await (await getStore()).getConnection(tenantId);
+  const store = await getStore();
+  const connection = await store.getConnection(tenantId);
   return createAdapterForConnection({
     crm: connection.crm,
     ...(connection.credentials ? { credentials: connection.credentials } : {}),
     // Busts the cache (in every process) whenever the connection is written —
     // connect, disconnect, or an explicit refresh.
     cacheNonce: connection.changedAt,
+    // Persist rotated Salesforce OAuth tokens back to the admin connection so a
+    // rotation-enabled org survives past the first token refresh.
+    onCredentialsRefreshed: (credentials) => {
+      void store.setConnection({
+        ...connection,
+        credentials,
+        changedAt: new Date().toISOString(),
+      });
+    },
   });
 }
