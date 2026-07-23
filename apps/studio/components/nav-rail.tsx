@@ -52,6 +52,7 @@ export function NavRail() {
   const [data, setData] = useState<ObjectsData | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/objects");
@@ -65,6 +66,7 @@ export function NavRail() {
 
   const addObject = async (api: string) => {
     setAdding(api);
+    setAddError(null);
     try {
       const res = await fetch("/api/objects", {
         method: "POST",
@@ -75,7 +77,14 @@ export function NavRail() {
         setPickerOpen(false);
         await load();
         router.push(`/objects/${api}/layouts`);
+        return;
       }
+      // Surface the failure instead of silently doing nothing (a describe error,
+      // a scope gap, or a misconfigured server all landed here invisibly before).
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      setAddError(json.error ?? `Couldn't add ${api} (HTTP ${res.status}).`);
+    } catch (err) {
+      setAddError(String(err));
     } finally {
       setAdding(null);
     }
@@ -175,6 +184,11 @@ export function NavRail() {
         {connected && data?.customObjectsBlocked && (
           <div className="mx-2.5 mt-2 rounded-[8px] bg-draft px-2.5 py-1.5 text-[11px] leading-snug text-draft-ink">
             {data.customObjectsBlocked}
+          </div>
+        )}
+        {addError && (
+          <div className="mx-2.5 mt-2 rounded-[8px] bg-drift px-2.5 py-1.5 text-[11px] leading-snug text-drift-ink">
+            {addError}
           </div>
         )}
       </div>
