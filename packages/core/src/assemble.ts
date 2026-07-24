@@ -41,6 +41,8 @@ export interface PayloadSource {
   getRelated(parentId: string, rel: RelatedListConfig): Promise<RecordPage>;
   getActivity(objectApi: string, id: string, limit: number): Promise<ActivityEntry[]>;
   getConnectedUser(): Promise<string>;
+  /** Deep link to a record in the CRM's own UI, when the adapter can build one. */
+  recordUrl?(objectApi: string, id: string): string | undefined;
 }
 
 const CRM_LABELS = { salesforce: "Salesforce", hubspot: "HubSpot" } as const;
@@ -173,6 +175,7 @@ export async function buildRecordCardPayload(args: {
     describe.fields.map((f) => [f.api, f]),
   );
 
+  const crmUrl = source.recordUrl?.(config.object, args.record.id);
   return {
     kind: "record-card",
     layout: config,
@@ -185,6 +188,7 @@ export async function buildRecordCardPayload(args: {
       ...provenanceFor(config),
       connectedUser: await source.getConnectedUser(),
     },
+    ...(crmUrl ? { crmUrl } : {}),
   };
 }
 

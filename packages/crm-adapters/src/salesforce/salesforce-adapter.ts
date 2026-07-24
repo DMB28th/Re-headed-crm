@@ -895,6 +895,13 @@ export class SalesforceAdapter implements CrmAdapter {
   /** Recent field changes (from the object's history entity, when tracking is
    *  on) merged with recent tasks. Each source degrades to [] on its own —
    *  orgs without history tracking still get tasks, and vice versa. */
+  /** Lightning deep link — "View in Salesforce" on the record card. */
+  recordUrl(objectApi: string, id: string): string | undefined {
+    const base = (this.instanceUrl ?? this.credentials.instanceUrl)?.replace(/\/$/, "");
+    if (!base || !SF_API_NAME.test(objectApi) || !/^[a-zA-Z0-9]{15,18}$/.test(id)) return undefined;
+    return `${base}/lightning/r/${objectApi}/${id}/view`;
+  }
+
   async getActivity(objectApi: string, id: string, limit: number): Promise<ActivityEntry[]> {
     const describe = await this.describeObject(objectApi).catch(() => null);
     const labelOf = (api: string) =>

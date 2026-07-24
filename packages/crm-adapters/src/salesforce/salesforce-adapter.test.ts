@@ -609,6 +609,19 @@ describe("Salesforce-first metadata (dynamic objects + relationships)", () => {
     ).rejects.toThrow('Unknown field "NotAField"');
   });
 
+  it("recordUrl builds a Lightning deep link and refuses malformed ids", () => {
+    const { impl } = fetchStub([tokenHandler(), globalHandler, orgHandler]);
+    const adapter = new SalesforceAdapter(
+      { ...CREDS, instanceUrl: "https://org.my.salesforce.com/" },
+      impl,
+    );
+    expect(adapter.recordUrl("Opportunity", "006dL00000QUE1lQAH")).toBe(
+      "https://org.my.salesforce.com/lightning/r/Opportunity/006dL00000QUE1lQAH/view",
+    );
+    expect(adapter.recordUrl("Opportunity", "not-an-id!/../x")).toBeUndefined();
+    expect(adapter.recordUrl("Bad Object", "006dL00000QUE1lQAH")).toBeUndefined();
+  });
+
   it("getActivity merges field history with tasks, newest first", async () => {
     const { impl } = fetchStub([
       tokenHandler(),

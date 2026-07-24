@@ -534,3 +534,29 @@ button.rc-contact--clickable:hover {
   font-size: 12.5px;
   padding: 6px 0;
 }
+
+/* Card navigation (R10): home hop + CRM deep link, above the header. */
+.rc-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+.rc-nav-link {
+  border: none;
+  background: none;
+  padding: 2px 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--cs-text-secondary);
+  cursor: pointer;
+}
+.rc-nav-link:hover {
+  color: var(--cs-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.rc-nav-link:disabled {
+  cursor: default;
+  opacity: 0.7;
+}

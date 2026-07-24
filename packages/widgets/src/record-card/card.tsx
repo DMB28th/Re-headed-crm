@@ -13,6 +13,7 @@ import type {
   CardAction,
   CrmFieldValue,
   FieldWriteResult,
+  HomeCardPayload,
   LayoutSection,
   RecordCardPayload,
   RecordPage,
@@ -28,6 +29,8 @@ import {
   StagePill,
 } from "../shared/components.tsx";
 import { formatRelative, formatValue, initials, stageTone } from "../shared/format.ts";
+import { HomeCard } from "../home-card/card.tsx";
+import "../home-card/home-card.css";
 import { dirtyCount, type CardMode, type Draft } from "./edit-machine.ts";
 import { FieldInput } from "./editors.tsx";
 import { DiffTable, PartialFailureView, ReceiptView } from "./write-states.tsx";
@@ -67,11 +70,15 @@ export function RecordCard({
   const [drill, setDrill] = useState<RecordCardPayload | null>(null);
   const [drillLoading, setDrillLoading] = useState<string | null>(null);
   const [drillError, setDrillError] = useState<string | null>(null);
+  // "Your lists" — the home card rendered in place (one screen, no chat turn).
+  const [homeView, setHomeView] = useState<HomeCardPayload | null>(null);
+  const [homeLoading, setHomeLoading] = useState(false);
   // Field-name filter for big/generated all-fields cards.
   const [fieldQuery, setFieldQuery] = useState("");
   useEffect(() => {
     setDrill(null);
     setDrillError(null);
+    setHomeView(null);
     setFieldQuery("");
   }, [payload]);
 
@@ -107,6 +114,26 @@ export function RecordCard({
     const id = record.refs?.[api];
     const targets = meta[api]?.referenceTo;
     return id && targets?.length === 1 ? { object: targets[0]!, id } : null;
+  };
+
+  const openHome = async () => {
+    if (!host || homeLoading) return;
+    setHomeLoading(true);
+    setDrillError(null);
+    try {
+      const result = await host.callTool("crm_home", {});
+      const data = result.structuredContent as HomeCardPayload | undefined;
+      if (!result.isError && data?.kind === "home-card") {
+        setHomeView(data);
+      } else {
+        const text = result.content?.find((c) => c.type === "text")?.text;
+        setDrillError(text ?? "Couldn't open your lists.");
+      }
+    } catch (error) {
+      setDrillError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setHomeLoading(false);
+    }
   };
 
   if (sections.length === 0) {
@@ -221,6 +248,18 @@ export function RecordCard({
       `Create a new ${action.object} related to "${titleText}" (id ${record.id})`,
     );
 
+  // "Your lists" replaces the card with the real home card until Back.
+  if (homeView) {
+    return (
+      <div className="rc-drill">
+        <button type="button" className="rc-back" onClick={() => setHomeView(null)}>
+          ← Back to {titleText}
+        </button>
+        <HomeCard payload={homeView} locale={locale} host={host} />
+      </div>
+    );
+  }
+
   // Drill-through view replaces this card until "Back" (recursive: the nested
   // card has its own drill, related lists, even edit flow if its layout allows).
   if (drill) {
@@ -259,6 +298,27 @@ export function RecordCard({
 
   return (
     <div className="cs-card">
+      {host && mode.kind === "ready" && (
+        <nav className="rc-nav" aria-label="Card navigation">
+          <button
+            type="button"
+            className="rc-nav-link"
+            onClick={() => void openHome()}
+            disabled={homeLoading}
+          >
+            {homeLoading ? "Opening…" : "⌂ Your lists"}
+          </button>
+          {payload.crmUrl && host.openLink && (
+            <button
+              type="button"
+              className="rc-nav-link"
+              onClick={() => host.openLink!(payload.crmUrl!)}
+            >
+              View in {provenance.crmLabel} ↗
+            </button>
+          )}
+        </nav>
+      )}
       <header className="rc-header">
         <div className="rc-header-main">
           <h1 className="rc-title">{title ?? <NullValue />}</h1>
@@ -658,7 +718,10 @@ function RelatedList({
 
   return (
     <section className="rc-related">
-      <h2 className="rc-section-label">{rel.relationship.replace(/_/g, " ")}</h2>
+      {/* "OpportunityLineItems" / "deal_contacts" → "Opportunity Line Items" / "deal contacts" */}
+      <h2 className="rc-section-label">
+        {rel.relationship.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2")}
+      </h2>
       {rows.length === 0 && (
         <div className="cs-muted" style={{ fontSize: 12.5 }}>
           <NullValue /> none linked

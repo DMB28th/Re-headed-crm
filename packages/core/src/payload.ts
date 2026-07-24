@@ -52,6 +52,8 @@ export interface RecordCardPayload {
   activity: ActivityEntry[];
   capabilities: WidgetCapabilities;
   provenance: WidgetProvenance;
+  /** Deep link to this record in the CRM's own UI ("View in Salesforce"). */
+  crmUrl?: string;
 }
 
 /** structuredContent for crm_search / crm_list_view → the results-table widget. */
