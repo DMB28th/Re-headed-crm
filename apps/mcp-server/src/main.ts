@@ -1,4 +1,5 @@
 /**
+ * Deploy touch 2026-07-24: R10 is packages-only; watch patterns need an apps/ change.
  * HTTP entry: streamable HTTP, stateless JSON — a fresh McpServer + transport
  * per request, nothing held in memory between calls (PLAN.md multi-tenancy rule).
  *
