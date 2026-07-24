@@ -83,12 +83,26 @@ const BLOCK_META: Record<
   },
 };
 
+/** Starting draft when a tenant has never published a home card (all blocks on). */
+const defaultHomeCard = (tenantId: string): HomeCardConfig => ({
+  version: 1,
+  tenantId,
+  audience: "default",
+  revision: 1,
+  blocks: [
+    { type: "lists", source: "all", maxTiles: 4, viewIds: [] },
+    { type: "recent", limit: 3 },
+    { type: "followups", limit: 5 },
+  ],
+});
+
 export function HomeCardBuilder() {
   const [config, setConfig] = useState<HomeCardConfig | null>(null);
   const [exposedViews, setExposedViews] = useState<ExposedViewInfo[]>([]);
   const [connectedUser, setConnectedUser] = useState<string>("the rep");
   const [liveHubspot, setLiveHubspot] = useState(false);
-  const [publishedRevision, setPublishedRevision] = useState<number>(1);
+  // null = nothing published yet (fresh tenant): builder starts from a default draft.
+  const [publishedRevision, setPublishedRevision] = useState<number | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [publishedNote, setPublishedNote] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -106,6 +120,7 @@ export function HomeCardBuilder() {
           exposedViews: ExposedViewInfo[];
           connectedUser: string | null;
           connection?: { crm: string; live?: boolean };
+          currentUser?: { tenantId: string };
           error?: string;
         };
         if (!res.ok || data.error) {
@@ -115,6 +130,14 @@ export function HomeCardBuilder() {
         if (data.homeCard) {
           setConfig(data.homeCard);
           setPublishedRevision(data.homeCard.revision);
+        } else if (data.currentUser) {
+          // No card published yet — start from the default draft so the admin
+          // can configure and publish rather than staring at a spinner.
+          setConfig(defaultHomeCard(data.currentUser.tenantId));
+          setPublishedRevision(null);
+        } else {
+          setLoadError("No home card and no tenant context came back — check the connection.");
+          return;
         }
         setExposedViews(data.exposedViews);
         if (data.connectedUser) setConnectedUser(data.connectedUser);
@@ -187,7 +210,8 @@ export function HomeCardBuilder() {
   };
 
   const listsBlock = blockOf("lists");
-  const dirty = config.revision === publishedRevision; // revision bumps only on publish
+  // Revision bumps only on publish; null = never published, always publishable.
+  const dirty = publishedRevision === null || config.revision === publishedRevision;
 
   const blockBody = (type: HomeCardBlock["type"]) => {
     if (type !== "lists" || !listsBlock) return null;
@@ -265,7 +289,9 @@ export function HomeCardBuilder() {
       <header className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <h1 className="text-[16px] font-semibold">Home card</h1>
-          <span className="st-chip-mono bg-published text-published-ink">v{publishedRevision}</span>
+          <span className="st-chip-mono bg-published text-published-ink">
+            {publishedRevision === null ? "draft" : `v${publishedRevision}`}
+          </span>
           <span className="text-[11.5px] text-ink-45">
             {publishedNote ? "Published" : "The launcher reps get for “open my CRM”"}
           </span>

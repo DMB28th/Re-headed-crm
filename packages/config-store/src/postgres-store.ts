@@ -21,6 +21,9 @@
  * - 2026-07-20: added `flow_render_modes`, `custom_screens`, and
  *   `user_connections` for per-user Salesforce OAuth. Additive tables; missing
  *   rows mean defaults/empty.
+ * - 2026-07-24: demo seeding of view_exposures/home_cards now runs on every
+ *   boot (ON CONFLICT DO NOTHING) instead of only when layout_configs is
+ *   empty — databases seeded before M4 were missing their home_cards row.
  */
 import {
   CustomScreenConfig as CustomScreenSchema,
@@ -162,6 +165,19 @@ export class PostgresConfigStore implements AdminConfigStore {
       await this.sql.query(statement);
     }
     if (!seedDemo) return;
+    // These two are ON CONFLICT DO NOTHING, so they run every boot: a database
+    // seeded before one of these tables existed (e.g. pre-M4, no home_cards)
+    // still gets its demo row backfilled without clobbering admin edits.
+    await this.sql.query(
+      "INSERT INTO view_exposures (tenant_id, object, config) VALUES ($1,$2,$3) ON CONFLICT (tenant_id, object) DO NOTHING",
+      [demoViewExposures.tenantId, demoViewExposures.object, JSON.stringify(demoViewExposures)],
+    );
+    await this.sql.query(
+      "INSERT INTO home_cards (tenant_id, audience, config) VALUES ($1,$2,$3) ON CONFLICT (tenant_id, audience) DO NOTHING",
+      [demoHomeCard.tenantId, demoHomeCard.audience, JSON.stringify(demoHomeCard)],
+    );
+    // layout_configs has no uniqueness across revisions, so this one stays
+    // guarded by "has this tenant ever been seeded".
     const { rows } = await this.sql.query(
       "SELECT 1 FROM layout_configs WHERE tenant_id = $1 LIMIT 1",
       [demoDealsLayout.tenantId],
@@ -176,14 +192,6 @@ export class PostgresConfigStore implements AdminConfigStore {
         demoDealsLayout.revision,
         JSON.stringify(demoDealsLayout),
       ],
-    );
-    await this.sql.query(
-      "INSERT INTO view_exposures (tenant_id, object, config) VALUES ($1,$2,$3) ON CONFLICT (tenant_id, object) DO NOTHING",
-      [demoViewExposures.tenantId, demoViewExposures.object, JSON.stringify(demoViewExposures)],
-    );
-    await this.sql.query(
-      "INSERT INTO home_cards (tenant_id, audience, config) VALUES ($1,$2,$3) ON CONFLICT (tenant_id, audience) DO NOTHING",
-      [demoHomeCard.tenantId, demoHomeCard.audience, JSON.stringify(demoHomeCard)],
     );
   }
 
