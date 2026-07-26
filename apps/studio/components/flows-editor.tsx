@@ -1,30 +1,86 @@
 "use client";
 /**
- * Flows (design 10c/11d): synced CRM flows plus Cardstack render-mode policy.
- * Runtime tools land next; this page is the durable admin contract they read.
+ * Flows (redesigned 2026-07-26; deviation from the original render-mode-only
+ * 10c/11d page, per product direction): the org's EXISTING screen flows are
+ * the catalog — nothing is authored here. For each flow the admin sees what
+ * the in-chat interpreter can do with it (Chat-ready / Partial / Opens in
+ * CRM), toggles which object cards expose it, and reviews the automatic
+ * input mapping (recordId always flows; name-matched fields map themselves;
+ * the flow's own screens collect the rest). Enabling publishes immediately —
+ * layout history keeps every revision rollbackable.
  */
 import { useEffect, useMemo, useState } from "react";
-import type { FlowRenderMode, FlowRenderModeConfig, FlowSummary } from "@cardstack/core";
+import type { FlowRenderMode, FlowRenderModeConfig, FlowSupportReport } from "@cardstack/core";
 import { LoadFailed } from "./load-failed";
 
-const MODES: { value: FlowRenderMode; label: string; note: string }[] = [
-  { value: "auto", label: "Auto", note: "Native first, embed when needed, hand off if blocked." },
-  { value: "native", label: "Native", note: "Only host-native controls; unsupported screens must be mapped." },
-  { value: "embedded", label: "Embedded", note: "Salesforce renders the screen inside a guarded boundary." },
-  { value: "handoff", label: "Handoff", note: "Always open in Salesforce and resume from chat." },
-];
+interface FlowRow {
+  api: string;
+  label: string;
+  screens: number;
+  writesSummary: string;
+  support: FlowSupportReport | null;
+  inputVariables: { name: string; dataType: string }[];
+  assignedTo: { object: string; label: string }[];
+}
 
 interface FlowsResponse {
-  flows: FlowSummary[];
+  flows: FlowRow[];
   modes: FlowRenderModeConfig[];
+  objects: string[];
   connection: { status: "connected" | "disconnected"; crm: "hubspot" | "salesforce"; live?: boolean };
   error?: string;
+}
+
+const MODES: { value: FlowRenderMode; label: string }[] = [
+  { value: "auto", label: "Auto" },
+  { value: "native", label: "Native" },
+  { value: "handoff", label: "Handoff" },
+];
+
+function SupportBadge({ support }: { support: FlowSupportReport | null }) {
+  if (!support) {
+    return (
+      <span
+        className="st-chip-mono bg-paper text-ink-45"
+        title="This flow's definition isn't readable (installed/managed flow) — it opens in the CRM."
+      >
+        Opens in CRM
+      </span>
+    );
+  }
+  if (support.level === "full") {
+    return (
+      <span className="st-chip-mono bg-published text-published-ink" title="Every screen and element renders in chat.">
+        Chat-ready
+      </span>
+    );
+  }
+  if (support.level === "partial") {
+    const blockers = support.blockers
+      .slice(0, 4)
+      .map((b) => `${b.name}: ${b.reason}`)
+      .join("\n");
+    return (
+      <span
+        className="st-chip-mono bg-crmmeta text-crmmeta-ink"
+        title={`Renders in chat until a blocked element, then opens in the CRM.\n${blockers}`}
+      >
+        Partial · {support.blockers.length} blocker{support.blockers.length === 1 ? "" : "s"}
+      </span>
+    );
+  }
+  return (
+    <span className="st-chip-mono bg-paper text-ink-45" title="No screens to render — opens in the CRM.">
+      Opens in CRM
+    </span>
+  );
 }
 
 export function FlowsEditor() {
   const [data, setData] = useState<FlowsResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [savedFlow, setSavedFlow] = useState<string | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -49,6 +105,57 @@ export function FlowsEditor() {
     [data],
   );
 
+  const toggleAssignment = async (flow: FlowRow, object: string, enabled: boolean) => {
+    const key = `${flow.api}:${object}`;
+    setBusyKey(key);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/flows/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ flowApiName: flow.api, object, enabled }),
+      });
+      const json = (await res.json()) as {
+        ok?: boolean;
+        revision?: number;
+        mappedInputs?: string[];
+        error?: string;
+      };
+      if (!res.ok || !json.ok) {
+        setLoadError(json.error ?? `Request failed (${res.status}).`);
+        return;
+      }
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              flows: prev.flows.map((f) =>
+                f.api !== flow.api
+                  ? f
+                  : {
+                      ...f,
+                      assignedTo: enabled
+                        ? [...f.assignedTo, { object, label: f.label }]
+                        : f.assignedTo.filter((a) => a.object !== object),
+                    },
+              ),
+            }
+          : prev,
+      );
+      setNotice(
+        enabled
+          ? `${flow.label} is live on the ${object} card (rev ${json.revision})` +
+              (json.mappedInputs && json.mappedInputs.length > 0
+                ? ` — auto-mapped: ${json.mappedInputs.join(", ")}`
+                : "")
+          : `${flow.label} removed from the ${object} card (rev ${json.revision})`,
+      );
+      setTimeout(() => setNotice(null), 3500);
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
   const saveMode = async (flowApiName: string, mode: FlowRenderMode) => {
     const res = await fetch("/api/flows", {
       method: "PUT",
@@ -64,15 +171,10 @@ export function FlowsEditor() {
       prev
         ? {
             ...prev,
-            modes: [
-              ...prev.modes.filter((m) => m.flowApiName !== flowApiName),
-              json.mode!,
-            ],
+            modes: [...prev.modes.filter((m) => m.flowApiName !== flowApiName), json.mode!],
           }
         : prev,
     );
-    setSavedFlow(flowApiName);
-    setTimeout(() => setSavedFlow(null), 1400);
   };
 
   if (loadError) {
@@ -81,6 +183,7 @@ export function FlowsEditor() {
   if (!data) return <div className="text-[12.5px] text-ink-45">Loading flows...</div>;
 
   const crmLabel = data.connection.crm === "salesforce" ? "Salesforce" : "HubSpot";
+  const chatReady = data.flows.filter((f) => f.support?.level === "full").length;
 
   return (
     <div className="max-w-[920px]">
@@ -88,108 +191,127 @@ export function FlowsEditor() {
         <div>
           <h1 className="text-[16px] font-semibold">Flows</h1>
           <p className="mt-1 text-[12.5px] text-ink-55">
-            Synced from the CRM. Studio chooses how each flow renders in chat; the CRM still
-            owns branching and writes.
+            Your org&apos;s screen flows, as they are — pick which ones reps can run from chat and
+            which cards offer them. Variables map themselves from the record.
           </p>
         </div>
         <span className="st-chip-mono bg-crmmeta text-crmmeta-ink">{crmLabel}</span>
       </div>
 
-      <div className="mt-5 rounded-[10px] border border-line-soft bg-paper px-4 py-3 text-[12px] leading-snug text-ink-55">
-        <span className="font-semibold text-ink-55">Handoff is live.</span> Reps can start a
-        configured flow from a card, answer its inputs in chat, and open it in Salesforce to
-        finish. <span className="font-semibold text-ink-55">Native</span> and{" "}
-        <span className="font-semibold text-ink-55">Embedded</span> render modes are not delivered
-        yet and fall back to the open-in-Salesforce handoff.
+      {notice && (
+        <div className="mt-3 rounded-[10px] border border-line-soft bg-published px-4 py-2.5 text-[12px] text-published-ink">
+          {notice}
+        </div>
+      )}
+
+      <div className="mt-4 text-[11.5px] text-ink-45">
+        {data.flows.length} flows · {chatReady} chat-ready · exposing a flow publishes the card
+        immediately (history keeps every revision).
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-2.5">
+      <div className="mt-3 grid grid-cols-1 gap-2.5">
         {data.flows.length === 0 && (
           <div className="st-card px-4 py-5 text-[12.5px] text-ink-55">
-            No flows are available from this connection yet.
-            {data.connection.crm === "salesforce"
-              ? " Salesforce flow sync needs the Tooling/API coverage called out in the design spike; the page is ready for the adapter to start returning flows."
-              : " HubSpot workflow input-step sync lands after the Salesforce flow runtime."}
+            No active screen flows found in this {crmLabel} connection.
           </div>
         )}
 
         {data.flows.map((flow) => {
-          const saved = modeByFlow.get(flow.api);
-          const current = saved?.mode ?? "auto";
+          const assignedObjects = new Set(flow.assignedTo.map((a) => a.object));
+          const currentMode = modeByFlow.get(flow.api)?.mode ?? "auto";
           return (
             <div key={flow.api} className="st-card p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[13px] font-semibold">{flow.label}</span>
-                    <span className="st-chip-mono bg-crmmeta text-crmmeta-ink">Flow action</span>
-                    <span className="st-chip-mono bg-paper text-ink-45">{flow.screens} screens</span>
-                    {savedFlow === flow.api && (
-                      <span className="st-chip-mono bg-published text-published-ink">saved</span>
+                    <SupportBadge support={flow.support} />
+                    {flow.screens > 0 && (
+                      <span className="st-chip-mono bg-paper text-ink-45">
+                        {flow.screens} screen{flow.screens === 1 ? "" : "s"}
+                      </span>
                     )}
                   </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  <div className="mt-1">
                     <span className="st-chip-mono bg-paper text-ink-45">{flow.api}</span>
-                    <span className="text-[11.5px] text-ink-45">
-                      Available to attach from object card actions.
-                    </span>
                   </div>
                 </div>
-                <span className="st-chip-mono bg-published text-published-ink">
-                  open-in-Salesforce fallback
-                </span>
+                <div className="inline-flex overflow-hidden rounded-[8px] border border-line bg-surface">
+                  {MODES.map((mode) => (
+                    <button
+                      key={mode.value}
+                      type="button"
+                      className={`px-2 py-0.5 text-[11px] ${
+                        currentMode === mode.value ? "bg-accent text-white" : "text-ink-45"
+                      }`}
+                      onClick={() => saveMode(flow.api, mode.value)}
+                    >
+                      {mode.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="mt-3 grid gap-2 md:grid-cols-[1fr_1fr_1.25fr]">
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
                 <div className="rounded-[9px] border border-line-soft bg-paper px-3 py-2">
-                  <div className="st-section-label">Writes</div>
-                  <div className="mt-1 text-[12px] leading-snug text-ink-55">
-                    {flow.writesSummary}
-                  </div>
-                </div>
-                <div className="rounded-[9px] border border-line-soft bg-paper px-3 py-2">
-                  <div className="st-section-label">Inputs</div>
-                  {flow.inputVariables && flow.inputVariables.length > 0 ? (
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      {flow.inputVariables.map((input) => (
-                        <span
-                          key={input.name}
-                          className="st-chip-mono bg-surface text-ink-45"
-                          title={input.description}
-                        >
-                          {input.name}
-                          {input.required ? " *" : ""}
-                        </span>
-                      ))}
+                  <div className="st-section-label">Available on</div>
+                  {data.objects.length === 0 ? (
+                    <div className="mt-1 text-[11.5px] text-ink-45">
+                      No cards configured yet — build an object&apos;s card first.
                     </div>
                   ) : (
-                    <div className="mt-1 text-[11.5px] text-ink-45">
-                      No variables discovered yet. Actions can still map inputs manually.
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {data.objects.map((object) => {
+                        const on = assignedObjects.has(object);
+                        const busy = busyKey === `${flow.api}:${object}`;
+                        return (
+                          <button
+                            key={object}
+                            type="button"
+                            disabled={busy}
+                            className={`rounded-[8px] border px-2.5 py-1 text-[11.5px] ${
+                              on
+                                ? "border-accent bg-accent text-white"
+                                : "border-line bg-surface text-ink-55"
+                            } ${busy ? "opacity-60" : ""}`}
+                            title={
+                              on
+                                ? `Remove from the ${object} card`
+                                : `Expose on the ${object} card`
+                            }
+                            onClick={() => toggleAssignment(flow, object, !on)}
+                          >
+                            {busy ? "…" : object}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
                 <div className="rounded-[9px] border border-line-soft bg-paper px-3 py-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="st-section-label">Render mode</span>
-                    <div className="inline-flex overflow-hidden rounded-[8px] border border-line bg-surface">
-                      {MODES.map((mode) => (
-                        <button
-                          key={mode.value}
-                          type="button"
-                          className={`px-2.5 py-1 text-[11.5px] ${
-                            current === mode.value ? "bg-accent text-white" : "text-ink-55"
-                          }`}
-                          title={mode.note}
-                          onClick={() => saveMode(flow.api, mode.value)}
+                  <div className="st-section-label">Record → flow variables</div>
+                  {flow.inputVariables.length === 0 ? (
+                    <div className="mt-1 text-[11.5px] text-ink-45">
+                      No input variables — the record id is passed automatically.
+                    </div>
+                  ) : (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {flow.inputVariables.map((v) => (
+                        <span
+                          key={v.name}
+                          className="st-chip-mono bg-surface text-ink-45"
+                          title={
+                            v.name.toLowerCase() === "recordid"
+                              ? "Receives the record's id automatically."
+                              : "Auto-maps to a matching record field; otherwise the flow's own screens collect it."
+                          }
                         >
-                          {mode.label}
-                        </button>
+                          {v.name}
+                          {v.name.toLowerCase() === "recordid" ? " ← record" : ""}
+                        </span>
                       ))}
                     </div>
-                  </div>
-                  <div className="mt-1.5 text-[11px] text-ink-45">
-                    {MODES.find((mode) => mode.value === current)?.note}
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
