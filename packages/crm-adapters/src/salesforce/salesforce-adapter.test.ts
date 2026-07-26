@@ -892,3 +892,29 @@ describe("Salesforce-first metadata (dynamic objects + relationships)", () => {
     expect(q).toContain("FROM OpportunityLineItem WHERE OpportunityId = '006x'");
   });
 });
+
+  it("getFlowDefinition memoizes the definition (an interview refetches every step)", async () => {
+    let queryCalls = 0;
+    const { impl } = fetchStub([
+      tokenHandler(),
+      (url) => {
+        if (url.includes("/query") && decodeURIComponent(url).includes("FlowDefinitionView")) {
+          queryCalls += 1;
+          return { status: 200, json: { totalSize: 1, records: [{ ActiveVersionId: "301X" }] } };
+        }
+        if (url.includes("/tooling/sobjects/Flow/301X")) {
+          return {
+            status: 200,
+            json: { Metadata: { label: "Cached Flow", screens: [{ name: "S1", fields: [] }] } },
+          };
+        }
+        return undefined;
+      },
+    ]);
+    const adapter = new SalesforceAdapter(CREDS, impl);
+    const first = await adapter.getFlowDefinition("Cached_Flow");
+    const second = await adapter.getFlowDefinition("Cached_Flow");
+    expect(first?.label).toBe("Cached Flow");
+    expect(second).toBe(first); // same object — served from the memo
+    expect(queryCalls).toBe(1);
+  });

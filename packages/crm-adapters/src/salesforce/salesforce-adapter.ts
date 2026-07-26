@@ -79,6 +79,7 @@ type FetchLike = typeof fetch;
 
 const API = "/services/data/v61.0";
 const DEFAULT_LOGIN_URL = "https://login.salesforce.com";
+const FLOW_DEF_TTL_MS = 60_000;
 
 // Standard business objects surfaced first in the object picker; every other
 // layoutable object (including ALL custom objects) follows alphabetically.
@@ -379,6 +380,8 @@ export class SalesforceAdapter implements CrmAdapter {
     layoutable: Set<string>;
   } | null = null;
   private viewObjectById = new Map<string, string>();
+  /** Flow definitions memoized per api name — an interview re-resolves one every step. */
+  private flowDefCache = new Map<string, { def: FlowDefinitionJson; at: number }>();
   /** Opportunity stage ApiName → IsClosed, fetched once. */
   private closedStageValues: string[] | null = null;
   /** Org facts (IsSandbox, default currency), fetched once. */
@@ -1247,6 +1250,13 @@ export class SalesforceAdapter implements CrmAdapter {
    */
   async getFlowDefinition(flowApiName: string): Promise<FlowDefinitionJson | null> {
     if (!SF_API_NAME.test(flowApiName)) return null;
+    // Definitions are immutable per version and an interview re-resolves one on
+    // EVERY step — memoize briefly so a step costs interpretation, not two REST
+    // round-trips. 60s TTL keeps a freshly-activated version near-live. The
+    // adapter instance itself is cached per connection, so this survives across
+    // requests in-process.
+    const cached = this.flowDefCache.get(flowApiName);
+    if (cached && Date.now() - cached.at < FLOW_DEF_TTL_MS) return cached.def;
     try {
       // FlowDefinitionView is a regular sObject; only the Flow record (with its
       // Metadata payload) lives behind the Tooling API.
@@ -1260,7 +1270,9 @@ export class SalesforceAdapter implements CrmAdapter {
         "GET",
         `${API}/tooling/sobjects/Flow/${encodeURIComponent(versionId)}`,
       );
-      return version.Metadata ?? null;
+      const def = version.Metadata ?? null;
+      if (def) this.flowDefCache.set(flowApiName, { def, at: Date.now() });
+      return def;
     } catch {
       return null;
     }
