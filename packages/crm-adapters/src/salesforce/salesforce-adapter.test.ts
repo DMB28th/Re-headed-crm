@@ -829,8 +829,86 @@ describe("Salesforce-first metadata (dynamic objects + relationships)", () => {
     const rec = await adapter.getRecord("Opportunity", "006x", ["Name", "OwnerId"]);
     expect(rec.fields.OwnerId).toBe("Dana K."); // id replaced with the owner's name
     expect(rec.refs?.OwnerId).toBe("005z"); // …and the id kept for drill-through
+    expect(rec.refObjects?.OwnerId).toBe("User"); // single target from describe
     const retrieve = calls.find((c) => c.url.includes("/sobjects/Opportunity/006x"));
     expect(decodeURIComponent(retrieve?.url ?? "")).toContain("Owner.Name");
+  });
+
+  it("non-traversable references still ship a drill-through ref (raw id display)", async () => {
+    const describeWithHistory = {
+      ...OPP_DESCRIBE,
+      fields: [
+        ...OPP_DESCRIBE.fields,
+        {
+          name: "LastAmountChangedHistoryId", label: "Last Amount Changed", type: "reference",
+          nillable: true, createable: false, updateable: false, defaultedOnCreate: false,
+          relationshipName: "LastAmountChangedHistory", referenceTo: ["OpportunityHistory"],
+        },
+      ],
+    };
+    const { impl } = fetchStub([
+      tokenHandler(),
+      globalHandler,
+      orgHandler,
+      (url) =>
+        url.includes("/sobjects/Opportunity/describe")
+          ? { status: 200, json: describeWithHistory }
+          : undefined,
+      (url) =>
+        url.includes("/sobjects/Opportunity/006x")
+          ? { status: 200, json: { Id: "006x", LastAmountChangedHistoryId: "008z" } }
+          : undefined,
+    ]);
+    const adapter = new SalesforceAdapter(CREDS, impl);
+    const rec = await adapter.getRecord("Opportunity", "006x", ["Name", "LastAmountChangedHistoryId"]);
+    expect(rec.fields.LastAmountChangedHistoryId).toBe("008z"); // no Name available
+    expect(rec.refs?.LastAmountChangedHistoryId).toBe("008z"); // …but still clickable
+    expect(rec.refObjects?.LastAmountChangedHistoryId).toBe("OpportunityHistory");
+  });
+
+  it("polymorphic references traverse the Name pseudo-object and resolve Type", async () => {
+    // WhoId-style field: multiple targets → Name + Type are always queryable
+    // on the polymorphic Name object, whatever the concrete targets are.
+    const describeWithWho = {
+      ...OPP_DESCRIBE,
+      fields: [
+        ...OPP_DESCRIBE.fields,
+        {
+          name: "WhoId", label: "Name ID", type: "reference",
+          nillable: true, createable: true, updateable: true, defaultedOnCreate: false,
+          relationshipName: "Who", referenceTo: ["Contact", "Lead"],
+        },
+      ],
+    };
+    const calls: { url: string; init?: RequestInit }[] = [];
+    const { impl } = fetchStub(
+      [
+        tokenHandler(),
+        globalHandler,
+        orgHandler,
+        (url) =>
+          url.includes("/sobjects/Opportunity/describe")
+            ? { status: 200, json: describeWithWho }
+            : undefined,
+        (url) =>
+          url.includes("/sobjects/Opportunity/006x")
+            ? {
+                status: 200,
+                json: { Id: "006x", WhoId: "00Qz", Who: { Name: "Lee Ramos", Type: "Lead" } },
+              }
+            : undefined,
+      ],
+      calls,
+    );
+    const adapter = new SalesforceAdapter(CREDS, impl);
+    const rec = await adapter.getRecord("Opportunity", "006x", ["Name", "WhoId"]);
+    expect(rec.fields.WhoId).toBe("Lee Ramos");
+    expect(rec.refs?.WhoId).toBe("00Qz");
+    expect(rec.refObjects?.WhoId).toBe("Lead"); // concrete target via Who.Type
+    const retrieve = calls.find((c) => c.url.includes("/sobjects/Opportunity/006x"));
+    const url = decodeURIComponent(retrieve?.url ?? "");
+    expect(url).toContain("Who.Name");
+    expect(url).toContain("Who.Type");
   });
 
   it("listFlows returns active screen flows via regular SOQL (empty on error)", async () => {

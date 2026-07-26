@@ -16,8 +16,10 @@ import {
   applyDenylist,
   buildCapabilities,
   genericLayoutConfig,
+  primaryNameField,
   recordCardFieldPaths,
   filterRecord,
+  isDenied,
   summarizeCustomFilters,
   defaultUserContext,
   resolveActionInputs,
@@ -25,6 +27,12 @@ import {
   continueFlowInterview,
   encodeInterviewState,
   analyzeFlowSupport,
+  decodeQuickActionState,
+  encodeQuickActionState,
+  quickActionMissingRequired,
+  quickActionPendingWrite,
+  quickActionScreen,
+  type QuickActionState,
   type FlowAnswerValue,
   type FlowDefResolver,
   type FlowRuntimeEffects,
@@ -37,6 +45,7 @@ import {
   type FieldWriteResult,
   type HomeListTile,
   type LayoutConfig,
+  type LookupOptionsPayload,
   type RecordPage,
   type SearchQuery,
   type UserContext,
@@ -296,9 +305,11 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       if (!describe) continue;
       const shown = new Set([...recordCardFieldPaths(config), ...config.listView.columns]);
       for (const f of describe.fields) {
-        if (f.type === "reference" && shown.has(f.api) && f.referenceTo?.length === 1) {
-          reachable.add(f.referenceTo[0]!.toLowerCase());
-        }
+        if (f.type !== "reference" || !shown.has(f.api)) continue;
+        // ALL declared targets, including polymorphic ones (Owner, Who/What):
+        // the adapter resolves the concrete target per record, so a drill or
+        // lookup search can land on any of them.
+        for (const target of f.referenceTo ?? []) reachable.add(target.toLowerCase());
       }
     }
     return reachable;
@@ -719,6 +730,81 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     },
   );
 
+  // --- crm_lookup_search (typeahead for reference-field lookup editors) ---
+  server.registerTool(
+    "crm_lookup_search",
+    {
+      title: "Search lookup targets",
+      description:
+        "Typeahead search for reference (lookup) fields: find records of a target object by name " +
+        "and return id + label options. Used by the record card's lookup editor; also useful to " +
+        "resolve \"set the account to Acme\" to a record id before crm_update_record.",
+      inputSchema: {
+        object: z.string().describe("TARGET object API name (e.g. Account, User)"),
+        query: z.string().describe("Name text to match"),
+        limit: z.number().int().positive().max(10).optional(),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (args): Promise<CallToolResult> => {
+      try {
+        await requireConnection();
+        // Same governance boundary as drill-through: only objects reachable
+        // from a configured layout are searchable — never "any object the
+        // credential can describe".
+        const configured = await configStore.listConfiguredObjects(tenantId);
+        const configuredMatch = resolveObjectName(args.object, configured);
+        if (!configuredMatch) {
+          const reachable = await reachableObjects();
+          if (!reachable.has(args.object.toLowerCase())) {
+            throw new Error(
+              `"${args.object}" isn't referenced by any configured card, so it can't be searched.`,
+            );
+          }
+        }
+        const object = configuredMatch ?? args.object;
+        const describe = await adapter.describeObject(object);
+        const nameField = primaryNameField(describe);
+        // Rule 2: a denylisted name field on a configured layout stays hidden.
+        const layout = configuredMatch
+          ? await configStore.getLayout(tenantId, configuredMatch, userContext.audience)
+          : undefined;
+        if (layout && isDenied(nameField, layout.permissions.fieldDenylist)) {
+          throw new Error(`Lookups on ${object} aren't available on this layout.`);
+        }
+        const page = await adapter.search(object, {
+          text: args.query,
+          columns: [nameField],
+          limit: Math.min(args.limit ?? 7, 10),
+        });
+        const payload: LookupOptionsPayload = {
+          kind: "lookup-options",
+          object,
+          options: page.rows.map((r) => ({
+            id: r.id,
+            label: String(r.fields[nameField] ?? r.id),
+          })),
+        };
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                payload.options.length === 0
+                  ? `No ${describe.label} records match "${args.query}".`
+                  : `${describe.label} matches for "${args.query}": ${payload.options
+                      .map((o) => `${o.label} (${o.id})`)
+                      .join(", ")}.`,
+            },
+          ],
+          structuredContent: payload as unknown as Record<string, unknown>,
+        };
+      } catch (error) {
+        return asToolError(error, { tool: "crm_lookup_search", args, readOnly: true });
+      }
+    },
+  );
+
   // --- crm_list_view → results-table widget (or ambiguous-ask picker, 5b) ---
   registerAppTool(
     server,
@@ -1122,12 +1208,18 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           new Set(recordCardFieldPaths(sanitized)),
         );
         const recordName = String(fresh.fields[config.recordCard.header.title] ?? args.id);
+        // Receipt display: for saved fields, show the re-fetched value — for a
+        // lookup write that's the referenced record's NAME, not the raw id the
+        // patch carried. (The audit log above keeps the raw written values.)
+        const displayResults = results.map((r) =>
+          r.ok && fresh.fields[r.field] !== undefined ? { ...r, after: fresh.fields[r.field]! } : r,
+        );
         const payload: WriteReceiptPayload = {
           kind: "write-receipt",
           object: config.object,
           recordId: args.id,
           recordName,
-          results,
+          results: displayResults,
           savedCount: saved.length,
           failedCount: results.length - saved.length,
           writtenAs,
@@ -1520,6 +1612,211 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     }
   };
 
+  // Quick actions (v1): a single-screen sibling of the flow rung. The chat
+  // form renders the action's mini-layout; the CRM executes (its validations,
+  // predefined values, triggers). Same widget, same confirm gate, same signed
+  // token pattern — the token SHAPE routes crm_flow_continue between the two.
+  const runQuickAction = async (
+    args: { object?: string; recordId: string; actionApiName: string },
+    state: QuickActionState | null,
+    answers: Record<string, FlowAnswerValue>,
+    opts: { confirmWrite?: boolean; back?: boolean },
+    actionSessionId: string,
+    tool: string,
+  ): Promise<CallToolResult> => {
+    try {
+      await requireConnection();
+      const config = await requireLayout(args.object);
+      const action = config.recordCard.actions.find(
+        (a): a is Extract<CardAction, { type: "quick_action" }> =>
+          a.type === "quick_action" && a.actionApiName === args.actionApiName,
+      );
+      if (!action) {
+        throw new Error(
+          `Quick action "${args.actionApiName}" is not configured on the ${config.object} card.`,
+        );
+      }
+      if (!adapter.describeQuickAction || !adapter.executeQuickAction) {
+        throw new Error("Quick actions aren't available for this CRM connection.");
+      }
+      const describe = await adapter.describeQuickAction(args.actionApiName);
+      if (!describe) {
+        throw new Error(`Quick action "${args.actionApiName}" couldn't be described.`);
+      }
+      const defaults = adapter.getQuickActionDefaults
+        ? await adapter.getQuickActionDefaults(args.actionApiName, args.recordId)
+        : {};
+
+      const session: QuickActionState = state ?? {
+        v: 1,
+        kind: "quick-action",
+        action: args.actionApiName,
+        object: config.object,
+        recordId: args.recordId,
+        answers: {},
+        confirming: false,
+      };
+      for (const [name, value] of Object.entries(answers)) {
+        if (!Array.isArray(value)) session.answers[name] = value;
+      }
+
+      const provenance = {
+        ...provenanceFor(config),
+        connectedUser: await adapter.getConnectedUser(),
+      };
+      const label = describe.label ?? action.label;
+      const target = describe.targetSobjectType ?? "record";
+      const base = buildFlowRunPayload({
+        actionSessionId,
+        flow: {
+          api: args.actionApiName,
+          label,
+          screens: 1,
+          writesSummary: `${describe.type === "Update" ? "Updates" : "Creates"} a ${target} — ${provenance.crmLabel} executes.`,
+        },
+        renderMode: "native",
+        launchUrl: null,
+        resolved: [],
+        pending: [],
+        missing: [],
+        provenance,
+      });
+      const respond = (
+        extra: Record<string, unknown>,
+        text: string,
+      ): CallToolResult => ({
+        content: [{ type: "text", text }],
+        structuredContent: {
+          ...base,
+          object: config.object,
+          recordId: args.recordId,
+          supportLevel: "full",
+          ...extra,
+        } as unknown as Record<string, unknown>,
+      });
+
+      // Confirmed → the CRM executes.
+      if (state?.confirming && opts.confirmWrite === true) {
+        const fields: Record<string, CrmFieldValue> = {};
+        for (const [name, value] of Object.entries(session.answers)) {
+          if (value !== null && value !== "") fields[name] = value;
+        }
+        const result = await adapter.executeQuickAction(
+          args.actionApiName,
+          args.recordId,
+          fields,
+        );
+        if (!result.success) {
+          // CRM validation failed — re-render the form with the verbatim errors.
+          session.confirming = false;
+          const screen = quickActionScreen(describe, defaults, session.answers);
+          screen.fields.unshift({
+            kind: "display",
+            name: "__qa_errors",
+            html: `<p>⚠️ ${result.errors.join(" · ") || "The CRM rejected the action."}</p>`,
+          });
+          return respond(
+            {
+              status: "in-progress",
+              screen,
+              interviewState: signInterviewState(encodeQuickActionState(session)),
+            },
+            `${provenance.crmLabel} rejected "${label}": ${result.errors.join("; ") || "validation failed"}. The form is showing again with the errors.`,
+          );
+        }
+        await auditLog.append({
+          tenantId,
+          user: provenance.connectedUser ?? "",
+          actor: auditActor(userContext),
+          object: target,
+          recordId: result.createdId ?? args.recordId,
+          changes: Object.entries(fields).map(([field, after]) => ({
+            field,
+            before: null,
+            after,
+          })),
+          timestamp: new Date().toISOString(),
+        });
+        const summary = `${label} done — ${describe.type === "Update" ? `${target} updated` : `${target} created${result.createdId ? ` (${result.createdId})` : ""}`}.`;
+        return respond(
+          { status: "finished", finishedSummary: summary, interviewState: null },
+          summary,
+        );
+      }
+
+      // Declined at the confirm card.
+      if (state?.confirming && opts.confirmWrite === false) {
+        return respond(
+          { status: "finished", finishedSummary: `${label} cancelled — nothing was written.`, interviewState: null },
+          `Quick action "${label}" cancelled — nothing was written.`,
+        );
+      }
+
+      // Back from the confirm card, or first render, or missing required →
+      // show the form.
+      const missing = quickActionMissingRequired(describe, session.answers, defaults);
+      const showForm = !state || opts.back || missing.length > 0;
+      if (showForm) {
+        session.confirming = false;
+        const screen = quickActionScreen(describe, defaults, session.answers);
+        return respond(
+          {
+            status: "in-progress",
+            screen,
+            interviewState: signInterviewState(encodeQuickActionState(session)),
+          },
+          `Quick action "${label}" is rendered in the card (${describe.type} → ${target}). ` +
+            `The rep fills it there; the card advances itself via crm_flow_continue.`,
+        );
+      }
+
+      // Answers in → confirm before the CRM executes (rule 8).
+      session.confirming = true;
+      const write = quickActionPendingWrite(describe, session.answers);
+      return respond(
+        {
+          status: "confirm-write",
+          pendingWrite: write,
+          interviewState: signInterviewState(encodeQuickActionState(session)),
+        },
+        `Quick action "${label}" wants to ${write.description.toLowerCase()} ` +
+          `(${write.assignments.map((a) => `${a.field}: ${a.value ?? "—"}`).join(", ") || "no fields"}). ` +
+          `The rep confirms in the card before ${provenance.crmLabel} executes.`,
+      );
+    } catch (error) {
+      return asToolError(error, { tool });
+    }
+  };
+
+  registerAppTool(
+    server,
+    "crm_quick_action_start",
+    {
+      title: "Start a CRM quick action",
+      description:
+        "Begin a configured quick action for a record (New Task, Log a Call, …). Renders the " +
+        "action's fields in the card with record-context defaults; the rep fills, confirms, and " +
+        "the CRM executes with its own validation. Use when the user asks to run a named quick " +
+        "action on a record.",
+      inputSchema: {
+        object: z.string().optional().describe("Object API name; omit for the workspace default"),
+        recordId: z.string(),
+        actionApiName: z.string(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false },
+      _meta: { ui: { resourceUri: FLOW_RUN_URI } },
+    },
+    async (args): Promise<CallToolResult> =>
+      runQuickAction(
+        { object: args.object, recordId: args.recordId, actionApiName: args.actionApiName },
+        null,
+        {},
+        {},
+        randomUUID(),
+        "crm_quick_action_start",
+      ),
+  );
+
   registerAppTool(
     server,
     "crm_flow_start",
@@ -1579,8 +1876,31 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       annotations: { readOnlyHint: false, destructiveHint: false },
       _meta: { ui: { resourceUri: FLOW_RUN_URI } },
     },
-    async (args): Promise<CallToolResult> =>
-      runFlow(
+    async (args): Promise<CallToolResult> => {
+      // The token's SHAPE routes: quick-action states continue through the
+      // quick-action runner; everything else is a flow interview.
+      if (args.interviewState) {
+        let quickState: QuickActionState | null = null;
+        try {
+          quickState = decodeQuickActionState(verifyInterviewState(args.interviewState));
+        } catch {
+          quickState = null; // signature failure surfaces via the flow path's error
+        }
+        if (quickState) {
+          return runQuickAction(
+            { object: args.object, recordId: args.recordId, actionApiName: quickState.action },
+            quickState,
+            args.answers as Record<string, FlowAnswerValue>,
+            {
+              ...(args.confirmWrite !== undefined ? { confirmWrite: args.confirmWrite } : {}),
+              ...(args.back !== undefined ? { back: args.back } : {}),
+            },
+            args.actionSessionId,
+            "crm_flow_continue",
+          );
+        }
+      }
+      return runFlow(
         { object: args.object, recordId: args.recordId, flowApiName: args.flowApiName },
         args.answers as Record<string, FlowAnswerValue>,
         args.actionSessionId,
@@ -1590,7 +1910,8 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           ...(args.confirmWrite !== undefined ? { confirmWrite: args.confirmWrite } : {}),
           ...(args.back !== undefined ? { back: args.back } : {}),
         },
-      ),
+      );
+    },
   );
 
   server.registerTool(

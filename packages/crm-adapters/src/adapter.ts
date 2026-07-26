@@ -6,12 +6,16 @@ import type {
   ActivityEntry,
   AggregateBucket,
   AggregateQuery,
+  CrmFieldValue,
   CrmRecord,
   CrmTask,
   FieldPatch,
   FlowDefinitionJson,
   FlowSummary,
   FlowTableRow,
+  QuickActionDescribeJson,
+  QuickActionExecuteResult,
+  QuickActionSummary,
   ObjectDescribe,
   ObjectSummary,
   RecentRecord,
@@ -76,6 +80,23 @@ export interface CrmAdapter {
     fields: string[],
     opts: { sortField?: string; sortOrder?: "Asc" | "Desc"; limit?: number },
   ): Promise<FlowTableRow[]>;
+  /**
+   * Quick actions (v1): the CRM's per-object action list, a mini-layout
+   * describe, record-contextual defaults, and an execute that the CRM itself
+   * runs (its validations, predefined values, triggers). Optional — CRMs
+   * without an equivalent surface omit them.
+   */
+  listQuickActions?(objectApi: string): Promise<QuickActionSummary[]>;
+  describeQuickAction?(actionApiName: string): Promise<QuickActionDescribeJson | null>;
+  getQuickActionDefaults?(
+    actionApiName: string,
+    contextRecordId: string,
+  ): Promise<Record<string, CrmFieldValue>>;
+  executeQuickAction?(
+    actionApiName: string,
+    contextRecordId: string | null,
+    fields: Record<string, CrmFieldValue>,
+  ): Promise<QuickActionExecuteResult>;
 
   // Auth
   refreshTokenIfNeeded(): Promise<void>;

@@ -131,14 +131,27 @@ describe("golden path 1: search → record card", () => {
   });
 
   it("drill-through fallback is gated to objects reachable from configured layouts", async () => {
-    // "companies" exists in the CRM but no configured card references it —
-    // the generic path must NOT invert the allowlist into allow-everything.
+    // "products" isn't referenced by any configured card — the generic path
+    // must NOT invert the allowlist into allow-everything.
     const result = await client.callTool({
       name: "crm_get_record",
-      arguments: { object: "companies", id: "co-001" },
+      arguments: { object: "products", id: "p-001" },
     });
     expect(result.isError).toBeTruthy();
     expect(textOf(result)).toContain("isn't referenced by any configured card");
+  });
+
+  it("drill-through reaches a reference field's target object (company lookup)", async () => {
+    // The deals card shows `company` (reference → companies), which makes
+    // companies reachable for the generated read-only fallback.
+    const result = await client.callTool({
+      name: "crm_get_record",
+      arguments: { object: "companies", id: "co-01" },
+    });
+    expect(result.isError).toBeFalsy();
+    const payload = result.structuredContent as unknown as RecordCardPayload;
+    expect(payload.layout.generatedFallback).toBe(true);
+    expect(payload.record.fields.name).toBe("Meridian Health Systems");
   });
 
   it("drill-through fallback refuses name search (id only — no enumeration)", async () => {
@@ -174,7 +187,12 @@ describe("golden path 1: search → record card", () => {
       "dealstage",
       "renewal_date",
       "next_step",
+      "company",
     ]);
+    // Reference field: resolved name for display, id + target for drill-through.
+    expect(payload.record.fields.company).toBe("Meridian Health Systems");
+    expect(payload.record.refs?.company).toBe("co-01");
+    expect(payload.record.refObjects?.company).toBe("companies");
     expect(payload.provenance.connectedUser).toBe("Demo rep");
   });
 
@@ -185,6 +203,30 @@ describe("golden path 1: search → record card", () => {
     });
     const payload = result.structuredContent as unknown as RecordCardPayload;
     expect(payload.record.id).toBe("d-002");
+  });
+
+  it("crm_lookup_search returns id + label options for a reference target", async () => {
+    const result = await client.callTool({
+      name: "crm_lookup_search",
+      arguments: { object: "companies", query: "meridian" },
+    });
+    expect(result.isError).toBeFalsy();
+    const payload = result.structuredContent as unknown as {
+      kind: string;
+      object: string;
+      options: { id: string; label: string }[];
+    };
+    expect(payload.kind).toBe("lookup-options");
+    expect(payload.options).toEqual([{ id: "co-01", label: "Meridian Health Systems" }]);
+  });
+
+  it("crm_lookup_search is gated to objects reachable from configured layouts", async () => {
+    const result = await client.callTool({
+      name: "crm_lookup_search",
+      arguments: { object: "products", query: "anything" },
+    });
+    expect(result.isError).toBeTruthy();
+    expect(textOf(result)).toContain("isn't referenced by any configured card");
   });
 
   it("crm_get_related paginates within configured columns only", async () => {
@@ -235,6 +277,33 @@ describe("golden path 2: confirmed write → receipt → audit", () => {
       before: "Contract sent",
       after: "Negotiation",
     });
+  });
+
+  it("lookup write: patch carries an ID, receipt shows the record's NAME", async () => {
+    const result = await client.callTool({
+      name: "crm_update_record",
+      arguments: { object: "deals", id: "d-001", patch: { company: "co-02" } },
+    });
+    expect(result.isError).toBeFalsy();
+    const receipt = result.structuredContent as unknown as WriteReceiptPayload;
+    expect(receipt.savedCount).toBe(1);
+    const change = receipt.results[0]!;
+    expect(change.before).toBe("Meridian Health Systems");
+    expect(change.after).toBe("Ardent Logistics"); // resolved name, not "co-02"
+    // The refreshed record re-ships the new drill-through ref.
+    expect(receipt.record.fields.company).toBe("Ardent Logistics");
+    expect(receipt.record.refs?.company).toBe("co-02");
+  });
+
+  it("lookup write: an unknown reference id fails like a CRM FK violation", async () => {
+    const result = await client.callTool({
+      name: "crm_update_record",
+      arguments: { object: "deals", id: "d-001", patch: { company: "co-99" } },
+    });
+    expect(result.isError).toBeFalsy(); // per-field failure → receipt
+    const receipt = result.structuredContent as unknown as WriteReceiptPayload;
+    expect(receipt.failedCount).toBe(1);
+    expect(receipt.results[0]!.error).toContain('No company matches "co-99"');
   });
 
   it("partial failure: one rejected field doesn't sink the rest (design 1e)", async () => {

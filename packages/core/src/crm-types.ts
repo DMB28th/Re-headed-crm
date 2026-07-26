@@ -99,11 +99,18 @@ export interface CrmRecord {
   /** Field API name → value. Dot-path columns are pre-flattened by the adapter. */
   fields: Record<string, CrmFieldValue>;
   /**
-   * For reference fields whose value was resolved to a display name: the
-   * referenced record's id, so the widget can open it (drill-through).
-   * Only present for fields also present in `fields`.
+   * For reference fields with a value: the referenced record's id, so the
+   * widget can open it (drill-through) and lookup editors can compare against
+   * it. Present even when the display name could not be resolved (the field
+   * then still shows the raw id). Only for fields also present in `fields`.
    */
   refs?: Record<string, string>;
+  /**
+   * For reference fields in `refs`: the RESOLVED target object api name.
+   * Matters for polymorphic lookups (OwnerId → User|Group, WhatId → many),
+   * where `referenceTo` alone can't tell the widget which card to open.
+   */
+  refObjects?: Record<string, string>;
 }
 
 export interface RecordPage {

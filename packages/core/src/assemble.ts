@@ -54,6 +54,17 @@ const CRM_LABELS = { salesforce: "Salesforce", hubspot: "HubSpot" } as const;
  * renders a field-name filter instead of curated sections. Shared by the MCP
  * server and Studio's preview (one codepath).
  */
+/** The field that best names a record of this object — shared by the generic
+ *  fallback layout and lookup-search options ("what do we show for a row?"). */
+export function primaryNameField(describe: ObjectDescribe): string {
+  return (
+    describe.fields.find((f) => f.api === "Name")?.api ??
+    describe.fields.find((f) => f.api === "CaseNumber")?.api ??
+    describe.fields.find((f) => f.type === "string")?.api ??
+    "Id"
+  );
+}
+
 export function genericLayoutConfig(args: {
   tenantId: string;
   crm: LayoutConfig["crm"];
@@ -61,11 +72,7 @@ export function genericLayoutConfig(args: {
   describe: ObjectDescribe;
 }): LayoutConfig {
   const { tenantId, crm, object, describe } = args;
-  const nameField =
-    describe.fields.find((f) => f.api === "Name")?.api ??
-    describe.fields.find((f) => f.api === "CaseNumber")?.api ??
-    describe.fields.find((f) => f.type === "string")?.api ??
-    "Id";
+  const nameField = primaryNameField(describe);
   return {
     version: 1,
     tenantId,

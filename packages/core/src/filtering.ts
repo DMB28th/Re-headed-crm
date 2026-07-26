@@ -80,7 +80,16 @@ export function filterRecord(
   for (const [key, id] of Object.entries(record.refs ?? {})) {
     if (allowed.has(key)) refs[key] = id;
   }
-  return { id: record.id, fields, ...(Object.keys(refs).length > 0 ? { refs } : {}) };
+  const refObjects: Record<string, string> = {};
+  for (const [key, obj] of Object.entries(record.refObjects ?? {})) {
+    if (allowed.has(key)) refObjects[key] = obj;
+  }
+  return {
+    id: record.id,
+    fields,
+    ...(Object.keys(refs).length > 0 ? { refs } : {}),
+    ...(Object.keys(refObjects).length > 0 ? { refObjects } : {}),
+  };
 }
 
 export function filterPage(page: RecordPage, allowed: ReadonlySet<string>): RecordPage {

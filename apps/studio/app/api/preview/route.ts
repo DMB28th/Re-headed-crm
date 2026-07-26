@@ -4,6 +4,7 @@ import {
   buildResultsTablePayload,
   genericLayoutConfig,
   parseLayoutConfig,
+  primaryNameField,
   summarizeCustomFilters,
   type CrmFieldValue,
   type CustomList,
@@ -11,6 +12,7 @@ import {
   type HomeCardConfig,
   type HomeCardPayload,
   type LayoutConfig,
+  type LookupOptionsPayload,
   type WriteReceiptPayload,
 } from "@cardstack/core";
 import { HomeCardConfig as HomeCardConfigSchema } from "@cardstack/core";
@@ -28,7 +30,7 @@ import { getUserContextFromRequest } from "../../../lib/auth";
  */
 
 interface PreviewBody {
-  kind: "record" | "view" | "home" | "related" | "write" | "complete-task";
+  kind: "record" | "view" | "home" | "related" | "lookup" | "write" | "complete-task";
   object?: string;
   config?: unknown;
   recordId?: string;
@@ -37,6 +39,8 @@ interface PreviewBody {
   patch?: Record<string, CrmFieldValue>;
   id?: string;
   limit?: number;
+  /** kind "lookup": typeahead text for the reference-field editor. */
+  query?: string;
 }
 
 async function layoutFor(tenantId: string, object: string, posted?: unknown): Promise<LayoutConfig> {
@@ -231,6 +235,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ payload: { page }, live });
     }
 
+    if (body.kind === "lookup") {
+      if (!body.object || body.query === undefined) throw new Error("object and query required");
+      // Same shape crm_lookup_search serves — the lookup editor in the REAL
+      // widget works identically in the builder preview.
+      const describe = await adapter.describeObject(body.object);
+      const nameField = primaryNameField(describe);
+      const page = await adapter.search(body.object, {
+        text: body.query,
+        columns: [nameField],
+        limit: Math.min(body.limit ?? 7, 10),
+      });
+      const payload: LookupOptionsPayload = {
+        kind: "lookup-options",
+        object: body.object,
+        options: page.rows.map((r) => ({
+          id: r.id,
+          label: String(r.fields[nameField] ?? r.id),
+        })),
+      };
+      return NextResponse.json({ payload, live });
+    }
+
     // --- Write simulation: MOCK PORTAL ONLY ---
     if (live) {
       return NextResponse.json(
@@ -278,6 +304,11 @@ export async function POST(req: Request) {
       }
       const saved = results.filter((r) => r.ok);
       const fresh = await adapter.getRecord(config.object, body.recordId, []);
+      // Saved lookup fields display the referenced record's NAME, not the id
+      // the patch carried — same as the MCP server's receipt.
+      for (const r of results) {
+        if (r.ok && fresh.fields[r.field] !== undefined) r.after = fresh.fields[r.field]!;
+      }
       const receipt: WriteReceiptPayload = {
         kind: "write-receipt",
         object: config.object,

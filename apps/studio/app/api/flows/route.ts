@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { FlowRenderModeConfig, analyzeFlowSupport, type FlowSupportReport } from "@cardstack/core";
+import {
+  FlowRenderModeConfig,
+  analyzeFlowSupport,
+  quickActionSupport,
+  type FlowSupportReport,
+} from "@cardstack/core";
 import { getAdapter, getStore } from "../../../lib/backend";
 import { getUserContextFromRequest } from "../../../lib/auth";
 
@@ -47,9 +52,10 @@ export async function GET(req: Request) {
       store.listConfiguredObjects(tenantId),
     ]);
 
-    // Where is each flow already exposed? Draft wins over published so the
-    // page reflects what the admin last did, even pre-publish.
+    // Where is each flow / quick action already exposed? Draft wins over
+    // published so the page reflects what the admin last did, even pre-publish.
     const assignments = new Map<string, { object: string; label: string }[]>();
+    const exposedQuickActions = new Map<string, Set<string>>(); // object → action apis
     for (const object of objects) {
       const record = await store.getLayoutRecord(tenantId, object).catch(() => null);
       const config = record?.draft ?? record?.published;
@@ -59,8 +65,30 @@ export async function GET(req: Request) {
           list.push({ object, label: action.label });
           assignments.set(action.flowApiName, list);
         }
+        if (action.type === "quick_action") {
+          const set = exposedQuickActions.get(object) ?? new Set<string>();
+          set.add(action.actionApiName);
+          exposedQuickActions.set(object, set);
+        }
       }
     }
+
+    // Quick actions per configured object (Create/Update/LogACall render in chat).
+    const quickActions = await Promise.all(
+      objects.map(async (object) => {
+        const actions = adapter.listQuickActions
+          ? await adapter.listQuickActions(object).catch(() => [])
+          : [];
+        return {
+          object,
+          actions: actions.map((a) => ({
+            ...a,
+            support: quickActionSupport(a.type),
+            exposed: exposedQuickActions.get(object)?.has(a.api) ?? false,
+          })),
+        };
+      }),
+    );
 
     const rows: FlowAdminRow[] = await Promise.all(
       flows.slice(0, DEFINITION_FETCH_CAP).map(async (flow) => {
@@ -98,6 +126,7 @@ export async function GET(req: Request) {
       flows: rows,
       modes,
       objects,
+      quickActions,
       connection: {
         ...connectionSafe,
         live: !!credentials && Object.keys(credentials).length > 0,

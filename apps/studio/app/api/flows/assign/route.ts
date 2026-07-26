@@ -24,9 +24,12 @@ export async function POST(req: Request) {
       flowApiName?: string;
       object?: string;
       enabled?: boolean;
+      /** "screen_flow" (default) or "quick_action". */
+      kind?: string;
     };
     const flowApiName = body.flowApiName?.trim();
     const object = body.object?.trim();
+    const kind = body.kind === "quick_action" ? "quick_action" : "screen_flow";
     if (!flowApiName || !object || typeof body.enabled !== "boolean") {
       return NextResponse.json(
         { error: "flowApiName, object, and enabled are required." },
@@ -44,12 +47,23 @@ export async function POST(req: Request) {
       );
     }
 
-    let actions: CardAction[] = base.recordCard.actions.filter(
-      (a) => !(a.type === "screen_flow" && a.flowApiName === flowApiName),
+    let actions: CardAction[] = base.recordCard.actions.filter((a) =>
+      kind === "screen_flow"
+        ? !(a.type === "screen_flow" && a.flowApiName === flowApiName)
+        : !(a.type === "quick_action" && a.actionApiName === flowApiName),
     );
     let mappedInputs: string[] = [];
 
-    if (body.enabled) {
+    if (body.enabled && kind === "quick_action") {
+      const adapter = await getAdapter(tenantId);
+      const describe = adapter.describeQuickAction
+        ? await adapter.describeQuickAction(flowApiName).catch(() => null)
+        : null;
+      actions = [
+        ...actions,
+        { type: "quick_action", actionApiName: flowApiName, label: describe?.label ?? flowApiName },
+      ];
+    } else if (body.enabled) {
       const adapter = await getAdapter(tenantId);
       const def = adapter.getFlowDefinition
         ? await adapter.getFlowDefinition(flowApiName).catch(() => null)

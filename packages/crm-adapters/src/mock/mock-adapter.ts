@@ -84,7 +84,7 @@ export class MockCrmAdapter implements CrmAdapter {
     const limit = query.limit ?? 10;
     const page = sorted.slice(offset, offset + limit);
     return {
-      rows: page.map((r) => this.toRecord(r)),
+      rows: page.map((r) => this.toRecord(r, objectApi)),
       hasMore: offset + limit < sorted.length,
       total: sorted.length,
       ...(offset + limit < sorted.length ? { cursor: String(offset + limit) } : {}),
@@ -121,13 +121,25 @@ export class MockCrmAdapter implements CrmAdapter {
   async getRecord(objectApi: string, id: string, fields: string[]): Promise<CrmRecord> {
     const row = this.table(objectApi).find((r) => r.id === id);
     if (!row) throw new CrmRecordNotFoundError(objectApi, id);
-    const record = this.toRecord(row);
+    const record = this.toRecord(row, objectApi);
     if (fields.length === 0) return record;
     const picked: Record<string, CrmFieldValue> = {};
     for (const f of fields) {
       picked[f] = record.fields[f] ?? null;
     }
-    return { id: record.id, fields: picked };
+    // Drill-through refs ride with their field through the picking.
+    const refs = Object.fromEntries(
+      Object.entries(record.refs ?? {}).filter(([f]) => fields.includes(f)),
+    );
+    const refObjects = Object.fromEntries(
+      Object.entries(record.refObjects ?? {}).filter(([f]) => fields.includes(f)),
+    );
+    return {
+      id: record.id,
+      fields: picked,
+      ...(Object.keys(refs).length > 0 ? { refs } : {}),
+      ...(Object.keys(refObjects).length > 0 ? { refObjects } : {}),
+    };
   }
 
   async getRelated(parentId: string, rel: RelatedListConfig): Promise<RecordPage> {
@@ -137,7 +149,7 @@ export class MockCrmAdapter implements CrmAdapter {
         .map((id) => this.table("contacts").find((c) => c.id === id))
         .filter((c): c is FixtureRecord => !!c);
       return {
-        rows: rows.slice(0, rel.limit).map((r) => this.toRecord(r)),
+        rows: rows.slice(0, rel.limit).map((r) => this.toRecord(r, "contacts")),
         hasMore: rows.length > rel.limit,
         total: rows.length,
       };
@@ -148,7 +160,7 @@ export class MockCrmAdapter implements CrmAdapter {
         ? this.table("deals").filter((d) => d.fields.company === company.fields.name)
         : [];
       return {
-        rows: rows.slice(0, rel.limit).map((r) => this.toRecord(r)),
+        rows: rows.slice(0, rel.limit).map((r) => this.toRecord(r, "deals")),
         hasMore: rows.length > rel.limit,
         total: rows.length,
       };
@@ -158,7 +170,7 @@ export class MockCrmAdapter implements CrmAdapter {
       const rows = deal
         ? this.table("companies").filter((c) => c.fields.name === deal.fields.company)
         : [];
-      return { rows: rows.map((r) => this.toRecord(r)), hasMore: false, total: rows.length };
+      return { rows: rows.map((r) => this.toRecord(r, "companies")), hasMore: false, total: rows.length };
     }
     return { rows: [], hasMore: false, total: 0 };
   }
@@ -171,6 +183,7 @@ export class MockCrmAdapter implements CrmAdapter {
   async updateRecord(objectApi: string, id: string, patch: FieldPatch): Promise<CrmRecord> {
     const row = this.table(objectApi).find((r) => r.id === id);
     if (!row) throw new CrmRecordNotFoundError(objectApi, id);
+    patch = this.resolveReferencePatch(objectApi, patch);
     this.validate(objectApi, { ...row.fields, ...patch });
     for (const [key, value] of Object.entries(patch)) {
       const describe = fixtures.OBJECTS[objectApi]?.fields.find((f) => f.api === key);
@@ -186,12 +199,29 @@ export class MockCrmAdapter implements CrmAdapter {
       }
       row.fields[key] = value;
     }
-    return this.toRecord(row);
+    return this.toRecord(row, objectApi);
+  }
+
+  /**
+   * Reference patches arrive as IDs (that's what a real CRM takes — the lookup
+   * editor commits ids). The mock stores the company NAME (fixture associations
+   * join by name), so translate id → name; an unknown id is a validation error,
+   * like a real CRM's foreign-key check.
+   */
+  private resolveReferencePatch(objectApi: string, patch: FieldPatch): FieldPatch {
+    if (objectApi !== "deals" || typeof patch.company !== "string" || !patch.company) return patch;
+    const value = patch.company;
+    const companies = this.data.companies ?? [];
+    const byId = companies.find((c) => c.id === value);
+    if (byId) return { ...patch, company: byId.fields.name ?? null };
+    if (companies.some((c) => c.fields.name === value)) return patch; // already a name
+    throw new CrmValidationError(`No company matches "${value}".`, "company");
   }
 
   async createRecord(objectApi: string, fields: FieldPatch): Promise<CrmRecord> {
     const describe = fixtures.OBJECTS[objectApi];
     if (!describe) throw new CrmObjectNotFoundError(objectApi);
+    fields = this.resolveReferencePatch(objectApi, fields);
     for (const f of describe.fields) {
       if (f.required && (fields[f.api] === undefined || fields[f.api] === null)) {
         throw new CrmValidationError(`${f.label} is required.`, f.api);
@@ -205,7 +235,7 @@ export class MockCrmAdapter implements CrmAdapter {
       ),
     };
     this.table(objectApi).push(row);
-    return this.toRecord(row);
+    return this.toRecord(row, objectApi);
   }
 
   async listSavedViews(objectApi: string): Promise<SavedView[]> {
@@ -279,8 +309,21 @@ export class MockCrmAdapter implements CrmAdapter {
     return rows;
   }
 
-  private toRecord(row: FixtureRecord): CrmRecord {
-    return clone({ id: row.id, fields: row.fields });
+  private toRecord(row: FixtureRecord, objectApi?: string): CrmRecord {
+    const record: CrmRecord = clone({ id: row.id, fields: row.fields });
+    // Deals store the company NAME (fixture associations join by name); mirror
+    // a real adapter by shipping the company's id + object for drill-through
+    // and lookup editing. Deals only — contacts carry a plain-string company.
+    if (objectApi === "deals" && typeof record.fields.company === "string" && record.fields.company) {
+      const company = (this.data.companies ?? []).find(
+        (c) => c.fields.name === record.fields.company,
+      );
+      if (company) {
+        record.refs = { ...record.refs, company: company.id };
+        record.refObjects = { ...record.refObjects, company: "companies" };
+      }
+    }
+    return record;
   }
 
   private nameField(row: FixtureRecord): string {

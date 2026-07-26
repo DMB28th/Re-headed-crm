@@ -23,10 +23,20 @@ interface FlowRow {
   assignedTo: { object: string; label: string }[];
 }
 
+interface QuickActionRow {
+  api: string;
+  label: string;
+  type: string;
+  targetObject: string | null;
+  support: { level: "full" | "handoff"; note?: string };
+  exposed: boolean;
+}
+
 interface FlowsResponse {
   flows: FlowRow[];
   modes: FlowRenderModeConfig[];
   objects: string[];
+  quickActions?: { object: string; actions: QuickActionRow[] }[];
   connection: { status: "connected" | "disconnected"; crm: "hubspot" | "salesforce"; live?: boolean };
   error?: string;
 }
@@ -104,6 +114,49 @@ export function FlowsEditor() {
     () => new Map((data?.modes ?? []).map((mode) => [mode.flowApiName, mode])),
     [data],
   );
+
+  const toggleQuickAction = async (object: string, action: QuickActionRow, enabled: boolean) => {
+    const key = `qa:${action.api}:${object}`;
+    setBusyKey(key);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/flows/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ flowApiName: action.api, object, enabled, kind: "quick_action" }),
+      });
+      const json = (await res.json()) as { ok?: boolean; revision?: number; error?: string };
+      if (!res.ok || !json.ok) {
+        setLoadError(json.error ?? `Request failed (${res.status}).`);
+        return;
+      }
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              quickActions: (prev.quickActions ?? []).map((group) =>
+                group.object !== object
+                  ? group
+                  : {
+                      ...group,
+                      actions: group.actions.map((a) =>
+                        a.api === action.api ? { ...a, exposed: enabled } : a,
+                      ),
+                    },
+              ),
+            }
+          : prev,
+      );
+      setNotice(
+        enabled
+          ? `${action.label} is live on the ${object} card (rev ${json.revision})`
+          : `${action.label} removed from the ${object} card (rev ${json.revision})`,
+      );
+      setTimeout(() => setNotice(null), 3500);
+    } finally {
+      setBusyKey(null);
+    }
+  };
 
   const toggleAssignment = async (flow: FlowRow, object: string, enabled: boolean) => {
     const key = `${flow.api}:${object}`;
@@ -318,6 +371,61 @@ export function FlowsEditor() {
           );
         })}
       </div>
+
+      {(data.quickActions ?? []).some((g) => g.actions.length > 0) && (
+        <>
+          <div className="mt-8">
+            <h2 className="text-[14px] font-semibold">Quick actions</h2>
+            <p className="mt-1 text-[12.5px] text-ink-55">
+              The CRM&apos;s per-object quick actions. Chat renders the mini-layout with
+              record-context defaults; {crmLabel} executes with its own validation.
+            </p>
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-2.5">
+            {(data.quickActions ?? []).map((group) => (
+              <div key={group.object} className="st-card p-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] font-semibold">{group.object}</span>
+                  <span className="st-chip-mono bg-paper text-ink-45">
+                    {group.actions.filter((a) => a.support.level === "full").length} chat-ready
+                  </span>
+                </div>
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  {group.actions.map((action) => {
+                    const busy = busyKey === `qa:${action.api}:${group.object}`;
+                    const renderable = action.support.level === "full";
+                    return (
+                      <button
+                        key={action.api}
+                        type="button"
+                        disabled={busy || !renderable}
+                        className={`rounded-[8px] border px-2.5 py-1 text-[11.5px] ${
+                          action.exposed
+                            ? "border-accent bg-accent text-white"
+                            : renderable
+                              ? "border-line bg-surface text-ink-55"
+                              : "border-line-soft bg-paper text-ink-45 opacity-60"
+                        }`}
+                        title={
+                          !renderable
+                            ? (action.support.note ?? "Not renderable in chat.")
+                            : action.exposed
+                              ? `Remove ${action.label} from the ${group.object} card`
+                              : `Expose ${action.label} on the ${group.object} card` +
+                                (action.targetObject ? ` (${action.type} ${action.targetObject})` : "")
+                        }
+                        onClick={() => toggleQuickAction(group.object, action, !action.exposed)}
+                      >
+                        {busy ? "…" : action.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -99,6 +99,16 @@ export function Preview({ config }: { config: LayoutConfig }) {
           if (result.error) return { isError: true, content: [{ type: "text", text: result.error }] };
           return { structuredContent: result.payload as Record<string, unknown> };
         }
+        if (name === "crm_lookup_search") {
+          const result = await previewCall({
+            kind: "lookup",
+            object: args.object,
+            query: args.query,
+            ...(args.limit !== undefined ? { limit: args.limit } : {}),
+          });
+          if (result.error) return { isError: true, content: [{ type: "text", text: result.error }] };
+          return { structuredContent: result.payload as Record<string, unknown> };
+        }
         if (name === "crm_update_record") {
           const result = await previewCall({
             kind: "write",

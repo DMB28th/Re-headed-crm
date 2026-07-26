@@ -90,6 +90,20 @@ export interface ViewPickerPayload {
   provenance: WidgetProvenance;
 }
 
+/** One typeahead match for a reference-field lookup editor. */
+export interface LookupOption {
+  id: string;
+  label: string;
+}
+
+/** structuredContent for crm_lookup_search → consumed by the lookup editor. */
+export interface LookupOptionsPayload {
+  kind: "lookup-options";
+  /** The TARGET object that was searched (Account, User, …). */
+  object: string;
+  options: LookupOption[];
+}
+
 /** Per-field outcome of a confirmed write (design 1e partial failure / 4c receipt). */
 export interface FieldWriteResult {
   field: string;

@@ -20,6 +20,9 @@
  *   unique relationshipName (multiple relationships can share a foreign key).
  *   Additive + optional; existing HubSpot configs (no foreignKey) parse and
  *   resolve unchanged.
+ * - 2026-07-26: CardAction gains the `quick_action` variant (Salesforce quick
+ *   actions rendered in chat via the flow-run form; the CRM executes). New
+ *   union member — existing configs parse unchanged.
  * - 2026-07-23 (b): LayoutConfig gains optional `generatedFallback` — true only
  *   on layouts the SERVER generates at runtime for objects with no configured
  *   layout (record-card drill-through to e.g. OpportunityLineItem). These are
@@ -145,6 +148,13 @@ export const CardAction = z.discriminatedUnion("type", [
   }),
   // Salesforce screen flows land in M5; the config slot exists so publishing a
   // flow action later is not a schema migration.
+  // Salesforce quick action exposed on the card; the chat form renders its
+  // mini-layout and the CRM executes (validations, predefined values, triggers).
+  z.object({
+    type: z.literal("quick_action"),
+    actionApiName: z.string().min(1),
+    label: z.string().min(1),
+  }),
   z.object({
     type: z.literal("screen_flow"),
     flowApiName: z.string().min(1),

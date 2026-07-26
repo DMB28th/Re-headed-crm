@@ -34,6 +34,9 @@ import type {
   FlowDefinitionJson,
   FlowSummary,
   FlowTableRow,
+  QuickActionDescribeJson,
+  QuickActionExecuteResult,
+  QuickActionSummary,
   ObjectDescribe,
   ObjectSummary,
   RelationshipDescribe,
@@ -194,10 +197,13 @@ interface SfDescribeField {
   referenceTo?: string[];
 }
 
-// Entities we KNOW carry a queryable Name — `.Name` traversal is only emitted
-// for these (plus custom objects, which always have Name). System targets like
-// OpportunityHistory have no Name; one such column MALFORMED_QUERYs the whole
-// SELECT (seen live via LastAmountChangedHistory.Name).
+// Entities we KNOW carry a queryable Name — single-target `.Name` traversal is
+// only emitted for these (plus custom objects, which always have Name). System
+// targets like OpportunityHistory have no Name; one such column
+// MALFORMED_QUERYs the whole SELECT (seen live via LastAmountChangedHistory.Name).
+// POLYMORPHIC fields (referenceTo.length > 1, e.g. OwnerId, WhoId, WhatId) are
+// always traversable: they resolve to the Name pseudo-object, which carries
+// queryable Name AND Type regardless of the concrete targets.
 const NAME_BEARING_TARGETS = new Set([
   "User", "Group", "Account", "Contact", "Opportunity", "Lead", "Campaign",
   "Product2", "Pricebook2", "Asset", "RecordType",
@@ -205,10 +211,20 @@ const NAME_BEARING_TARGETS = new Set([
 
 function canTraverseName(f: SfDescribeField): boolean {
   const targets = f.referenceTo ?? [];
+  if (targets.length > 1) return true; // polymorphic → Name pseudo-object
   return (
-    targets.length > 0 &&
+    targets.length === 1 &&
     targets.every((t) => t.endsWith("__c") || NAME_BEARING_TARGETS.has(t))
   );
+}
+
+/** Everything the adapter needs to resolve + drill a reference field. */
+interface RefFieldInfo {
+  /** Relationship to traverse for `.Name` (Owner, Account, Foo__r) — null when
+   *  traversal is unsafe/unknown; the field then displays its raw id. */
+  rel: string | null;
+  /** Target sObject(s) from describe. Length > 1 = polymorphic. */
+  targets: string[];
 }
 
 // Convention fallback when describe omits relationshipName — custom fields ONLY
@@ -370,8 +386,8 @@ export class SalesforceAdapter implements CrmAdapter {
   private token: string | null = null;
   private instanceUrl: string | null = null;
   private describeCache = new Map<string, { describe: ObjectDescribe; fetchedAt: number }>();
-  /** Per object: reference field api → relationship to traverse for `.Name`. */
-  private refCache = new Map<string, Map<string, string>>();
+  /** Per object: reference field api → traversal + target info (all reference fields). */
+  private refCache = new Map<string, Map<string, RefFieldInfo>>();
   /** Global sObject list (from /sobjects), fetched once: the object picker + the
    *  label/layoutable lookups relationships need. */
   private globalCache: {
@@ -382,6 +398,7 @@ export class SalesforceAdapter implements CrmAdapter {
   private viewObjectById = new Map<string, string>();
   /** Flow definitions memoized per api name — an interview re-resolves one every step. */
   private flowDefCache = new Map<string, { def: FlowDefinitionJson; at: number }>();
+  private quickActionCache = new Map<string, { describe: QuickActionDescribeJson; at: number }>();
   /** Opportunity stage ApiName → IsClosed, fetched once. */
   private closedStageValues: string[] | null = null;
   /** Org facts (IsSandbox, default currency), fetched once. */
@@ -716,35 +733,49 @@ export class SalesforceAdapter implements CrmAdapter {
       ...(has("CloseDate") ? { closeDateField: "CloseDate" } : {}),
     };
     this.describeCache.set(objectApi, { describe, fetchedAt: this.now() });
-    // Reference field → relationship for name resolution (OwnerId → Owner.Name).
-    const refs = new Map<string, string>();
+    // EVERY reference field gets an entry — traversable ones carry the
+    // relationship for `.Name`; the rest keep rel:null so the raw id still
+    // ships as a drill-through ref instead of dead text.
+    const refs = new Map<string, RefFieldInfo>();
     for (const f of data.fields) {
-      if (f.type !== "reference" || !canTraverseName(f)) continue;
-      const rel = f.relationshipName ?? deriveRelationshipName(f.name);
-      if (rel) refs.set(f.name, rel);
+      if (f.type !== "reference" || !f.referenceTo?.length) continue;
+      const rel = canTraverseName(f)
+        ? (f.relationshipName ?? deriveRelationshipName(f.name))
+        : null;
+      refs.set(f.name, { rel, targets: f.referenceTo });
     }
     this.refCache.set(objectApi, refs);
     return describe;
   }
 
-  /** Reference-field relationship map for an object (describes if not cached). */
-  private async refFields(objectApi: string): Promise<Map<string, string>> {
+  /** Reference-field info map for an object (describes if not cached). */
+  private async refFields(objectApi: string): Promise<Map<string, RefFieldInfo>> {
     if (!this.refCache.has(objectApi)) await this.describeObject(objectApi).catch(() => undefined);
     return this.refCache.get(objectApi) ?? new Map();
   }
 
   /** Expand a requested column into itself + `Relationship.Name` when it's a
-   *  reference, so an id displays as the related record's name. */
-  private refColumns(column: string, refs: Map<string, string>): string[] {
-    const rel = refs.get(column);
-    return rel ? [column, `${rel}.Name`] : [column];
+   *  traversable reference, so an id displays as the related record's name.
+   *  Polymorphic refs also fetch `.Type` — the concrete target object, so the
+   *  widget knows which card a drill-through opens. (`.Type` is only queryable
+   *  on the polymorphic Name pseudo-object; on a concrete target it would
+   *  collide with real fields like Account.Type.) */
+  private refColumns(column: string, refs: Map<string, RefFieldInfo>): string[] {
+    const info = refs.get(column);
+    if (!info?.rel) return [column];
+    return info.targets.length > 1
+      ? [column, `${info.rel}.Name`, `${info.rel}.Type`]
+      : [column, `${info.rel}.Name`];
   }
 
   private nameField(objectApi: string): string {
     return objectApi === "Case" ? "CaseNumber" : "Name";
   }
 
-  private recordFromSObject(raw: Record<string, unknown>, refs?: Map<string, string>): CrmRecord {
+  private recordFromSObject(
+    raw: Record<string, unknown>,
+    refs?: Map<string, RefFieldInfo>,
+  ): CrmRecord {
     const fields: Record<string, CrmFieldValue> = {};
     for (const [key, value] of Object.entries(raw)) {
       if (key === "attributes" || key === "Id") continue;
@@ -754,21 +785,36 @@ export class SalesforceAdapter implements CrmAdapter {
     }
     // Replace a reference id with the related record's Name (Owner.Name →
     // OwnerId) — keeping the id in `refs` so the widget can drill through.
+    // Non-traversable references keep the raw id as display but STILL ship the
+    // ref id + target, so they're clickable instead of dead text.
     const refIds: Record<string, string> = {};
+    const refObjects: Record<string, string> = {};
     if (refs) {
-      for (const [fieldApi, rel] of refs) {
-        const nested = raw[rel] as { Name?: unknown } | null | undefined;
+      for (const [fieldApi, info] of refs) {
+        const rawId = raw[fieldApi];
+        if (typeof rawId !== "string" || !rawId) continue;
+        refIds[fieldApi] = rawId;
+        const nested = info.rel
+          ? (raw[info.rel] as { Name?: unknown; Type?: unknown } | null | undefined)
+          : undefined;
         if (nested && typeof nested === "object" && typeof nested.Name === "string") {
-          const rawId = raw[fieldApi];
-          if (typeof rawId === "string" && rawId) refIds[fieldApi] = rawId;
           fields[fieldApi] = nested.Name;
         }
+        // Concrete target: unambiguous from describe, or resolved via `.Type`.
+        const target =
+          info.targets.length === 1
+            ? info.targets[0]
+            : nested && typeof nested === "object" && typeof nested.Type === "string"
+              ? nested.Type
+              : undefined;
+        if (target) refObjects[fieldApi] = target;
       }
     }
     return {
       id: String(raw.Id ?? ""),
       fields,
       ...(Object.keys(refIds).length > 0 ? { refs: refIds } : {}),
+      ...(Object.keys(refObjects).length > 0 ? { refObjects } : {}),
     };
   }
 
@@ -781,7 +827,7 @@ export class SalesforceAdapter implements CrmAdapter {
   private selectColumns(
     objectApi: string,
     describe: ObjectDescribe,
-    refs: Map<string, string>,
+    refs: Map<string, RefFieldInfo>,
     requested?: string[],
   ): Set<string> {
     const byApi = new Map(describe.fields.map((f) => [f.api, f]));
@@ -931,7 +977,7 @@ export class SalesforceAdapter implements CrmAdapter {
     if (!SF_API_NAME.test(rel.object) || !SF_API_NAME.test(fk)) {
       return { rows: [], hasMore: false, total: 0 };
     }
-    const refs = await this.refFields(rel.object).catch(() => new Map<string, string>());
+    const refs = await this.refFields(rel.object).catch(() => new Map<string, RefFieldInfo>());
     const cols = new Set<string>(["Id"]);
     for (const c of rel.columns) {
       // Skip the FK back to the parent: it's the record the card already
@@ -1320,6 +1366,97 @@ export class SalesforceAdapter implements CrmAdapter {
       }
       return { id: String(r.Id ?? ""), cells };
     });
+  }
+
+  /** Quick actions available on an object (Create/Update render in chat). */
+  async listQuickActions(objectApi: string): Promise<QuickActionSummary[]> {
+    if (!SF_API_NAME.test(objectApi)) return [];
+    try {
+      const actions = await this.request<
+        { name?: string; label?: string; type?: string; targetSobjectType?: string | null }[]
+      >("GET", `${API}/sobjects/${objectApi}/quickActions`);
+      return (actions ?? [])
+        .filter((a) => a.name)
+        .map((a) => ({
+          api: a.name!,
+          label: a.label ?? a.name!,
+          type: a.type ?? "Unknown",
+          targetObject: a.targetSobjectType ?? null,
+        }));
+    } catch {
+      return [];
+    }
+  }
+
+  /** Mini-layout describe for a quick action (memoized like flow definitions). */
+  async describeQuickAction(actionApiName: string): Promise<QuickActionDescribeJson | null> {
+    if (!/^[A-Za-z][A-Za-z0-9_.]*$/.test(actionApiName)) return null;
+    const cached = this.quickActionCache.get(actionApiName);
+    if (cached && Date.now() - cached.at < FLOW_DEF_TTL_MS) return cached.describe;
+    try {
+      const describe = await this.request<QuickActionDescribeJson>(
+        "GET",
+        `${API}/quickActions/${encodeURIComponent(actionApiName)}/describe`,
+      );
+      this.quickActionCache.set(actionApiName, { describe, at: Date.now() });
+      return describe;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Record-contextual defaults (admin predefined values + context prefills). */
+  async getQuickActionDefaults(
+    actionApiName: string,
+    contextRecordId: string,
+  ): Promise<Record<string, CrmFieldValue>> {
+    try {
+      const data = await this.request<{ record?: Record<string, unknown> }>(
+        "GET",
+        `${API}/quickActions/${encodeURIComponent(actionApiName)}/defaultValues/${encodeURIComponent(contextRecordId)}`,
+      );
+      const defaults: Record<string, CrmFieldValue> = {};
+      for (const [key, value] of Object.entries(data.record ?? {})) {
+        if (key === "attributes" || value === undefined || value === null) continue;
+        if (
+          typeof value === "string" ||
+          typeof value === "number" ||
+          typeof value === "boolean"
+        ) {
+          defaults[key] = value;
+        }
+      }
+      return defaults;
+    } catch {
+      return {};
+    }
+  }
+
+  /** Execute the action — Salesforce runs its own validation and defaults. */
+  async executeQuickAction(
+    actionApiName: string,
+    contextRecordId: string | null,
+    fields: Record<string, CrmFieldValue>,
+  ): Promise<QuickActionExecuteResult> {
+    const body: Record<string, unknown> = { record: fields };
+    if (contextRecordId) body.contextId = contextRecordId;
+    try {
+      const result = await this.request<{
+        success?: boolean;
+        id?: string | null;
+        errors?: unknown[];
+      }>("POST", `${API}/quickActions/${encodeURIComponent(actionApiName)}`, body);
+      return {
+        success: result.success ?? false,
+        createdId: result.id ?? null,
+        errors: (result.errors ?? []).map((e) => String((e as { message?: string })?.message ?? e)),
+      };
+    } catch (error) {
+      if (error instanceof CrmValidationError) {
+        return { success: false, createdId: null, errors: [error.message] };
+      }
+      throw error;
+    }
   }
 
   /**

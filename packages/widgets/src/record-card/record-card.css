@@ -263,6 +263,24 @@
   border-top: 1px solid var(--cs-border-soft);
 }
 
+/* Reference-field lookup editor: live CRM typeahead; polymorphic lookups
+   (Owner, What) get a compact target-object switcher beside the input. */
+.wd-lookup {
+  display: flex;
+  gap: 5px;
+  align-items: flex-start;
+}
+.wd-lookup .wd-combobox {
+  flex: 1;
+  min-width: 0;
+}
+.wd-lookup-target {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 40%;
+  font-size: 12px;
+}
+
 /* --- Confirmation diff (design 1c): the signing moment --- */
 
 .wd-diff {

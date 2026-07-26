@@ -65,6 +65,9 @@ export function RecordCard({
   const [mode, setMode] = useState<CardMode>({ kind: "ready" });
   // Attempted values survive a partial failure so "Edit & retry" can restore them.
   const [lastDraft, setLastDraft] = useState<Draft>({});
+  // Lookup picks store an ID in the draft but the rep chose a NAME — keep the
+  // names so the editor, diff, and confirm views never show a raw id.
+  const [draftLabels, setDraftLabels] = useState<Record<string, string>>({});
   // Drill-through: a clicked reference field or related row opens ITS card in
   // place of this one (recursive RecordCard = unlimited depth, one screen).
   const [drill, setDrill] = useState<RecordCardPayload | null>(null);
@@ -80,6 +83,7 @@ export function RecordCard({
     setDrillError(null);
     setHomeView(null);
     setFieldQuery("");
+    setDraftLabels({});
   }, [payload]);
 
   const { layout, meta, record, provenance, capabilities } = payload;
@@ -108,12 +112,16 @@ export function RecordCard({
       setDrillLoading(null);
     }
   };
-  // A reference field is drillable when we have the target record's id and an
-  // unambiguous target object (polymorphic refs like Owner stay plain text).
+  // A reference field is drillable when we have the target record's id and a
+  // concrete target object — either resolved per record by the adapter
+  // (refObjects covers polymorphic refs like Owner/What) or unambiguous from
+  // describe metadata.
   const drillTargetFor = (api: string): { object: string; id: string } | null => {
     const id = record.refs?.[api];
+    if (!id) return null;
     const targets = meta[api]?.referenceTo;
-    return id && targets?.length === 1 ? { object: targets[0]!, id } : null;
+    const object = record.refObjects?.[api] ?? (targets?.length === 1 ? targets[0] : undefined);
+    return object ? { object, id } : null;
   };
 
   const openHome = async () => {
@@ -154,12 +162,19 @@ export function RecordCard({
   const editableSet = new Set(capabilities.editableFields);
   const canEdit = capabilities.writeEnabled && editableSet.size > 0;
 
-  const setDraftValue = (api: string, value: CrmFieldValue) => {
+  const setDraftValue = (api: string, value: CrmFieldValue, label?: string) => {
     if (mode.kind !== "editing") return;
     const draft = { ...mode.draft };
     const original = record.fields[api] ?? null;
-    if (value === original) delete draft[api];
-    else draft[api] = value;
+    // A lookup's original "value" displays as a NAME while the draft carries
+    // an ID — re-picking the same record (id === refs[api]) is not a change.
+    const originalRefId = record.refs?.[api];
+    if (value === original || (originalRefId !== undefined && value === originalRefId)) {
+      delete draft[api];
+    } else {
+      draft[api] = value;
+    }
+    if (label !== undefined) setDraftLabels((prev) => ({ ...prev, [api]: label }));
     setMode({ kind: "editing", draft });
   };
 
@@ -193,6 +208,9 @@ export function RecordCard({
           fields: { ...record.fields, ...receipt.record.fields },
           ...(record.refs || receipt.record.refs
             ? { refs: { ...record.refs, ...receipt.record.refs } }
+            : {}),
+          ...(record.refObjects || receipt.record.refObjects
+            ? { refObjects: { ...record.refObjects, ...receipt.record.refObjects } }
             : {}),
         },
       });
@@ -292,7 +310,11 @@ export function RecordCard({
       ? Object.entries(mode.draft).map(([api, value]) => ({
           label: meta[api]?.label ?? api,
           before: fmt(api, record.fields[api] ?? null),
-          after: fmt(api, value),
+          // A lookup draft carries an ID — the diff shows the picked record's name.
+          after:
+            value !== null && draftLabels[api] !== undefined && meta[api]?.type === "reference"
+              ? draftLabels[api]!
+              : fmt(api, value),
         }))
       : [];
 
@@ -389,7 +411,9 @@ export function RecordCard({
               locale={locale}
               editing={mode.kind === "editing"}
               draft={mode.kind === "editing" ? mode.draft : undefined}
+              draftLabels={draftLabels}
               editableSet={editableSet}
+              host={host}
               onChange={setDraftValue}
               drillTargetFor={drillTargetFor}
               onOpenRef={(object, id) => void openDrill(object, id)}
@@ -571,7 +595,9 @@ function Section({
   locale,
   editing,
   draft,
+  draftLabels,
   editableSet,
+  host,
   onChange,
   drillTargetFor,
   onOpenRef,
@@ -582,8 +608,11 @@ function Section({
   locale: string;
   editing: boolean;
   draft: Draft | undefined;
+  /** Field api → human label for lookup drafts (the draft value is an id). */
+  draftLabels?: Record<string, string>;
   editableSet: Set<string>;
-  onChange: (api: string, value: CrmFieldValue) => void;
+  host?: WidgetHost | null;
+  onChange: (api: string, value: CrmFieldValue, displayLabel?: string) => void;
   /** Unambiguous drill target for a reference field, or null. */
   drillTargetFor?: (api: string) => { object: string; id: string } | null;
   onOpenRef?: (object: string, id: string) => void;
@@ -602,6 +631,16 @@ function Section({
           const editableHere = editing && editableSet.has(field.api);
           const flsBlocked = editing && field.editable && !editableSet.has(field.api);
           const formatted = formatValue(currentValue, fieldMeta, locale);
+          // Lookup fields: the input shows the record's NAME — the picked
+          // option's label when dirty, else the original resolved name.
+          const lookupLabel =
+            fieldMeta?.type === "reference"
+              ? isDirty
+                ? currentValue === null
+                  ? ""
+                  : (draftLabels?.[field.api] ?? String(currentValue))
+                : (formatValue(original, fieldMeta, locale) ?? "")
+              : undefined;
           return (
             <div key={field.api} className="rc-field">
               <div className="rc-field-label">
@@ -627,7 +666,9 @@ function Section({
                   meta={fieldMeta}
                   value={currentValue}
                   dirty={isDirty}
-                  onChange={(value) => onChange(field.api, value)}
+                  displayLabel={lookupLabel}
+                  host={host}
+                  onChange={(value, label) => onChange(field.api, value, label)}
                 />
               ) : (
                 <div className="rc-field-value">
