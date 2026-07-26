@@ -7,6 +7,7 @@ import { useState } from "react";
 import type { FlowRunPayload } from "@cardstack/core";
 import { MakerChip } from "../shared/components.tsx";
 import type { WidgetHost } from "../record-card/card.tsx";
+import { FlowScreenForm } from "./screen-form.tsx";
 
 function displayValue(value: FlowRunPayload["resolvedInputs"][number]["value"]): string {
   if (Array.isArray(value)) return value.length ? value.join(", ") : "—";
@@ -17,12 +18,52 @@ function displayValue(value: FlowRunPayload["resolvedInputs"][number]["value"]):
 export function FlowRunCard({
   payload,
   host,
+  onPayload,
 }: {
   payload: FlowRunPayload;
   host: WidgetHost | null;
+  onPayload?: (next: FlowRunPayload) => void;
 }) {
   const [launched, setLaunched] = useState(false);
   const crmLabel = payload.provenance?.crmLabel ?? "the CRM";
+  // NATIVE rung: the interview renders in-chat; the form drives itself via
+  // crm_flow_continue and swaps the payload in place.
+  const native =
+    payload.status === "in-progress" ||
+    payload.status === "confirm-write" ||
+    payload.status === "finished";
+  if (native) {
+    return (
+      <div className="cs-card fr">
+        <header className="fr-header">
+          <div className="fr-headrow">
+            <h1 className="fr-title">{payload.flowLabel || payload.flowApiName}</h1>
+            <span className="fr-chip">Live in chat</span>
+          </div>
+          <span className="cs-muted fr-sub">
+            {payload.screens > 0 ? `${payload.screens} screens · ` : ""}
+            {payload.writesSummary}
+          </span>
+        </header>
+        <FlowScreenForm payload={payload} host={host} onPayload={(next) => onPayload?.(next)} />
+        <footer className="fr-footer">
+          {payload.launchUrl && payload.status !== "finished" ? (
+            <span className="cs-muted fr-note">
+              Prefer the CRM?{" "}
+              <button
+                type="button"
+                className="fr-inline-link"
+                onClick={() => host?.openLink?.(payload.launchUrl!)}
+              >
+                Open in {crmLabel} ↗
+              </button>
+            </span>
+          ) : null}
+          <MakerChip provenance={payload.provenance} />
+        </footer>
+      </div>
+    );
+  }
 
   if (payload.status === "cancelled") {
     return (

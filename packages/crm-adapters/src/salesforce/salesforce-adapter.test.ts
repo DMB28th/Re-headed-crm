@@ -498,6 +498,105 @@ describe("Salesforce OAuth hardening (PKCE + loginUrl allowlist)", () => {
     // Crucially: no token refresh happened, so the rotation token RT1 stays valid.
     expect(calls.some((c) => c.url.includes("/services/oauth2/token"))).toBe(false);
   });
+
+  it("single-flights concurrent token refreshes — one grant, not one per caller", async () => {
+    let grants = 0;
+    const { impl } = fetchStub([
+      (url, init) => {
+        if (url.includes("/services/oauth2/token") && init?.method === "POST") {
+          grants += 1;
+          return {
+            status: 200,
+            json: { access_token: `A${grants}`, refresh_token: `RT${grants + 1}` },
+          };
+        }
+        return undefined;
+      },
+      (url) =>
+        url.includes("/services/oauth2/userinfo") ? { status: 200, json: { name: "Rep" } } : undefined,
+    ]);
+    const adapter = new SalesforceAdapter(
+      {
+        authType: "oauth",
+        loginUrl: "https://login.salesforce.com",
+        clientId: "k",
+        clientSecret: "s",
+        refreshToken: "RT1",
+        instanceUrl: "https://x.my.salesforce.com",
+      },
+      impl,
+    );
+    // Parallel cold calls (the home card fires several at once). Two concurrent
+    // grants would replay RT1 — reuse-detected under rotation, killing the family.
+    await Promise.all([adapter.getConnectedUser(), adapter.getConnectedUser(), adapter.getConnectedUser()]);
+    expect(grants).toBe(1);
+  });
+
+  it("retries a rejected refresh with the store's token when another process rotated it", async () => {
+    const attempted: string[] = [];
+    const { impl } = fetchStub([
+      (url, init) => {
+        if (url.includes("/services/oauth2/token") && init?.method === "POST") {
+          const rt = new URLSearchParams(String(init.body)).get("refresh_token")!;
+          attempted.push(rt);
+          return rt === "RT-new"
+            ? { status: 200, json: { access_token: "A1" } }
+            : {
+                status: 400,
+                json: { error: "invalid_grant", error_description: "expired access/refresh token" },
+              };
+        }
+        return undefined;
+      },
+      (url) =>
+        url.includes("/services/oauth2/userinfo") ? { status: 200, json: { name: "Rep" } } : undefined,
+    ]);
+    const adapter = new SalesforceAdapter(
+      {
+        authType: "oauth",
+        loginUrl: "https://login.salesforce.com",
+        clientId: "k",
+        clientSecret: "s",
+        refreshToken: "RT-old", // stale: another process rotated and persisted RT-new
+        instanceUrl: "https://x.my.salesforce.com",
+      },
+      impl,
+      undefined,
+      async () => ({ clientId: "k", clientSecret: "s", refreshToken: "RT-new" }),
+    );
+    const user = await adapter.validateConnection();
+    expect(user).toBe("Rep");
+    expect(attempted).toEqual(["RT-old", "RT-new"]);
+  });
+
+  it("awaits the rotated-credentials persist, retrying once and never failing the request", async () => {
+    let persistCalls = 0;
+    const { impl } = fetchStub([
+      (url, init) =>
+        url.includes("/services/oauth2/token") && init?.method === "POST"
+          ? { status: 200, json: { access_token: "A1", refresh_token: "RT2" } }
+          : undefined,
+      (url) =>
+        url.includes("/services/oauth2/userinfo") ? { status: 200, json: { name: "Rep" } } : undefined,
+    ]);
+    const adapter = new SalesforceAdapter(
+      {
+        authType: "oauth",
+        loginUrl: "https://login.salesforce.com",
+        clientId: "k",
+        clientSecret: "s",
+        refreshToken: "RT1",
+        instanceUrl: "https://x.my.salesforce.com",
+      },
+      impl,
+      async () => {
+        persistCalls += 1;
+        if (persistCalls === 1) throw new Error("store write failed");
+      },
+    );
+    expect(await adapter.getConnectedUser()).toBe("Rep");
+    expect(persistCalls).toBe(2); // first write failed → one retry
+  });
 });
 
 const GLOBAL_SOBJECTS = {
@@ -734,14 +833,19 @@ describe("Salesforce-first metadata (dynamic objects + relationships)", () => {
     expect(decodeURIComponent(retrieve?.url ?? "")).toContain("Owner.Name");
   });
 
-  it("listFlows returns active screen flows from the Tooling API (empty on error)", async () => {
+  it("listFlows returns active screen flows via regular SOQL (empty on error)", async () => {
+    // FlowDefinitionView is a REGULAR sObject — the Tooling API rejects it with
+    // INVALID_TYPE, which used to silently empty this list on real orgs.
     const { impl } = fetchStub([
       tokenHandler(),
       (url) =>
-        url.includes("/tooling/query") && decodeURIComponent(url).includes("FlowDefinitionView")
+        !url.includes("/tooling/") &&
+        url.includes("/query") &&
+        decodeURIComponent(url).includes("FlowDefinitionView")
           ? {
               status: 200,
               json: {
+                totalSize: 2,
                 records: [
                   { ApiName: "Renewal_Playbook", Label: "Renewal Playbook" },
                   { ApiName: "Discount_Approval", Label: "Discount Approval" },
@@ -755,10 +859,10 @@ describe("Salesforce-first metadata (dynamic objects + relationships)", () => {
     expect(flows.map((f) => f.api)).toEqual(["Renewal_Playbook", "Discount_Approval"]);
     expect(flows[0]?.label).toBe("Renewal Playbook");
 
-    // Tooling error (no perms) → empty, not a throw.
+    // Query error (no perms) → empty, not a throw.
     const { impl: impl2 } = fetchStub([
       tokenHandler(),
-      (url) => (url.includes("/tooling/query") ? { status: 403, json: { error: "no access" } } : undefined),
+      (url) => (url.includes("/query") ? { status: 403, json: { error: "no access" } } : undefined),
     ]);
     expect(await new SalesforceAdapter(CREDS, impl2).listFlows()).toEqual([]);
   });

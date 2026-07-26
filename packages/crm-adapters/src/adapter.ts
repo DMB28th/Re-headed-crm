@@ -9,7 +9,9 @@ import type {
   CrmRecord,
   CrmTask,
   FieldPatch,
+  FlowDefinitionJson,
   FlowSummary,
+  FlowTableRow,
   ObjectDescribe,
   ObjectSummary,
   RecentRecord,
@@ -59,6 +61,21 @@ export interface CrmAdapter {
    * the screens and the write.
    */
   getFlowLaunchUrl?(flowApiName: string, params?: Record<string, string>): string | null;
+  /**
+   * NATIVE-rung flow definition (experimental spike): the CRM's screen-flow
+   * definition JSON for in-chat interpretation. Optional — null when the CRM
+   * can't expose the definition (then only the handoff rung is available).
+   */
+  getFlowDefinition?(flowApiName: string): Promise<FlowDefinitionJson | null>;
+  /**
+   * Generic row fetch feeding flow data tables / record choice sets. Optional;
+   * identifiers are validated by the adapter before querying.
+   */
+  queryRows?(
+    objectApi: string,
+    fields: string[],
+    opts: { sortField?: string; sortOrder?: "Asc" | "Desc"; limit?: number },
+  ): Promise<FlowTableRow[]>;
 
   // Auth
   refreshTokenIfNeeded(): Promise<void>;

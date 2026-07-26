@@ -3,7 +3,7 @@
  * SEP-1865 mechanics via @modelcontextprotocol/ext-apps — resource mimeType and
  * _meta shapes come from the shipped SDK, per CLAUDE.md rule 7.
  */
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
@@ -21,6 +21,14 @@ import {
   summarizeCustomFilters,
   defaultUserContext,
   resolveActionInputs,
+  startFlowInterview,
+  continueFlowInterview,
+  encodeInterviewState,
+  analyzeFlowSupport,
+  type FlowAnswerValue,
+  type FlowDefResolver,
+  type FlowRuntimeEffects,
+  type FlowStepResult,
   type ActionInvocationContext,
   type CardAction,
   type CrmFieldValue,
@@ -1214,11 +1222,34 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
   // model passes, so no interview session is persisted (PLAN spike #2). Only the
   // HANDOFF rung is wired — the flow opens in the CRM, which owns the screens and
   // the write. Native/Embedded rungs are gated behind their spikes.
+  // Interview state tokens round-trip through the model and the widget — sign
+  // them so a tampered token (which could alter write targets) is rejected.
+  // Core stays browser-safe, so the HMAC lives here.
+  const hmac = (body: string, secret: string): string =>
+    createHmac("sha256", secret).update(body).digest("base64url");
+  const signInterviewState = (token: string): string => {
+    const secret = process.env.CARDSTACK_ENCRYPTION_KEY;
+    return secret ? `${token}.${hmac(token, secret)}` : token;
+  };
+  const verifyInterviewState = (state: string): string => {
+    const secret = process.env.CARDSTACK_ENCRYPTION_KEY;
+    if (!secret) return state;
+    const [body, signature] = state.split(".");
+    const expected = hmac(body ?? "", secret);
+    const a = Buffer.from(signature ?? "");
+    const b = Buffer.from(expected);
+    if (!body || a.length !== b.length || !timingSafeEqual(a, b)) {
+      throw new Error("Interview state token failed verification — restart the flow.");
+    }
+    return body;
+  };
+
   const runFlow = async (
     args: { object?: string; recordId: string; flowApiName: string },
-    answers: Record<string, CrmFieldValue>,
+    answers: Record<string, FlowAnswerValue>,
     actionSessionId: string,
     tool: "crm_flow_start" | "crm_flow_continue",
+    nativeOpts?: { interviewState?: string; confirmWrite?: boolean; back?: boolean },
   ): Promise<CallToolResult> => {
     try {
       await requireConnection();
@@ -1272,7 +1303,17 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         recordFields,
         selections: {},
       };
-      const { resolved, pending, missing } = resolveActionInputs({ inputs, context, answers });
+      // Action-input resolution only understands scalars; array answers (multi-
+      // selects, table selections) belong to the native interview alone.
+      const scalarAnswers: Record<string, CrmFieldValue> = {};
+      for (const [k, v] of Object.entries(answers)) {
+        if (!Array.isArray(v)) scalarAnswers[k] = v;
+      }
+      const { resolved, pending, missing } = resolveActionInputs({
+        inputs,
+        context,
+        answers: scalarAnswers,
+      });
       // Pass the record id + resolved scalar inputs so the flow opens with context
       // (embedded or handoff). Salesforce maps matching names to flow variables.
       const launchParams: Record<string, string> = { recordId: args.recordId };
@@ -1282,6 +1323,157 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         }
       }
       const launchUrl = adapter.getFlowLaunchUrl?.(args.flowApiName, launchParams) ?? null;
+
+      // NATIVE rung: interpret the flow definition and render the interview
+      // in-chat. Renderability is decided by static analysis; any mid-run
+      // unsupported element degrades to the handoff card with a reason.
+      let degradeReason: string | null = null;
+      let supportLevel: "full" | "partial" | "handoff" | null = null;
+      const wantNative =
+        (renderMode === "auto" || renderMode === "native") &&
+        typeof adapter.getFlowDefinition === "function";
+      if (wantNative) {
+        const def = await adapter.getFlowDefinition!(args.flowApiName).catch(() => null);
+        const report = def ? analyzeFlowSupport(def) : null;
+        supportLevel = report?.level ?? null;
+        if (def && report && report.level !== "handoff") {
+          const resolver: FlowDefResolver = (name) =>
+            name === args.flowApiName
+              ? Promise.resolve(def)
+              : adapter.getFlowDefinition!(name).catch(() => null);
+          const audit = async (
+            object: string,
+            recordId: string,
+            changes: { field: string; before: null; after: CrmFieldValue }[],
+          ) => {
+            await auditLog.append({
+              tenantId,
+              user: await adapter.getConnectedUser(),
+              actor: auditActor(userContext),
+              object,
+              recordId,
+              changes,
+              timestamp: new Date().toISOString(),
+            });
+          };
+          const effects: FlowRuntimeEffects = {
+            queryRecords: (object, fields, queryOpts) =>
+              adapter.queryRows ? adapter.queryRows(object, fields, queryOpts) : Promise.resolve([]),
+            choiceOptions: async (object, valueField, displayField) => {
+              if (!adapter.queryRows) return [];
+              const rows = await adapter.queryRows(object, [valueField, displayField], {
+                sortField: displayField,
+                limit: 100,
+              });
+              return rows.map((r) => ({
+                value: String(valueField === "Id" ? r.id : (r.cells[valueField] ?? r.id)),
+                label: String(r.cells[displayField] ?? r.id),
+              }));
+            },
+            createRecord: async (object, fields) => {
+              const created = await adapter.createRecord(object, fields);
+              await audit(
+                object,
+                created.id,
+                Object.entries(fields).map(([field, after]) => ({ field, before: null, after })),
+              );
+              return created.id;
+            },
+            updateRecord: async (object, id, fields) => {
+              await adapter.updateRecord(object, id, fields);
+              await audit(
+                object,
+                id,
+                Object.entries(fields).map(([field, after]) => ({ field, before: null, after })),
+              );
+            },
+            // deleteRecord intentionally unwired: CrmAdapter has no delete
+            // surface yet, so recordDeletes degrade to handoff (visible in
+            // the analysis report) instead of executing.
+          };
+          try {
+            let step: FlowStepResult;
+            if (nativeOpts?.interviewState) {
+              step = await continueFlowInterview(
+                resolver,
+                verifyInterviewState(nativeOpts.interviewState),
+                answers,
+                {
+                  confirmWrite: nativeOpts.confirmWrite ?? false,
+                  back: nativeOpts.back ?? false,
+                },
+                effects,
+              );
+            } else {
+              // Seed the interview with the record context + resolved inputs so
+              // merge fields and decisions can reference them.
+              const initial: Record<string, FlowAnswerValue> = { recordId: args.recordId };
+              for (const r of resolved) initial[r.name] = r.value as FlowAnswerValue;
+              step = await startFlowInterview(args.flowApiName, resolver, effects, initial);
+            }
+            if (step.type === "degrade") {
+              degradeReason = `${step.element}: ${step.reason}`;
+            } else {
+              const base = buildFlowRunPayload({
+                actionSessionId,
+                flow: {
+                  api: flow.api,
+                  label: def.label ?? flow.label,
+                  screens: report.screenCount,
+                  writesSummary: flow.writesSummary,
+                },
+                renderMode: "native",
+                launchUrl,
+                resolved: resolved.map((r) => ({ name: r.name, value: r.value, source: r.source })),
+                pending: [],
+                missing: [],
+                provenance: {
+                  ...provenanceFor(config),
+                  connectedUser: await adapter.getConnectedUser(),
+                },
+              });
+              const payload = {
+                ...base,
+                object: config.object,
+                recordId: args.recordId,
+                supportLevel,
+                status:
+                  step.type === "screen"
+                    ? ("in-progress" as const)
+                    : step.type === "confirm-write"
+                      ? ("confirm-write" as const)
+                      : ("finished" as const),
+                screen: step.type === "screen" ? step.screen : null,
+                pendingWrite: step.type === "confirm-write" ? step.write : null,
+                finishedSummary: step.type === "finished" ? step.summary : null,
+                finishedFailed: step.type === "finished" ? (step.failed ?? false) : false,
+                interviewState:
+                  step.type === "finished"
+                    ? null
+                    : signInterviewState(encodeInterviewState(step.session)),
+              };
+              const text =
+                step.type === "screen"
+                  ? `Flow "${payload.flowLabel}" — screen ${step.screen.stepIndex} ` +
+                    `("${step.screen.label}") is rendered in the card. The rep fills it there; ` +
+                    `the card advances itself via crm_flow_continue. You don't need to collect ` +
+                    `these values in chat unless the rep asks.`
+                  : step.type === "confirm-write"
+                    ? `Flow "${payload.flowLabel}" wants to ${step.write.description.toLowerCase()} ` +
+                      `(${step.write.assignments.map((a) => `${a.field}: ${a.value ?? "—"}`).join(", ") || "no field changes"}). ` +
+                      `The rep confirms in the card before anything is written.`
+                    : `${step.summary}${step.failed ? "" : " Nothing further to collect."}`;
+              return {
+                content: [{ type: "text", text }],
+                structuredContent: payload as unknown as Record<string, unknown>,
+              };
+            }
+          } catch (error) {
+            // Unexpected interpreter failure — fall back to handoff, noting why.
+            degradeReason = error instanceof Error ? error.message : "interview failed";
+          }
+        }
+      }
 
       const payload = buildFlowRunPayload({
         actionSessionId,
@@ -1298,9 +1490,18 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         missing,
         provenance: { ...provenanceFor(config), connectedUser: await adapter.getConnectedUser() },
       });
+      const handoffPayload = {
+        ...payload,
+        ...(supportLevel !== null ? { supportLevel } : {}),
+        ...(degradeReason !== null ? { degradeReason } : {}),
+      };
 
       const text =
-        payload.status === "needs-input"
+        (degradeReason
+          ? `The in-chat interview stopped at a part this rung can't run (${degradeReason}). ` +
+            `The rep finishes the flow in ${payload.provenance.crmLabel} instead. `
+          : "") +
+        (payload.status === "needs-input"
           ? `Flow "${flow.label}" needs input before it can run: ` +
             `${pending.filter((p) => p.required).map((p) => p.prompt).join("; ")}. ` +
             `Ask the rep, then call crm_flow_continue with { actionSessionId: "${actionSessionId}", answers }.`
@@ -1308,11 +1509,11 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
             (flow.writesSummary ? ` — ${flow.writesSummary}` : "") +
             (payload.launchUrl
               ? ". The rep confirms and launches it from the card."
-              : `. No launch URL is available yet — the rep may need to connect ${payload.provenance.crmLabel}.`);
+              : `. No launch URL is available yet — the rep may need to connect ${payload.provenance.crmLabel}.`));
       void tool;
       return {
         content: [{ type: "text", text }],
-        structuredContent: payload as unknown as Record<string, unknown>,
+        structuredContent: handoffPayload as unknown as Record<string, unknown>,
       };
     } catch (error) {
       return asToolError(error, { tool });
@@ -1360,9 +1561,20 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         flowApiName: z.string(),
         actionSessionId: z.string(),
         answers: z
-          .record(z.union([z.string(), z.number(), z.boolean(), z.null()]))
+          .record(
+            z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.string())]),
+          )
           .default({})
           .describe("Flow input name → value collected from the rep"),
+        interviewState: z
+          .string()
+          .optional()
+          .describe("Opaque interview token from the previous flow payload (native rung)"),
+        confirmWrite: z
+          .boolean()
+          .optional()
+          .describe("True to execute the pending write the rep confirmed in the card"),
+        back: z.boolean().optional().describe("True to re-render the previous screen"),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
       _meta: { ui: { resourceUri: FLOW_RUN_URI } },
@@ -1370,9 +1582,14 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     async (args): Promise<CallToolResult> =>
       runFlow(
         { object: args.object, recordId: args.recordId, flowApiName: args.flowApiName },
-        args.answers as Record<string, CrmFieldValue>,
+        args.answers as Record<string, FlowAnswerValue>,
         args.actionSessionId,
         "crm_flow_continue",
+        {
+          ...(args.interviewState ? { interviewState: args.interviewState } : {}),
+          ...(args.confirmWrite !== undefined ? { confirmWrite: args.confirmWrite } : {}),
+          ...(args.back !== undefined ? { back: args.back } : {}),
+        },
       ),
   );
 

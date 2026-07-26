@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>60.0</apiVersion>
+    <assignments>
+        <name>Make_Result</name>
+        <label>Make result</label>
+        <locationX>176</locationX>
+        <locationY>134</locationY>
+        <assignmentItems>
+            <assignToReference>Result</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Upper</elementReference>
+            </value>
+        </assignmentItems>
+    </assignments>
+    <description>Subflow for the kitchen-sink interpreter test: uppercases its input.</description>
+    <environments>Default</environments>
+    <formulas>
+        <name>Upper</name>
+        <dataType>String</dataType>
+        <expression>UPPER({!InText}) &amp; "!"</expression>
+    </formulas>
+    <interviewLabel>Test Sub Flow {!$Flow.CurrentDateTime}</interviewLabel>
+    <label>Test Sub Flow</label>
+    <processType>AutoLaunchedFlow</processType>
+    <start>
+        <locationX>50</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Make_Result</targetReference>
+        </connector>
+    </start>
+    <status>Active</status>
+    <variables>
+        <name>InText</name>
+        <dataType>String</dataType>
+        <isCollection>false</isCollection>
+        <isInput>true</isInput>
+        <isOutput>false</isOutput>
+    </variables>
+    <variables>
+        <name>Result</name>
+        <dataType>String</dataType>
+        <isCollection>false</isCollection>
+        <isInput>false</isInput>
+        <isOutput>true</isOutput>
+    </variables>
+</Flow>

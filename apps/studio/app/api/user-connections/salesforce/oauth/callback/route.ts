@@ -60,7 +60,11 @@ export async function GET(req: Request) {
       code,
       codeVerifier: pendingCredentials.codeVerifier,
     });
-    const probe = new SalesforceAdapter(credentials);
+    // If the probe somehow refreshes (rotation), fold the rotated tokens back
+    // into what we're about to persist — never store an already-dead token.
+    const probe = new SalesforceAdapter(credentials, undefined, (rotated) => {
+      Object.assign(credentials, rotated);
+    });
     const connectedUser = await probe.validateConnection();
     invalidateAdapterCache({ crm: "salesforce", credentials: credentials as unknown as Record<string, string> });
     // Do NOT persist the shared client secret in the per-user record — the MCP

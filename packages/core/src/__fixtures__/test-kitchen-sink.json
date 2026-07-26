@@ -1,0 +1,674 @@
+{
+ "actionCalls": [],
+ "apexPluginCalls": [],
+ "apiVersion": 60,
+ "assignments": [
+  {
+   "assignmentItems": [
+    {
+     "assignToReference": "Total",
+     "operator": "Assign",
+     "processMetadataValues": [],
+     "value": {
+      "apexValue": null,
+      "booleanValue": null,
+      "dateTimeValue": null,
+      "dateValue": null,
+      "elementReference": "DoubledQty",
+      "formulaDataType": null,
+      "formulaExpression": null,
+      "numberValue": null,
+      "setupReference": null,
+      "setupReferenceType": null,
+      "sobjectValue": null,
+      "stringValue": null,
+      "transformValueReference": null
+     }
+    }
+   ],
+   "connector": {
+    "isGoTo": null,
+    "processMetadataValues": [],
+    "targetReference": "Call_Sub"
+   },
+   "description": null,
+   "elementSubtype": null,
+   "label": "Compute total",
+   "locationX": 176,
+   "locationY": 398,
+   "name": "Compute_Total",
+   "processMetadataValues": []
+  }
+ ],
+ "choices": [],
+ "collectionProcessors": [],
+ "constants": [],
+ "customErrors": [],
+ "decisions": [],
+ "description": "Kitchen-sink flow for the chat interpreter: sections, toggle, slider, visibility, validation, formulas, assignment, subflow, record update.",
+ "dynamicChoiceSets": [],
+ "environments": [
+  "Default"
+ ],
+ "exitRules": [],
+ "experiments": [],
+ "formulas": [
+  {
+   "dataType": "Number",
+   "description": null,
+   "expression": "{!QtyInput} * 2",
+   "name": "DoubledQty",
+   "processMetadataValues": [],
+   "scale": 0
+  }
+ ],
+ "interviewLabel": "Test Kitchen Sink {!$Flow.CurrentDateTime}",
+ "isAdditionalPermissionRequiredToRun": null,
+ "isOverridable": null,
+ "isTemplate": null,
+ "label": "Test Kitchen Sink",
+ "loops": [],
+ "migratedFromWorkflowRuleName": null,
+ "orchestratedStages": [],
+ "overriddenFlow": null,
+ "processMetadataValues": [],
+ "processType": "Flow",
+ "recordCreates": [],
+ "recordDeletes": [],
+ "recordLookups": [
+  {
+   "assignNullValuesIfNoRecordsFound": false,
+   "connector": {
+    "isGoTo": null,
+    "processMetadataValues": [],
+    "targetReference": "Setup_Screen"
+   },
+   "description": null,
+   "elementSubtype": null,
+   "faultConnector": null,
+   "filterLogic": null,
+   "filters": [],
+   "getFirstRecordOnly": true,
+   "label": "Get first account",
+   "locationX": 176,
+   "locationY": 0,
+   "name": "Get_First_Account",
+   "object": "Account",
+   "outputAssignments": [],
+   "outputReference": null,
+   "processMetadataValues": [],
+   "queriedFields": null,
+   "sortField": "Name",
+   "sortOrder": "Asc",
+   "storeOutputAutomatically": true
+  }
+ ],
+ "recordRollbacks": [],
+ "recordUpdates": [
+  {
+   "connector": {
+    "isGoTo": null,
+    "processMetadataValues": [],
+    "targetReference": "Done_Screen"
+   },
+   "description": null,
+   "elementSubtype": null,
+   "faultConnector": null,
+   "filterLogic": "and",
+   "filters": [
+    {
+     "field": "Id",
+     "operator": "EqualTo",
+     "processMetadataValues": [],
+     "value": {
+      "apexValue": null,
+      "booleanValue": null,
+      "dateTimeValue": null,
+      "dateValue": null,
+      "elementReference": "Get_First_Account.Id",
+      "formulaDataType": null,
+      "formulaExpression": null,
+      "numberValue": null,
+      "setupReference": null,
+      "setupReferenceType": null,
+      "sobjectValue": null,
+      "stringValue": null,
+      "transformValueReference": null
+     }
+    }
+   ],
+   "inputAssignments": [
+    {
+     "field": "Description",
+     "processMetadataValues": [],
+     "value": {
+      "apexValue": null,
+      "booleanValue": null,
+      "dateTimeValue": null,
+      "dateValue": null,
+      "elementReference": "SubText",
+      "formulaDataType": null,
+      "formulaExpression": null,
+      "numberValue": null,
+      "setupReference": null,
+      "setupReferenceType": null,
+      "sobjectValue": null,
+      "stringValue": null,
+      "transformValueReference": null
+     }
+    }
+   ],
+   "inputReference": null,
+   "label": "Note on account",
+   "locationX": 176,
+   "locationY": 530,
+   "name": "Note_On_Account",
+   "object": "Account",
+   "processMetadataValues": []
+  }
+ ],
+ "runInMode": null,
+ "screens": [
+  {
+   "actions": [],
+   "allowBack": false,
+   "allowFinish": true,
+   "allowPause": false,
+   "backButtonLabel": null,
+   "connector": null,
+   "description": null,
+   "elementSubtype": null,
+   "fields": [
+    {
+     "attributes": null,
+     "choiceReferences": null,
+     "dataType": null,
+     "dataTypeMappings": [],
+     "defaultSelectedChoiceReference": null,
+     "defaultValue": null,
+     "description": null,
+     "extensionName": null,
+     "fieldText": "<p>Total {!Total} — subflow said <b>{!Call_Sub.Result}</b> and we noted it on {!Get_First_Account.Name}.</p>",
+     "fieldType": "DisplayText",
+     "fields": [],
+     "helpText": null,
+     "inputParameters": [],
+     "inputsOnNextNavToAssocScrn": null,
+     "isDisabled": null,
+     "isReadOnly": null,
+     "isRequired": null,
+     "isVisible": null,
+     "name": "DoneText",
+     "objectFieldReference": null,
+     "outputParameters": [],
+     "processMetadataValues": [],
+     "regionContainerType": null,
+     "scale": null,
+     "storeOutputAutomatically": null,
+     "validationRule": null,
+     "visibilityRule": null
+    }
+   ],
+   "helpText": null,
+   "label": "Kitchen sink done",
+   "locationX": 176,
+   "locationY": 662,
+   "name": "Done_Screen",
+   "nextOrFinishButtonLabel": null,
+   "pauseButtonLabel": null,
+   "pausedText": null,
+   "processMetadataValues": [],
+   "rules": [],
+   "showFooter": true,
+   "showHeader": true,
+   "triggers": []
+  },
+  {
+   "actions": [],
+   "allowBack": true,
+   "allowFinish": true,
+   "allowPause": false,
+   "backButtonLabel": null,
+   "connector": {
+    "isGoTo": null,
+    "processMetadataValues": [],
+    "targetReference": "Compute_Total"
+   },
+   "description": null,
+   "elementSubtype": null,
+   "fields": [
+    {
+     "attributes": null,
+     "choiceReferences": null,
+     "dataType": null,
+     "dataTypeMappings": [],
+     "defaultSelectedChoiceReference": null,
+     "defaultValue": null,
+     "description": null,
+     "extensionName": null,
+     "fieldText": null,
+     "fieldType": "RegionContainer",
+     "fields": [
+      {
+       "attributes": null,
+       "choiceReferences": null,
+       "dataType": null,
+       "dataTypeMappings": [],
+       "defaultSelectedChoiceReference": null,
+       "defaultValue": null,
+       "description": null,
+       "extensionName": null,
+       "fieldText": null,
+       "fieldType": "Region",
+       "fields": [
+        {
+         "attributes": null,
+         "choiceReferences": null,
+         "dataType": null,
+         "dataTypeMappings": [],
+         "defaultSelectedChoiceReference": null,
+         "defaultValue": null,
+         "description": null,
+         "extensionName": "flowruntime:toggle",
+         "fieldText": null,
+         "fieldType": "ComponentInstance",
+         "fields": [],
+         "helpText": null,
+         "inputParameters": [
+          {
+           "name": "label",
+           "processMetadataValues": [],
+           "value": {
+            "apexValue": null,
+            "booleanValue": null,
+            "dateTimeValue": null,
+            "dateValue": null,
+            "elementReference": null,
+            "formulaDataType": null,
+            "formulaExpression": null,
+            "numberValue": null,
+            "setupReference": null,
+            "setupReferenceType": null,
+            "sobjectValue": null,
+            "stringValue": "Rush handling",
+            "transformValueReference": null
+           }
+          }
+         ],
+         "inputsOnNextNavToAssocScrn": null,
+         "isDisabled": null,
+         "isReadOnly": null,
+         "isRequired": true,
+         "isVisible": null,
+         "name": "RushToggle",
+         "objectFieldReference": null,
+         "outputParameters": [],
+         "processMetadataValues": [],
+         "regionContainerType": null,
+         "scale": null,
+         "storeOutputAutomatically": true,
+         "validationRule": null,
+         "visibilityRule": null
+        },
+        {
+         "attributes": null,
+         "choiceReferences": null,
+         "dataType": null,
+         "dataTypeMappings": [],
+         "defaultSelectedChoiceReference": null,
+         "defaultValue": null,
+         "description": null,
+         "extensionName": "flowruntime:slider",
+         "fieldText": null,
+         "fieldType": "ComponentInstance",
+         "fields": [],
+         "helpText": null,
+         "inputParameters": [
+          {
+           "name": "label",
+           "processMetadataValues": [],
+           "value": {
+            "apexValue": null,
+            "booleanValue": null,
+            "dateTimeValue": null,
+            "dateValue": null,
+            "elementReference": null,
+            "formulaDataType": null,
+            "formulaExpression": null,
+            "numberValue": null,
+            "setupReference": null,
+            "setupReferenceType": null,
+            "sobjectValue": null,
+            "stringValue": "Urgency",
+            "transformValueReference": null
+           }
+          },
+          {
+           "name": "max",
+           "processMetadataValues": [],
+           "value": {
+            "apexValue": null,
+            "booleanValue": null,
+            "dateTimeValue": null,
+            "dateValue": null,
+            "elementReference": null,
+            "formulaDataType": null,
+            "formulaExpression": null,
+            "numberValue": 10,
+            "setupReference": null,
+            "setupReferenceType": null,
+            "sobjectValue": null,
+            "stringValue": null,
+            "transformValueReference": null
+           }
+          }
+         ],
+         "inputsOnNextNavToAssocScrn": null,
+         "isDisabled": null,
+         "isReadOnly": null,
+         "isRequired": true,
+         "isVisible": null,
+         "name": "Urgency",
+         "objectFieldReference": null,
+         "outputParameters": [],
+         "processMetadataValues": [],
+         "regionContainerType": null,
+         "scale": null,
+         "storeOutputAutomatically": true,
+         "validationRule": null,
+         "visibilityRule": null
+        }
+       ],
+       "helpText": null,
+       "inputParameters": [
+        {
+         "name": "width",
+         "processMetadataValues": [],
+         "value": {
+          "apexValue": null,
+          "booleanValue": null,
+          "dateTimeValue": null,
+          "dateValue": null,
+          "elementReference": null,
+          "formulaDataType": null,
+          "formulaExpression": null,
+          "numberValue": null,
+          "setupReference": null,
+          "setupReferenceType": null,
+          "sobjectValue": null,
+          "stringValue": "12",
+          "transformValueReference": null
+         }
+        }
+       ],
+       "inputsOnNextNavToAssocScrn": null,
+       "isDisabled": null,
+       "isReadOnly": null,
+       "isRequired": true,
+       "isVisible": null,
+       "name": "Options_Section_Column1",
+       "objectFieldReference": null,
+       "outputParameters": [],
+       "processMetadataValues": [],
+       "regionContainerType": null,
+       "scale": null,
+       "storeOutputAutomatically": null,
+       "validationRule": null,
+       "visibilityRule": null
+      }
+     ],
+     "helpText": null,
+     "inputParameters": [],
+     "inputsOnNextNavToAssocScrn": null,
+     "isDisabled": null,
+     "isReadOnly": null,
+     "isRequired": false,
+     "isVisible": null,
+     "name": "Options_Section",
+     "objectFieldReference": null,
+     "outputParameters": [],
+     "processMetadataValues": [],
+     "regionContainerType": "SectionWithoutHeader",
+     "scale": null,
+     "storeOutputAutomatically": null,
+     "validationRule": null,
+     "visibilityRule": null
+    },
+    {
+     "attributes": null,
+     "choiceReferences": null,
+     "dataType": "Number",
+     "dataTypeMappings": [],
+     "defaultSelectedChoiceReference": null,
+     "defaultValue": {
+      "apexValue": null,
+      "booleanValue": null,
+      "dateTimeValue": null,
+      "dateValue": null,
+      "elementReference": null,
+      "formulaDataType": null,
+      "formulaExpression": null,
+      "numberValue": 1,
+      "setupReference": null,
+      "setupReferenceType": null,
+      "sobjectValue": null,
+      "stringValue": null,
+      "transformValueReference": null
+     },
+     "description": null,
+     "extensionName": null,
+     "fieldText": "Quantity",
+     "fieldType": "InputField",
+     "fields": [],
+     "helpText": null,
+     "inputParameters": [],
+     "inputsOnNextNavToAssocScrn": null,
+     "isDisabled": null,
+     "isReadOnly": null,
+     "isRequired": true,
+     "isVisible": null,
+     "name": "QtyInput",
+     "objectFieldReference": null,
+     "outputParameters": [],
+     "processMetadataValues": [],
+     "regionContainerType": null,
+     "scale": 0,
+     "storeOutputAutomatically": null,
+     "validationRule": {
+      "errorMessage": "Quantity must be between 1 and 50.",
+      "formulaExpression": "AND({!QtyInput} >= 1, {!QtyInput} <= 50)"
+     },
+     "visibilityRule": null
+    },
+    {
+     "attributes": null,
+     "choiceReferences": null,
+     "dataType": "String",
+     "dataTypeMappings": [],
+     "defaultSelectedChoiceReference": null,
+     "defaultValue": null,
+     "description": null,
+     "extensionName": null,
+     "fieldText": "Why the rush?",
+     "fieldType": "InputField",
+     "fields": [],
+     "helpText": null,
+     "inputParameters": [],
+     "inputsOnNextNavToAssocScrn": null,
+     "isDisabled": null,
+     "isReadOnly": null,
+     "isRequired": false,
+     "isVisible": null,
+     "name": "RushReason",
+     "objectFieldReference": null,
+     "outputParameters": [],
+     "processMetadataValues": [],
+     "regionContainerType": null,
+     "scale": null,
+     "storeOutputAutomatically": null,
+     "validationRule": null,
+     "visibilityRule": {
+      "conditionLogic": "and",
+      "conditions": [
+       {
+        "aggregationOperator": null,
+        "conditionLogic": null,
+        "conditionType": null,
+        "conditions": [],
+        "leftValueReference": "RushToggle.value",
+        "operator": "EqualTo",
+        "processMetadataValues": [],
+        "rightValue": {
+         "apexValue": null,
+         "booleanValue": true,
+         "dateTimeValue": null,
+         "dateValue": null,
+         "elementReference": null,
+         "formulaDataType": null,
+         "formulaExpression": null,
+         "numberValue": null,
+         "setupReference": null,
+         "setupReferenceType": null,
+         "sobjectValue": null,
+         "stringValue": null,
+         "transformValueReference": null
+        }
+       }
+      ],
+      "processMetadataValues": []
+     }
+    }
+   ],
+   "helpText": null,
+   "label": "Kitchen sink setup",
+   "locationX": 176,
+   "locationY": 134,
+   "name": "Setup_Screen",
+   "nextOrFinishButtonLabel": null,
+   "pauseButtonLabel": null,
+   "pausedText": null,
+   "processMetadataValues": [],
+   "rules": [],
+   "showFooter": true,
+   "showHeader": true,
+   "triggers": []
+  }
+ ],
+ "sourceTemplate": null,
+ "start": {
+  "capabilityTypes": [],
+  "connector": {
+   "isGoTo": null,
+   "processMetadataValues": [],
+   "targetReference": "Get_First_Account"
+  },
+  "description": null,
+  "doesRequireRecordChangedToMeetCriteria": null,
+  "elementSubtype": null,
+  "entryType": null,
+  "filterFormula": null,
+  "filterLogic": null,
+  "filters": [],
+  "flowRunAsUser": null,
+  "form": null,
+  "label": null,
+  "locationX": 50,
+  "locationY": 0,
+  "name": null,
+  "object": null,
+  "objectContainer": null,
+  "processMetadataValues": [],
+  "publishSegment": null,
+  "recordTriggerType": null,
+  "schedule": null,
+  "scheduledPaths": [],
+  "segment": null,
+  "triggerType": null
+ },
+ "startElementReference": null,
+ "status": "Active",
+ "steps": [],
+ "subflows": [
+  {
+   "connector": {
+    "isGoTo": null,
+    "processMetadataValues": [],
+    "targetReference": "Note_On_Account"
+   },
+   "description": null,
+   "elementSubtype": null,
+   "flowName": "Test_Sub_Flow",
+   "inputAssignments": [
+    {
+     "name": "InText",
+     "processMetadataValues": [],
+     "value": {
+      "apexValue": null,
+      "booleanValue": null,
+      "dateTimeValue": null,
+      "dateValue": null,
+      "elementReference": "SubText",
+      "formulaDataType": null,
+      "formulaExpression": null,
+      "numberValue": null,
+      "setupReference": null,
+      "setupReferenceType": null,
+      "sobjectValue": null,
+      "stringValue": null,
+      "transformValueReference": null
+     }
+    }
+   ],
+   "label": "Call sub",
+   "locationX": 176,
+   "locationY": 464,
+   "name": "Call_Sub",
+   "outputAssignments": [],
+   "processMetadataValues": [],
+   "storeOutputAutomatically": true
+  }
+ ],
+ "textTemplates": [
+  {
+   "description": null,
+   "isViewedAsPlainText": true,
+   "name": "SubText",
+   "processMetadataValues": [],
+   "text": "order x{!QtyInput} at urgency {!Urgency.value}"
+  }
+ ],
+ "timeZoneSidKey": null,
+ "transforms": [],
+ "triggerOrder": null,
+ "urls": null,
+ "variables": [
+  {
+   "apexClass": null,
+   "dataType": "Number",
+   "description": null,
+   "isCollection": false,
+   "isInput": false,
+   "isOutput": false,
+   "name": "Total",
+   "objectType": null,
+   "processMetadataValues": [],
+   "scale": 0,
+   "value": {
+    "apexValue": null,
+    "booleanValue": null,
+    "dateTimeValue": null,
+    "dateValue": null,
+    "elementReference": null,
+    "formulaDataType": null,
+    "formulaExpression": null,
+    "numberValue": 0,
+    "setupReference": null,
+    "setupReferenceType": null,
+    "sobjectValue": null,
+    "stringValue": null,
+    "transformValueReference": null
+   }
+  }
+ ],
+ "waits": []
+}

@@ -199,6 +199,17 @@ app.all("/mcp", async (req, res) => {
     // Shared with Studio via the store: a refresh bumps changedAt, which busts
     // this process's cached adapter on its next request too.
     cacheNonce: connection.changedAt,
+    // Rotation-enabled orgs: a rotated token that isn't persisted strands a
+    // dead one in the store, killing every other process's next refresh.
+    onCredentialsRefreshed: async (credentials) => {
+      await configStore.setConnection({
+        ...connection,
+        credentials,
+        changedAt: new Date().toISOString(),
+      });
+    },
+    getFreshCredentials: async () =>
+      (await configStore.getConnection(userContext.tenantId)).credentials ?? null,
   };
   let runtimeAuth: Parameters<typeof createCardstackServer>[0]["runtimeAuth"] | undefined;
   if (
@@ -229,13 +240,27 @@ app.all("/mcp", async (req, res) => {
         cacheNonce: userConnection.changedAt,
         // Persist rotated tokens back to the per-user connection (minus the
         // shared client secret, which is never stored per user).
-        onCredentialsRefreshed: (credentials) => {
+        onCredentialsRefreshed: async (credentials) => {
           const { clientSecret: _omit, ...userCreds } = credentials;
-          void configStore.setUserConnection({
+          await configStore.setUserConnection({
             ...liveUserConnection,
             credentials: userCreds,
             changedAt: new Date().toISOString(),
           });
+        },
+        getFreshCredentials: async () => {
+          const latest = await configStore.getUserConnection(
+            userContext.tenantId,
+            userContext.userId,
+            "salesforce",
+          );
+          if (latest?.status !== "connected" || !latest.credentials) return null;
+          return {
+            ...latest.credentials,
+            ...(connection.credentials?.clientSecret
+              ? { clientSecret: connection.credentials.clientSecret }
+              : {}),
+          };
         },
       };
     } else {

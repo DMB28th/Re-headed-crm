@@ -145,3 +145,255 @@
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* ---- NATIVE rung (experimental spike): in-chat interview form ---- */
+
+.fr-screen-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.fr-screen-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.fr-step {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.fr-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fr-display {
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.fr-display p {
+  margin: 0 0 6px;
+}
+
+.fr-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.fr-field-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--cs-text-secondary);
+}
+
+.fr-text-input,
+.fr-textarea,
+.fr-select {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 9px;
+  border: 1px solid var(--cs-border);
+  border-radius: 6px;
+  background: var(--cs-bg);
+  color: var(--cs-text);
+  max-width: 420px;
+}
+
+.fr-textarea {
+  max-width: none;
+  resize: vertical;
+}
+
+.fr-text-input:focus,
+.fr-textarea:focus,
+.fr-select:focus {
+  outline: 2px solid var(--cs-accent, #2f6fed);
+  outline-offset: -1px;
+}
+
+.fr-choices {
+  gap: 5px;
+}
+
+.fr-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.fr-check input {
+  margin: 0;
+}
+
+.fr-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--cs-border-soft);
+  border-radius: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.fr-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.fr-table th,
+.fr-table td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--cs-border-soft);
+  white-space: nowrap;
+}
+
+.fr-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--cs-bg-subtle, var(--cs-bg));
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--cs-text-secondary);
+}
+
+.fr-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.fr-table-sel {
+  width: 28px;
+}
+
+.fr-table-empty {
+  color: var(--cs-text-secondary);
+}
+
+.fr-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.fr-secondary {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--cs-border);
+  background: var(--cs-bg);
+  color: var(--cs-text);
+  cursor: pointer;
+}
+
+.fr-secondary:disabled,
+.fr-launch:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.fr-write-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.fr-finished {
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.fr-error {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--cs-danger, #c23934);
+}
+
+.fr-unsupported {
+  opacity: 0.8;
+}
+
+/* ---- NATIVE rung: element-coverage additions ---- */
+
+.fr-section-group {
+  border: 1px solid var(--cs-border-soft);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin: 0;
+}
+
+.fr-section-group > legend {
+  padding: 0 6px;
+}
+
+.fr-field-sublabel {
+  font-size: 10.5px;
+  color: var(--cs-text-secondary);
+}
+
+.fr-composite {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  max-width: 480px;
+}
+
+.fr-toggle input {
+  width: 30px;
+  height: 16px;
+  appearance: none;
+  border-radius: 999px;
+  background: var(--cs-border);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.fr-toggle input:checked {
+  background: var(--cs-accent, #2f6fed);
+}
+
+.fr-toggle input::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.15s;
+}
+
+.fr-toggle input:checked::after {
+  left: 16px;
+}
+
+.fr-write-targets {
+  font-size: 11.5px;
+  margin-bottom: 6px;
+}
+
+.fr-failed {
+  color: var(--cs-danger, #c23934);
+}
+
+input[type="range"] {
+  max-width: 320px;
+}

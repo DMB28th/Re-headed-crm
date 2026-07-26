@@ -31,7 +31,9 @@ import type {
   FieldFilter,
   FieldPatch,
   FieldType,
+  FlowDefinitionJson,
   FlowSummary,
+  FlowTableRow,
   ObjectDescribe,
   ObjectSummary,
   RelationshipDescribe,
@@ -422,6 +424,9 @@ export class SalesforceAdapter implements CrmAdapter {
    *  the next refresh and can be persisted via onRefresh. */
   private refreshToken: string | null;
 
+  /** In-flight token grant shared by concurrent callers (single-flight). */
+  private tokenGrant: Promise<string> | null = null;
+
   constructor(
     private readonly credentials: SalesforceCredentials,
     private readonly fetchImpl: FetchLike = fetch,
@@ -429,9 +434,18 @@ export class SalesforceAdapter implements CrmAdapter {
      * Called after a successful OAuth refresh with the updated credentials
      * (new access token, and — critically for rotation-enabled orgs — the new
      * refresh token). The caller persists these so the connection survives past
-     * the first refresh. Fire-and-forget; failures must not break the request.
+     * the first refresh. Awaited (with one retry) before the grant resolves —
+     * under rotation, losing this write strands a dead token in the store —
+     * but persist failures are logged, never thrown.
      */
-    private readonly onRefresh?: (credentials: SalesforceCredentials) => void,
+    private readonly onRefresh?: (credentials: SalesforceCredentials) => void | Promise<void>,
+    /**
+     * Re-read the LATEST persisted credentials. Another process (Studio and the
+     * MCP server each cache adapters) may have rotated the token and stored the
+     * replacement; when our in-memory refresh token is rejected, this is the
+     * one-shot fallback before declaring the connection dead.
+     */
+    private readonly getFreshCredentials?: () => Promise<SalesforceCredentials | null>,
   ) {
     this.token = credentials.accessToken ?? null;
     this.instanceUrl = credentials.instanceUrl ?? null;
@@ -446,29 +460,67 @@ export class SalesforceAdapter implements CrmAdapter {
     return base;
   }
 
-  private async fetchToken(): Promise<string> {
+  private fetchToken(): Promise<string> {
+    // Single-flight: concurrent cold calls share ONE grant. Parallel refreshes
+    // would replay the same refresh token, and under Salesforce's rotation
+    // policy the replay is reuse-detected and revokes the whole token family.
+    this.tokenGrant ??= this.grantToken().finally(() => {
+      this.tokenGrant = null;
+    });
+    return this.tokenGrant;
+  }
+
+  private postRefresh(refreshToken: string): Promise<SalesforceTokenResponse> {
+    return postToken(this.fetchImpl, this.credentials.loginUrl, {
+      grant_type: "refresh_token",
+      client_id: this.credentials.clientId,
+      client_secret: this.credentials.clientSecret,
+      refresh_token: refreshToken,
+    });
+  }
+
+  private async grantToken(): Promise<string> {
     if (salesforceUsesOAuth(this.credentials as unknown as Record<string, string>)) {
       if (!this.refreshToken) {
         throw new CrmAuthError("Salesforce", "Salesforce authorization is missing a refresh token.");
       }
-      const data = await postToken(this.fetchImpl, this.credentials.loginUrl, {
-        grant_type: "refresh_token",
-        client_id: this.credentials.clientId,
-        client_secret: this.credentials.clientSecret,
-        refresh_token: this.refreshToken,
-      });
+      let data: SalesforceTokenResponse;
+      try {
+        data = await this.postRefresh(this.refreshToken);
+      } catch (error) {
+        // Our copy may be stale because ANOTHER process rotated the token and
+        // persisted the replacement — re-read the store and retry once with
+        // the persisted token before declaring the connection dead.
+        const fresh =
+          error instanceof CrmAuthError
+            ? await this.getFreshCredentials?.().catch(() => null)
+            : null;
+        const freshToken = fresh?.refreshToken;
+        if (!freshToken || freshToken === this.refreshToken) throw error;
+        this.refreshToken = freshToken;
+        data = await this.postRefresh(freshToken);
+      }
       this.token = data.access_token!;
       this.instanceUrl = data.instance_url ?? this.instanceUrl ?? this.credentials.instanceUrl ?? null;
       // Rotation policy issues a NEW refresh token and invalidates the old one.
       // Keep using it in-process, and persist so the NEXT cold adapter doesn't
       // refresh with the now-dead token.
       if (data.refresh_token) this.refreshToken = data.refresh_token;
-      this.onRefresh?.({
+      const rotated: SalesforceCredentials = {
         ...this.credentials,
         accessToken: this.token,
         refreshToken: this.refreshToken,
         ...(this.instanceUrl ? { instanceUrl: this.instanceUrl } : {}),
-      });
+      };
+      try {
+        await this.onRefresh?.(rotated);
+      } catch {
+        try {
+          await this.onRefresh?.(rotated);
+        } catch (persistError) {
+          console.error("Failed to persist rotated Salesforce credentials:", persistError);
+        }
+      }
       return this.token;
     }
 
@@ -498,7 +550,10 @@ export class SalesforceAdapter implements CrmAdapter {
       signal: AbortSignal.timeout(15_000),
     });
     if (res.status === 401 && !retried) {
-      this.token = null;
+      // Only invalidate the token WE used — a concurrent caller may already
+      // have refreshed, and clobbering its fresh token forces a second
+      // (rotation-burning) grant.
+      if (this.token === token) this.token = null;
       return this.request(method, path, body, true);
     }
     if (res.status === 401) throw new CrmAuthError("Salesforce");
@@ -1161,11 +1216,11 @@ export class SalesforceAdapter implements CrmAdapter {
     // Requires the connected user's setup/metadata access — a 403 (no perms) or
     // any Tooling error degrades to an empty list rather than failing the page.
     try {
+      // FlowDefinitionView is a REGULAR sObject (not Tooling) — querying it via
+      // tooling/query fails with INVALID_TYPE and used to silently empty this list.
       const q =
         "SELECT ApiName, Label FROM FlowDefinitionView WHERE IsActive = true AND ProcessType = 'Flow' ORDER BY Label LIMIT 200";
-      const { records } = await this.request<{
-        records: { ApiName?: string; Label?: string }[];
-      }>("GET", `${API}/tooling/query?q=${encodeURIComponent(q)}`);
+      const { records } = await this.soql<{ ApiName?: string; Label?: string }>(q);
       const seen = new Set<string>();
       const flows: FlowSummary[] = [];
       for (const r of records ?? []) {
@@ -1182,6 +1237,77 @@ export class SalesforceAdapter implements CrmAdapter {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * NATIVE-rung flow definition (experimental spike): the active version's full
+   * metadata JSON via the Tooling API — FlowDefinitionView resolves the active
+   * version id, then the Tooling Flow record carries `Metadata`. Null on any
+   * failure (no perms, inactive, not found): callers fall back to handoff.
+   */
+  async getFlowDefinition(flowApiName: string): Promise<FlowDefinitionJson | null> {
+    if (!SF_API_NAME.test(flowApiName)) return null;
+    try {
+      // FlowDefinitionView is a regular sObject; only the Flow record (with its
+      // Metadata payload) lives behind the Tooling API.
+      const q =
+        "SELECT ActiveVersionId FROM FlowDefinitionView " +
+        `WHERE ApiName = '${soqlEscape(flowApiName)}' AND IsActive = true LIMIT 1`;
+      const { records } = await this.soql<{ ActiveVersionId?: string }>(q);
+      const versionId = records?.[0]?.ActiveVersionId;
+      if (!versionId) return null;
+      const version = await this.request<{ Metadata?: FlowDefinitionJson }>(
+        "GET",
+        `${API}/tooling/sobjects/Flow/${encodeURIComponent(versionId)}`,
+      );
+      return version.Metadata ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Generic row fetch for flow data tables / record choice sets / lookups. */
+  async queryRows(
+    objectApi: string,
+    fields: string[],
+    opts: {
+      sortField?: string;
+      sortOrder?: "Asc" | "Desc";
+      limit?: number;
+      filters?: { field: string; operator: string; value: CrmFieldValue }[];
+    },
+  ): Promise<FlowTableRow[]> {
+    if (!SF_API_NAME.test(objectApi)) return [];
+    const cols = fields.filter((f) => SF_COLUMN.test(f) && f !== "Id");
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+    const SOQL_OPS: Record<string, string> = {
+      EqualTo: "=",
+      NotEqualTo: "!=",
+      GreaterThan: ">",
+      GreaterThanOrEqualTo: ">=",
+      LessThan: "<",
+      LessThanOrEqualTo: "<=",
+    };
+    const where = (opts.filters ?? [])
+      .filter((f) => SF_COLUMN.test(f.field) && SOQL_OPS[f.operator])
+      .map((f) => `${f.field} ${SOQL_OPS[f.operator]} ${soqlLiteral(f.value)}`);
+    const orderBy =
+      opts.sortField && SF_COLUMN.test(opts.sortField)
+        ? ` ORDER BY ${opts.sortField} ${opts.sortOrder === "Desc" ? "DESC" : "ASC"} NULLS LAST`
+        : "";
+    const q =
+      `SELECT Id${cols.length ? ", " + cols.join(", ") : ""} FROM ${objectApi}` +
+      (where.length ? ` WHERE ${where.join(" AND ")}` : "") +
+      `${orderBy} LIMIT ${limit}`;
+    const { records } = await this.soql<Record<string, unknown>>(q);
+    return records.map((r) => {
+      const cells: Record<string, CrmFieldValue> = {};
+      for (const c of cols) {
+        const v = r[c];
+        cells[c] = v === undefined || v === null ? null : (v as CrmFieldValue);
+      }
+      return { id: String(r.Id ?? ""), cells };
+    });
   }
 
   /**

@@ -60,18 +60,41 @@ export async function POST(req: Request) {
     invalidateAdapterCache({ crm: current.crm, credentials: current.credentials });
     let connectedUser: string | null = null;
     let scopeGaps: string[] = [];
+    // The probe may force a token refresh; under Salesforce rotation the NEW
+    // refresh token must reach the store, or the stored one is dead after this
+    // request and the whole connection dies.
+    let rotated: Record<string, string> | null = null;
     try {
       const probe =
         current.crm === "salesforce"
-          ? new SalesforceAdapter(current.credentials as unknown as SalesforceCredentials)
+          ? new SalesforceAdapter(
+              current.credentials as unknown as SalesforceCredentials,
+              undefined,
+              (credentials) => {
+                rotated = credentials as unknown as Record<string, string>;
+              },
+            )
           : new HubSpotAdapter(current.credentials as unknown as HubSpotCredentials);
       connectedUser = await probe.validateConnection();
       scopeGaps = await scopeGapsFor(probe);
     } catch (error) {
+      // Even on failure, a rotation that DID happen must be persisted — the
+      // old token is already invalid.
+      if (rotated) {
+        await store.setConnection({
+          ...current,
+          credentials: rotated,
+          changedAt: new Date().toISOString(),
+        });
+      }
       const message = error instanceof Error ? error.message : String(error);
       return NextResponse.json({ error: `Refresh failed: ${message}` }, { status: 400 });
     }
-    const state: ConnectionState = { ...current, changedAt: new Date().toISOString() };
+    const state: ConnectionState = {
+      ...current,
+      ...(rotated ? { credentials: rotated } : {}),
+      changedAt: new Date().toISOString(),
+    };
     await store.setConnection(state);
     return NextResponse.json({ connection: redact(state), connectedUser, scopeGaps });
   }

@@ -17,6 +17,7 @@ import type {
   RecordPage,
 } from "./crm-types.js";
 import type { HomeCardBlock } from "./home-card.js";
+import type { FlowPendingWrite, FlowRenderScreen } from "./flow-interview.js";
 
 /** Merged live describe metadata, exposed fields only. Keyed by field API name. */
 export type DescribeMetaMap = Record<string, FieldDescribe>;
@@ -155,7 +156,15 @@ export interface FlowRunPendingInput {
   required: boolean;
 }
 
-export type FlowRunStatus = "ready" | "needs-input" | "launched" | "cancelled";
+export type FlowRunStatus =
+  | "ready"
+  | "needs-input"
+  | "launched"
+  | "cancelled"
+  // NATIVE rung (interview rendered in-chat by the flow interpreter):
+  | "in-progress"
+  | "confirm-write"
+  | "finished";
 
 export interface FlowRunPayload {
   kind: "flow-run";
@@ -173,6 +182,27 @@ export interface FlowRunPayload {
   /** "needs-input" = required asks unfilled; "ready" = launchable. */
   status: FlowRunStatus;
   provenance: WidgetProvenance;
+  // NATIVE rung: the interpreter walks the flow definition and the widget
+  // renders each screen in-chat. State is an opaque (HMAC-signed when the
+  // server has a key) token the widget passes back on crm_flow_continue —
+  // the server persists nothing.
+  /** Record context the widget echoes back on continue calls. */
+  object?: string;
+  recordId?: string;
+  /** The screen to render, when status is "in-progress". */
+  screen?: FlowRenderScreen | null;
+  /** Opaque interview state; echo back verbatim on continue. */
+  interviewState?: string | null;
+  /** The write awaiting confirmation, when status is "confirm-write" (rule 8). */
+  pendingWrite?: FlowPendingWrite | null;
+  /** Closing summary, when status is "finished". */
+  finishedSummary?: string | null;
+  /** True when the flow ended on a custom error. */
+  finishedFailed?: boolean;
+  /** Static renderability: full / partial / handoff (from analyzeFlowSupport). */
+  supportLevel?: "full" | "partial" | "handoff" | null;
+  /** Why the interview handed off mid-run (unsupported element), if it did. */
+  degradeReason?: string | null;
 }
 
 /**

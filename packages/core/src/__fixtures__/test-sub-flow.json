@@ -1,0 +1,148 @@
+{
+ "actionCalls": [],
+ "apexPluginCalls": [],
+ "apiVersion": 60,
+ "assignments": [
+  {
+   "assignmentItems": [
+    {
+     "assignToReference": "Result",
+     "operator": "Assign",
+     "processMetadataValues": [],
+     "value": {
+      "apexValue": null,
+      "booleanValue": null,
+      "dateTimeValue": null,
+      "dateValue": null,
+      "elementReference": "Upper",
+      "formulaDataType": null,
+      "formulaExpression": null,
+      "numberValue": null,
+      "setupReference": null,
+      "setupReferenceType": null,
+      "sobjectValue": null,
+      "stringValue": null,
+      "transformValueReference": null
+     }
+    }
+   ],
+   "connector": null,
+   "description": null,
+   "elementSubtype": null,
+   "label": "Make result",
+   "locationX": 176,
+   "locationY": 134,
+   "name": "Make_Result",
+   "processMetadataValues": []
+  }
+ ],
+ "choices": [],
+ "collectionProcessors": [],
+ "constants": [],
+ "customErrors": [],
+ "decisions": [],
+ "description": "Subflow for the kitchen-sink interpreter test: uppercases its input.",
+ "dynamicChoiceSets": [],
+ "environments": [
+  "Default"
+ ],
+ "exitRules": [],
+ "experiments": [],
+ "formulas": [
+  {
+   "dataType": "String",
+   "description": null,
+   "expression": "UPPER({!InText}) & \"!\"",
+   "name": "Upper",
+   "processMetadataValues": [],
+   "scale": null
+  }
+ ],
+ "interviewLabel": "Test Sub Flow {!$Flow.CurrentDateTime}",
+ "isAdditionalPermissionRequiredToRun": null,
+ "isOverridable": null,
+ "isTemplate": null,
+ "label": "Test Sub Flow",
+ "loops": [],
+ "migratedFromWorkflowRuleName": null,
+ "orchestratedStages": [],
+ "overriddenFlow": null,
+ "processMetadataValues": [],
+ "processType": "AutoLaunchedFlow",
+ "recordCreates": [],
+ "recordDeletes": [],
+ "recordLookups": [],
+ "recordRollbacks": [],
+ "recordUpdates": [],
+ "runInMode": null,
+ "screens": [],
+ "sourceTemplate": null,
+ "start": {
+  "capabilityTypes": [],
+  "connector": {
+   "isGoTo": null,
+   "processMetadataValues": [],
+   "targetReference": "Make_Result"
+  },
+  "description": null,
+  "doesRequireRecordChangedToMeetCriteria": null,
+  "elementSubtype": null,
+  "entryType": null,
+  "filterFormula": null,
+  "filterLogic": null,
+  "filters": [],
+  "flowRunAsUser": null,
+  "form": null,
+  "label": null,
+  "locationX": 50,
+  "locationY": 0,
+  "name": null,
+  "object": null,
+  "objectContainer": null,
+  "processMetadataValues": [],
+  "publishSegment": null,
+  "recordTriggerType": null,
+  "schedule": null,
+  "scheduledPaths": [],
+  "segment": null,
+  "triggerType": null
+ },
+ "startElementReference": null,
+ "status": "Active",
+ "steps": [],
+ "subflows": [],
+ "textTemplates": [],
+ "timeZoneSidKey": null,
+ "transforms": [],
+ "triggerOrder": null,
+ "urls": null,
+ "variables": [
+  {
+   "apexClass": null,
+   "dataType": "String",
+   "description": null,
+   "isCollection": false,
+   "isInput": true,
+   "isOutput": false,
+   "name": "InText",
+   "objectType": null,
+   "processMetadataValues": [],
+   "scale": null,
+   "value": null
+  },
+  {
+   "apexClass": null,
+   "dataType": "String",
+   "description": null,
+   "isCollection": false,
+   "isInput": false,
+   "isOutput": true,
+   "name": "Result",
+   "objectType": null,
+   "processMetadataValues": [],
+   "scale": null,
+   "value": null
+  }
+ ],
+ "waits": []
+}

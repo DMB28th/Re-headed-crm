@@ -26,9 +26,17 @@ export interface ConnectionSettings {
    * Persist rotated Salesforce OAuth credentials (new access + refresh token)
    * back to the store. Not part of the cache key — it's a side channel keyed to
    * the same credential set. Without it, a rotation-enabled org's connection
-   * dies on the first token refresh.
+   * dies on the first token refresh. Awaited by the adapter before the grant
+   * resolves (failures logged, never thrown).
    */
-  onCredentialsRefreshed?: (credentials: Record<string, string>) => void;
+  onCredentialsRefreshed?: (credentials: Record<string, string>) => void | Promise<void>;
+  /**
+   * Re-read the LATEST persisted credentials for this connection. Side channel
+   * like onCredentialsRefreshed (not part of the cache key). When a refresh is
+   * rejected because another process already rotated the token, the adapter
+   * retries once with what this returns instead of declaring the connection dead.
+   */
+  getFreshCredentials?: () => Promise<Record<string, string> | null>;
 }
 
 let mockSingleton: MockCrmAdapter | undefined;
@@ -69,6 +77,10 @@ export function createAdapterForConnection(settings: ConnectionSettings): CrmAda
           undefined,
           settings.onCredentialsRefreshed
             ? (creds) => settings.onCredentialsRefreshed!(creds as unknown as Record<string, string>)
+            : undefined,
+          settings.getFreshCredentials
+            ? async () =>
+                (await settings.getFreshCredentials!()) as unknown as SalesforceCredentials | null
             : undefined,
         );
   liveCache.set(key, adapter);

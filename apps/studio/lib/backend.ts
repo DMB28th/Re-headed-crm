@@ -61,12 +61,15 @@ export async function getAdapter(tenantId = TENANT_ID): Promise<CrmAdapter> {
     cacheNonce: connection.changedAt,
     // Persist rotated Salesforce OAuth tokens back to the admin connection so a
     // rotation-enabled org survives past the first token refresh.
-    onCredentialsRefreshed: (credentials) => {
-      void store.setConnection({
+    onCredentialsRefreshed: async (credentials) => {
+      await store.setConnection({
         ...connection,
         credentials,
         changedAt: new Date().toISOString(),
       });
     },
+    // If the MCP server (separate process, same store) rotated the token first,
+    // pick up its persisted copy instead of dying on our stale one.
+    getFreshCredentials: async () => (await store.getConnection(tenantId)).credentials ?? null,
   });
 }

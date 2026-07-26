@@ -51,7 +51,11 @@ export async function GET(req: Request) {
       code,
       codeVerifier: pendingAuth.codeVerifier,
     });
-    const probe = new SalesforceAdapter(credentials);
+    // If the probe somehow refreshes (rotation), fold the rotated tokens back
+    // into what we're about to persist — never store an already-dead token.
+    const probe = new SalesforceAdapter(credentials, undefined, (rotated) => {
+      Object.assign(credentials, rotated);
+    });
     const connectedUser = await probe.validateConnection();
     invalidateAdapterCache({ crm: "salesforce", credentials: credentials as unknown as Record<string, string> });
     // First Salesforce connect over the demo "deals"/hubspot seed (or any other
