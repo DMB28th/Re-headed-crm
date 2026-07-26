@@ -4,7 +4,7 @@
  */
 import { useEffect, useState, type CSSProperties } from "react";
 import type { CrmRecord, RecordCardPayload, ResultsTablePayload } from "@cardstack/core";
-import { LayoutChip, MakerChip, MessageCard, NullValue, StagePill } from "../shared/components.tsx";
+import { AsOfChip, LayoutChip, MakerChip, MessageCard, NullValue, StagePill } from "../shared/components.tsx";
 import { formatValue, stageTone } from "../shared/format.ts";
 import { RecordCard, type WidgetHost } from "../record-card/card.tsx";
 import "../record-card/record-card.css";
@@ -200,7 +200,10 @@ export function ResultsTable({
             </button>
           )}
         </span>
-        <MakerChip provenance={payload.provenance} />
+        <span className="rt-footer-chips">
+          <AsOfChip provenance={payload.provenance} locale={locale} />
+          <MakerChip provenance={payload.provenance} />
+        </span>
       </footer>
     </div>
   );

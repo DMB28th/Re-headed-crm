@@ -70,6 +70,18 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Width breakpoints in the widget css are @container queries: the card
+ * responds to the width it is actually GIVEN — the host iframe in chat,
+ * the (narrow) preview pane in Studio — not the outer viewport, which in
+ * Studio is always desktop-wide. #root is the bundle mount node; Studio
+ * previews wrap the card in .cs-container. Where no container exists the
+ * queries fall back to the small viewport size (spec behavior), i.e. the
+ * old @media semantics. */
+#root,
+.cs-container {
+  container-type: inline-size;
+}
+
 .cs-card {
   background: var(--cs-card);
   border: 1px solid var(--cs-border-soft);
@@ -88,6 +100,12 @@ body {
 
 .cs-muted {
   color: var(--cs-text-secondary);
+}
+
+/* "as of 2:32 PM" staleness line (design 1e down-payment). */
+.cs-as-of {
+  font-size: 10.5px;
+  white-space: nowrap;
 }
 
 /* Null values: muted "—" at 35% — always shown, never hidden, not configurable. */

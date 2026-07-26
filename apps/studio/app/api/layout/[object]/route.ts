@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { parseLayoutConfig } from "@cardstack/core";
 import { diffLayouts } from "@cardstack/config-store";
+import { CrmObjectNotFoundError } from "@cardstack/crm-adapters";
 import { getAdapter, getStore } from "../../../../lib/backend";
 import { getUserContextFromRequest } from "../../../../lib/auth";
 
@@ -12,8 +13,30 @@ export async function GET(req: Request, { params }: Params) {
     const { tenantId } = getUserContextFromRequest(req);
     const store = await getStore();
     const adapter = await getAdapter(tenantId);
+    let full;
+    try {
+      full = await adapter.describeObject(object);
+    } catch (error) {
+      if (!(error instanceof CrmObjectNotFoundError)) throw error;
+      // A wrong slug is a 404, NOT a CRM incident — dressing it as "couldn't
+      // reach the CRM" sends admins off to fix a healthy connection (UX
+      // review 2026-07-26 P0-4). Recover mis-cased slugs; otherwise name the
+      // real objects.
+      const objects = await adapter.listObjects().catch(() => []);
+      const match = objects.find((o) => o.api.toLowerCase() === object.toLowerCase());
+      if (match && match.api !== object) {
+        return NextResponse.json({ redirect: match.api });
+      }
+      return NextResponse.json(
+        {
+          notFound: true,
+          error: String(error),
+          objects: objects.map((o) => ({ api: o.api, labelPlural: o.labelPlural })),
+        },
+        { status: 404 },
+      );
+    }
     const record = await store.getLayoutRecord(tenantId, object);
-    const full = await adapter.describeObject(object);
     // Related-object describes keyed by relationship api — the related-list
     // picker (3b) needs the target's fields for column choices. Targets the
     // token can't describe (e.g. tickets without the tickets scope) are

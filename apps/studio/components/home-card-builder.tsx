@@ -34,6 +34,7 @@ import type {
   ResultsTablePayload,
 } from "@cardstack/core";
 import { HomeCard, RecordCard, ResultsTable, type WidgetHost, type WidgetHostResult } from "@cardstack/widgets/react";
+import { crmDisplayLabel } from "../lib/crm-label";
 import { LoadFailed } from "./load-failed";
 import "@cardstack/widgets/styles/theme.css";
 import "@cardstack/widgets/styles/home-card.css";
@@ -100,6 +101,9 @@ export function HomeCardBuilder() {
   const [config, setConfig] = useState<HomeCardConfig | null>(null);
   const [exposedViews, setExposedViews] = useState<ExposedViewInfo[]>([]);
   const [connectedUser, setConnectedUser] = useState<string>("the rep");
+  // Display label comes from the ACTIVE connection — never hardcoded, or the
+  // editor contradicts the live preview beside it (UX review 2026-07-26 P0-2).
+  const [crmLabel, setCrmLabel] = useState<string>("Your CRM");
   const [liveHubspot, setLiveHubspot] = useState(false);
   // null = nothing published yet (fresh tenant): builder starts from a default draft.
   const [publishedRevision, setPublishedRevision] = useState<number | null>(null);
@@ -141,6 +145,7 @@ export function HomeCardBuilder() {
         }
         setExposedViews(data.exposedViews);
         if (data.connectedUser) setConnectedUser(data.connectedUser);
+        if (data.connection?.crm) setCrmLabel(crmDisplayLabel(data.connection.crm));
         setLiveHubspot(data.connection?.crm === "hubspot" && !!data.connection?.live);
       } catch (error) {
         setLoadError(String(error));
@@ -316,7 +321,7 @@ export function HomeCardBuilder() {
               title="Always first — identity is not a block and can't be moved or removed."
             >
               <span className="text-[15px] font-semibold">Your CRM</span>
-              <span className="text-[11.5px] text-ink-45">HubSpot · {connectedUser}</span>
+              <span className="text-[11.5px] text-ink-45">{crmLabel} · {connectedUser}</span>
             </div>
 
             <DndContext
@@ -383,7 +388,7 @@ export function HomeCardBuilder() {
             </DndContext>
 
             <div className="mt-3 border-t border-line-soft pt-2 text-[10.5px] text-ink-45">
-              🔒 Writes require confirmation · HubSpot · via Cardstack
+              🔒 Writes require confirmation · {crmLabel} · via Cardstack
             </div>
           </div>
 
@@ -508,8 +513,19 @@ function HomeCardPreview({
   }, [configJson]);
 
   const drillIntoView = async (name: string) => {
-    const view = (JSON.parse(exposedJson) as ExposedViewInfo[]).find((v) => v.name === name);
-    if (!view) return;
+    const views = JSON.parse(exposedJson) as ExposedViewInfo[];
+    const view =
+      views.find((v) => v.name === name) ??
+      views.find((v) => v.name.trim().toLowerCase() === name.trim().toLowerCase());
+    // A silent return here is why tiles read as dead in production when the
+    // tile's name and the exposure list disagree (UX review 2026-07-26 P0-3).
+    if (!view) {
+      setDrillError(
+        `“${name}” isn't in this workspace's exposed views, so the preview can't open it. ` +
+          `In chat the model resolves it against the CRM — check the object's Lists page if the name looks stale.`,
+      );
+      return;
+    }
     const result = await previewCall({ kind: "view", object: view.object, viewId: view.viewId });
     if (result.error) {
       setDrillError(result.error);
@@ -540,7 +556,9 @@ function HomeCardPreview({
     const record = /the (\w+) record "[^"]*" \(id ([\w-]+)\)/i.exec(text);
     if (record?.[1] && record[2]) {
       void drillIntoRecord(record[1], record[2]);
+      return;
     }
+    setDrillError(`The preview couldn't route “${text}” — in chat this goes to the model as a new turn.`);
   };
 
   const homeHost: WidgetHost = useMemo(
@@ -617,23 +635,28 @@ function HomeCardPreview({
           <span className="text-[10.5px] text-ink-45">click tiles &amp; rows to dig in</span>
         )}
       </div>
-      <div style={{ background: "#f4f3f1", borderRadius: 12, padding: 14 }}>
-        {drillError && (
-          <div className="rounded-[10px] bg-drift p-3 text-[11.5px] text-drift-ink">{drillError}</div>
-        )}
-        {!drill && payload && (
-          <HomeCard key={configJson} payload={payload} locale="en-US" host={homeHost} />
-        )}
-        {drill?.kind === "view" && (
-          <ResultsTable payload={drill.payload} locale="en-US" host={{
-            callTool: async () => ({ isError: true, content: [{ type: "text", text: "pagination not simulated in preview" }] }),
-            updateModelContext: () => {},
-            sendFollowup: parseFollowup,
-          }} />
-        )}
-        {drill?.kind === "record" && (
-          <RecordCardDrill drill={drill} makeHost={recordHost} />
-        )}
+      <div style={{ background: "#f4f3f1", borderRadius: 12, padding: 14, overflow: "hidden" }}>
+        {/* Rendered at a chat-like width and zoomed to fit the pane so the
+            widgets' 420px container breakpoint reflects what reps get in
+            chat — the pane's own 368px would misread as mobile. */}
+        <div className="cs-container" style={{ width: 480, zoom: 368 / 480, margin: "0 auto" }}>
+          {drillError && (
+            <div className="rounded-[10px] bg-drift p-3 text-[11.5px] text-drift-ink">{drillError}</div>
+          )}
+          {!drill && payload && (
+            <HomeCard key={configJson} payload={payload} locale="en-US" host={homeHost} />
+          )}
+          {drill?.kind === "view" && (
+            <ResultsTable payload={drill.payload} locale="en-US" host={{
+              callTool: async () => ({ isError: true, content: [{ type: "text", text: "pagination not simulated in preview" }] }),
+              updateModelContext: () => {},
+              sendFollowup: parseFollowup,
+            }} />
+          )}
+          {drill?.kind === "record" && (
+            <RecordCardDrill drill={drill} makeHost={recordHost} />
+          )}
+        </div>
       </div>
       <p className="mt-2 text-[11px] text-ink-45">
         {live

@@ -56,6 +56,43 @@ function score(field: FieldDescribe): number {
   return value;
 }
 
+// ---- Palette ranking (UX review 2026-07-26 P1-8) -------------------------
+// Describe order is API order, which fronts Account ID / Deleted / Master
+// Record and nine address components. The palette ranks by signal instead
+// and folds plumbing into collapsed groups.
+
+/** Record-keeping plumbing an admin almost never puts on a card. */
+const SYSTEM_FIELD =
+  /^(Id|IsDeleted|MasterRecordId|SystemModstamp|CreatedById|LastModifiedById|LastViewedDate|LastReferencedDate|LastActivityDate|RecordTypeId|CleanStatus|Jigsaw.*|PhotoUrl)$|^hs_(object_id|createdate|lastmodifieddate|all_|user_ids)/i;
+
+/** Compound-address components (Billing/Shipping/Mailing/bare Lead variants). */
+const ADDRESS_FIELD =
+  /^(Billing|Shipping|Mailing|Other)?(Street|City|State|StateCode|PostalCode|Country|CountryCode|Latitude|Longitude|GeocodeAccuracy|Address)$/;
+
+export type PaletteGroup = "main" | "address" | "system";
+
+export function paletteGroup(field: FieldDescribe): PaletteGroup {
+  if (SYSTEM_FIELD.test(field.api)) return "system";
+  if (ADDRESS_FIELD.test(field.api)) return "address";
+  return "main";
+}
+
+/** Higher = earlier in the palette. Known high-signal names first, then the
+ * generic score, with a nudge for admin-created custom fields. */
+export function paletteRank(field: FieldDescribe): number {
+  const known = BODY_PRIORITY.indexOf(field.api);
+  if (known >= 0) return 1000 - known;
+  let value = score(field);
+  if (field.api.endsWith("__c")) value += 2;
+  return value;
+}
+
+/** True when a field makes sense as a card title/subtitle — keeps `Deleted`
+ * and `System Modstamp` out of the header dropdowns. */
+export function headerCandidate(field: FieldDescribe): boolean {
+  return paletteGroup(field) !== "system" && field.type !== "boolean";
+}
+
 export function generateStarterLayout(
   tenantId: string,
   describe: ObjectDescribe,

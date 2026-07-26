@@ -37,8 +37,10 @@ import type {
   LayoutConfig,
   LayoutField,
   ObjectDescribe,
+  RelationshipDescribe,
 } from "@cardstack/core";
 import { crmDisplayLabel } from "../../lib/crm-label";
+import { headerCandidate } from "../../lib/starter-layout";
 
 type SetConfig = (updater: (prev: LayoutConfig | null) => LayoutConfig | null) => void;
 
@@ -187,6 +189,128 @@ function parseLiteralValue(value: string, valueType: ActionInputValueType | unde
   return value;
 }
 
+/**
+ * The "add" pickers used to be a raw describe dump — ~45 unsorted chips with
+ * "+ Assets" three times and consent/CMS noise up front (UX review 2026-07-26
+ * P1-7). Until the full 3b/10c pickers land: dedupe shared labels with the
+ * api name, group standard / custom / system-noise (system collapsed by
+ * default), and add a filter box past a handful of options.
+ */
+const SYSTEM_RELATIONSHIP =
+  /(Feed$|Histor(y|ies)$|Share$|ChangeEvent|ContentDocument|AuthorizationForm|ProcessInstance|ProcessStep|EmailMessage|CombinedAttachment|AttachedContent|Attachments?$|TopicAssignment|DuplicateRecord|RecordAction|RecordAssociatedGroup|EntitySubscription|ContactRequest|CollaborationGroupRecord)/i;
+
+function relationshipGroup(rel: RelationshipDescribe): PickerGroup {
+  if (SYSTEM_RELATIONSHIP.test(rel.api) || SYSTEM_RELATIONSHIP.test(rel.relatedObject)) {
+    return "system";
+  }
+  if (rel.api.endsWith("__r") || rel.relatedObject.endsWith("__c")) return "custom";
+  return "standard";
+}
+
+/** Flows shipped by the platform, not built for reps (CMS, auth resets, checkout). */
+const SYSTEM_FLOW = /^(cms[\s_:]|sfdc_|reset[\s_]?password|forgot[\s_]?password|checkout)/i;
+
+function flowGroup(flow: FlowSummary): PickerGroup {
+  return SYSTEM_FLOW.test(flow.label) || SYSTEM_FLOW.test(flow.api) ? "system" : "standard";
+}
+
+type PickerGroup = "standard" | "custom" | "system";
+
+interface PickerOption {
+  key: string;
+  label: string;
+  /** Disambiguator (api name) — appended whenever two options share a label. */
+  sub: string;
+  group: PickerGroup;
+  title?: string;
+}
+
+function AddChipPicker({
+  options,
+  prefix,
+  systemLabel,
+  onPick,
+}: {
+  options: PickerOption[];
+  /** Chip text prefix after the "+" ("", "related", "flow"). */
+  prefix: string;
+  /** Toggle label for the collapsed noise group ("system relationships"). */
+  systemLabel: string;
+  onPick: (key: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [showSystem, setShowSystem] = useState(false);
+  const q = query.trim().toLowerCase();
+  const labelCount = new Map<string, number>();
+  for (const o of options) labelCount.set(o.label, (labelCount.get(o.label) ?? 0) + 1);
+  const matches = (o: PickerOption) =>
+    !q || o.label.toLowerCase().includes(q) || o.sub.toLowerCase().includes(q);
+  // Typing a query searches EVERYTHING — hiding system rows from an explicit
+  // search would read as "missing", not "tidied away".
+  const systemOpen = showSystem || q !== "";
+  const visible = options.filter(matches);
+  const main = visible.filter((o) => o.group !== "system");
+  const system = visible.filter((o) => o.group === "system");
+  const systemTotal = options.filter((o) => o.group === "system").length;
+
+  const chip = (o: PickerOption) => (
+    <button
+      key={o.key}
+      type="button"
+      className="rounded-[8px] border border-dashed border-line px-2.5 py-1 text-[11.5px] text-ink-45 hover:text-ink"
+      title={o.title ?? o.sub}
+      onClick={() => onPick(o.key)}
+    >
+      + {prefix ? `${prefix} ` : ""}
+      {(labelCount.get(o.label) ?? 0) > 1 ? `${o.label} · ${o.sub}` : o.label}
+      {o.group === "custom" && <span className="ml-1 text-[10px] text-ink-45">custom</span>}
+    </button>
+  );
+
+  return (
+    <div className="space-y-1.5">
+      {options.length > 8 && (
+        <input
+          type="search"
+          className="st-input w-[220px] py-0.5 text-[11.5px]"
+          placeholder={`Filter ${options.length}…`}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      )}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {main.map(chip)}
+        {main.length === 0 && q !== "" && system.length === 0 && (
+          <span className="text-[11.5px] text-ink-45">No match for “{query.trim()}”.</span>
+        )}
+        {systemTotal > 0 && !systemOpen && (
+          <button
+            type="button"
+            className="rounded-[8px] px-2 py-1 text-[11px] text-ink-45 underline underline-offset-2 hover:text-ink"
+            onClick={() => setShowSystem(true)}
+          >
+            {systemTotal} {systemLabel} ▸
+          </button>
+        )}
+      </div>
+      {systemOpen && system.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {q === "" && (
+            <button
+              type="button"
+              className="rounded-[8px] px-2 py-1 text-[11px] text-ink-45 underline underline-offset-2 hover:text-ink"
+              onClick={() => setShowSystem(false)}
+            >
+              hide {systemLabel} ▾
+            </button>
+          )}
+          {system.map(chip)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function mappingSummary(mapping: ActionInputMapping, labelOf: (api: string) => string): string {
   if (mapping.source === "context") {
     return CONTEXT_KEYS.find((option) => option.value === mapping.key)?.label ?? mapping.key;
@@ -219,6 +343,10 @@ export function Canvas({
   const [flows, setFlows] = useState<FlowSummary[]>([]);
   const [flowModes, setFlowModes] = useState<FlowRenderModeConfig[]>([]);
   const totalFields = config.recordCard.sections.reduce((n, s) => n + s.fields.length, 0);
+  const editableFieldCount = config.recordCard.sections.reduce(
+    (n, s) => n + s.fields.filter((f) => f.editable).length,
+    0,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -312,6 +440,10 @@ export function Canvas({
   };
 
   const header = config.recordCard.header;
+  // No `Deleted` or `System Modstamp` as card titles — but an already-picked
+  // field always stays listed, whatever it is.
+  const headerOptions = (slot: "title" | "subtitle" | "badge") =>
+    describe.fields.filter((f) => headerCandidate(f) || f.api === header[slot]);
   const headerSlot = (slot: "title" | "subtitle" | "badge") => (
     <label className="flex items-center gap-1.5 text-[11.5px] text-ink-55">
       {slot}
@@ -338,7 +470,7 @@ export function Canvas({
         }
       >
         {slot !== "title" && <option value="">—</option>}
-        {describe.fields.map((f) => (
+        {headerOptions(slot).map((f) => (
           <option key={f.api} value={f.api}>
             {f.label}
           </option>
@@ -607,32 +739,36 @@ export function Canvas({
           );
         })}
         {unconfiguredRelationships.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {unconfiguredRelationships.map((rel) => (
-              <button
-                key={rel.api}
-                type="button"
-                className="rounded-[8px] border border-dashed border-line px-2.5 py-1 text-[11.5px] text-ink-45 hover:text-ink"
-                onClick={() =>
-                  mutateRelatedLists((lists) => {
-                    const relDescribe = relatedDescribes[rel.api];
-                    const columns = (relDescribe?.fields ?? []).slice(0, 3).map((f) => f.api);
-                    return [
-                      ...lists,
-                      {
-                        object: rel.relatedObject,
-                        relationship: rel.api,
-                        ...(rel.foreignKey ? { foreignKey: rel.foreignKey } : {}),
-                        columns: columns.length > 0 ? columns : ["Name"],
-                        limit: 5,
-                      },
-                    ];
-                  })
-                }
-              >
-                + {rel.label}
-              </button>
-            ))}
+          <div className="mt-2">
+            <AddChipPicker
+              prefix=""
+              systemLabel="system relationships"
+              options={unconfiguredRelationships.map((rel) => ({
+                key: rel.api,
+                label: rel.label,
+                sub: rel.api,
+                group: relationshipGroup(rel),
+                title: `${rel.api} → ${rel.relatedObject}`,
+              }))}
+              onPick={(api) => {
+                const rel = describe.relationships.find((r) => r.api === api);
+                if (!rel) return;
+                mutateRelatedLists((lists) => {
+                  const relDescribe = relatedDescribes[rel.api];
+                  const columns = (relDescribe?.fields ?? []).slice(0, 3).map((f) => f.api);
+                  return [
+                    ...lists,
+                    {
+                      object: rel.relatedObject,
+                      relationship: rel.api,
+                      ...(rel.foreignKey ? { foreignKey: rel.foreignKey } : {}),
+                      columns: columns.length > 0 ? columns : ["Name"],
+                      limit: 5,
+                    },
+                  ];
+                });
+              }}
+            />
           </div>
         )}
       </div>
@@ -729,6 +865,16 @@ export function Canvas({
                     <span className="st-chip-mono bg-surface text-ink-45">confirmation diff locked</span>
                   )}
                 </div>
+                {/* A write action with nothing to write is a dead end — the widget
+                    hides it, so say so here instead of letting the admin ship a
+                    card that silently drops its primary button. */}
+                {action.type === "update_record" && editableFieldCount === 0 && (
+                  <p className="mt-2 rounded-[8px] bg-draft px-2.5 py-1.5 text-[11.5px] text-draft-ink">
+                    No field on this card is editable, so reps won&apos;t see “{action.label}” —
+                    the card hides its edit button when there&apos;s nothing to edit. Toggle a
+                    field to <strong>Editable</strong> to enable it.
+                  </p>
+                )}
                 {action.type === "screen_flow" && (
                   <ActionInputsEditor
                     inputs={action.inputs ?? {}}
@@ -747,56 +893,63 @@ export function Canvas({
           })}
         </div>
         <div className="mt-3 space-y-2">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {describe.relationships
+          <AddChipPicker
+            prefix="related"
+            systemLabel="system relationships"
+            options={describe.relationships
               .filter(
                 (rel) =>
                   !config.recordCard.actions.some(
                     (a) => a.type === "create_related" && a.object === rel.relatedObject,
                   ),
               )
-              .map((rel) => (
-                <button
-                  key={rel.api}
-                  type="button"
-                  className="rounded-[8px] border border-dashed border-line px-2.5 py-1 text-[11.5px] text-ink-45 hover:text-ink"
-                  onClick={() =>
-                    mutateActions((actions) => [
-                      ...actions,
-                      {
-                        type: "create_related",
-                        object: rel.relatedObject,
-                        label: `Add ${rel.label.replace(/s$/, "").toLowerCase()}`,
-                      },
-                    ])
-                  }
-                >
-                  + related {rel.label.toLowerCase()}
-                </button>
-              ))}
-            {availableFlowActions.map((flow) => (
-              <button
-                key={flow.api}
-                type="button"
-                className="rounded-[8px] border border-dashed border-line px-2.5 py-1 text-[11.5px] text-ink-45 hover:text-ink"
-                title={flow.writesSummary}
-                onClick={() =>
-                  mutateActions((actions) => [
-                    ...actions,
-                    {
-                      type: "screen_flow",
-                      flowApiName: flow.api,
-                      label: flow.label,
-                      embed: "auto",
-                      inputs: defaultInputsForFlow(flow, describe),
-                    },
-                  ])
-                }
-              >
-                + flow {flow.label}
-              </button>
-            ))}
-          </div>
+              .map((rel) => ({
+                key: rel.api,
+                label: rel.label.toLowerCase(),
+                sub: rel.api,
+                group: relationshipGroup(rel),
+                title: `Adds a "create ${rel.relatedObject}" button + chat phrase`,
+              }))}
+            onPick={(api) => {
+              const rel = describe.relationships.find((r) => r.api === api);
+              if (!rel) return;
+              mutateActions((actions) => [
+                ...actions,
+                {
+                  type: "create_related",
+                  object: rel.relatedObject,
+                  label: `Add ${rel.label.replace(/s$/, "").toLowerCase()}`,
+                },
+              ]);
+            }}
+          />
+          {availableFlowActions.length > 0 && (
+            <AddChipPicker
+              prefix="flow"
+              systemLabel="platform flows (CMS, password resets…)"
+              options={availableFlowActions.map((flow) => ({
+                key: flow.api,
+                label: flow.label,
+                sub: flow.api,
+                group: flowGroup(flow),
+                title: flow.writesSummary,
+              }))}
+              onPick={(api) => {
+                const flow = flows.find((f) => f.api === api);
+                if (!flow) return;
+                mutateActions((actions) => [
+                  ...actions,
+                  {
+                    type: "screen_flow",
+                    flowApiName: flow.api,
+                    label: flow.label,
+                    embed: "auto",
+                    inputs: defaultInputsForFlow(flow, describe),
+                  },
+                ]);
+              }}
+            />
+          )}
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-ink-45">
             <span>Trust line is not removable.</span>
             <Link href="/custom-screens" className="underline">

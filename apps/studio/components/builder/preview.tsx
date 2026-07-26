@@ -148,32 +148,40 @@ export function Preview({ config }: { config: LayoutConfig }) {
     );
   }
 
-  const cardArea = (cardWidth: number) => (
-    <div
-      className={dark ? "dark" : ""}
-      style={{
-        background: dark ? "#262624" : "#f4f3f1",
-        borderRadius: 12,
-        padding: 14,
-        overflow: "auto",
-      }}
-    >
-      <div style={{ width: cardWidth, maxWidth: "100%", margin: "0 auto" }}>
-        {buildError && (
-          <div className="rounded-[10px] bg-drift p-3 text-[11.5px] text-drift-ink">{buildError}</div>
-        )}
-        {payload && !buildError && (
-          <RecordCard
-            key={payloadKey}
-            payload={payload}
-            setPayload={setPayload}
-            locale="en-US"
-            host={host}
-          />
-        )}
+  // Pane inner width: the 396px aside minus the card area's 2×14 padding.
+  const PANE_INNER = 368;
+  // The card renders at its TRUE width (so the widgets' 420px container
+  // breakpoint fires for 380 and not for 680) and is zoomed to fit the pane —
+  // scaling, never clipping (UX review 2026-07-26 P0-3).
+  const cardArea = (cardWidth: number, fitTo?: number) => {
+    const scale = fitTo ? Math.min(1, fitTo / cardWidth) : 1;
+    return (
+      <div
+        className={dark ? "dark" : ""}
+        style={{
+          background: dark ? "#262624" : "#f4f3f1",
+          borderRadius: 12,
+          padding: 14,
+          overflow: "hidden",
+        }}
+      >
+        <div className="cs-container" style={{ width: cardWidth, zoom: scale, margin: "0 auto" }}>
+          {buildError && (
+            <div className="rounded-[10px] bg-drift p-3 text-[11.5px] text-drift-ink">{buildError}</div>
+          )}
+          {payload && !buildError && (
+            <RecordCard
+              key={payloadKey}
+              payload={payload}
+              setPayload={setPayload}
+              locale="en-US"
+              host={host}
+            />
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <aside className="w-[396px] shrink-0 overflow-y-auto">
@@ -222,7 +230,7 @@ export function Preview({ config }: { config: LayoutConfig }) {
         </span>
       </div>
 
-      {cardArea(width)}
+      {cardArea(width, PANE_INNER)}
 
       <div className="mt-2 space-y-1 text-[11px] text-ink-45">
         <div>

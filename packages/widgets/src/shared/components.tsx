@@ -1,5 +1,27 @@
 import { useState, type ReactNode } from "react";
 import type { ErrorPayload, WidgetProvenance } from "@cardstack/core";
+import { formatAsOf } from "./format.ts";
+
+/**
+ * "as of 2:32 PM" — a card in a chat scrollback is a snapshot, and an old one
+ * looks identical to a live one without this (design 1e's stale strip is the
+ * full treatment; this is the down-payment). Renders nothing when the payload
+ * carries no fetchedAt.
+ */
+export function AsOfChip({
+  provenance,
+  locale,
+}: {
+  provenance: WidgetProvenance;
+  locale: string;
+}) {
+  if (!provenance.fetchedAt) return null;
+  return (
+    <span className="cs-muted cs-as-of" title={provenance.fetchedAt}>
+      as of {formatAsOf(provenance.fetchedAt, locale)}
+    </span>
+  );
+}
 
 export function MakerChip({ provenance }: { provenance: WidgetProvenance }) {
   return (

@@ -1025,6 +1025,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
             crmLabel: anyLayout?.crm === "salesforce" ? "Salesforce" : "HubSpot",
             layoutRevision: homeCard.revision,
             connectedUser: await adapter.getConnectedUser(),
+            fetchedAt: new Date().toISOString(),
           },
         };
         const overdue = tasks.filter((t) => t.dueDate !== null && t.dueDate < today()).length;
@@ -1925,15 +1926,23 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       description:
         "Abandon a flow the rep decided not to run. The server holds no interview state, so this just " +
         "acknowledges the cancellation for the conversation.",
-      inputSchema: { flowApiName: z.string(), actionSessionId: z.string() },
+      // The session id alone identifies the interview — requiring the flow api
+      // name too was just one more thing for the host/model to fumble on a
+      // cancel (UX review 2026-07-26 P2-18). Optional, echoed back when given.
+      inputSchema: { flowApiName: z.string().optional(), actionSessionId: z.string() },
       annotations: { readOnlyHint: true },
     },
     async (args): Promise<CallToolResult> => ({
-      content: [{ type: "text", text: `Cancelled flow "${args.flowApiName}". Nothing was run.` }],
+      content: [
+        {
+          type: "text",
+          text: `Cancelled ${args.flowApiName ? `flow "${args.flowApiName}"` : "the flow"}. Nothing was run.`,
+        },
+      ],
       structuredContent: {
         kind: "flow-run",
         actionSessionId: args.actionSessionId,
-        flowApiName: args.flowApiName,
+        ...(args.flowApiName ? { flowApiName: args.flowApiName } : {}),
         status: "cancelled",
       } as unknown as Record<string, unknown>,
     }),

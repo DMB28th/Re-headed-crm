@@ -216,6 +216,7 @@ export async function POST(req: Request) {
           crmLabel: connection.crm === "salesforce" ? "Salesforce" : "HubSpot",
           layoutRevision: config.revision,
           connectedUser: await adapter.getConnectedUser().catch(() => "—"),
+          fetchedAt: new Date().toISOString(),
         },
       };
       return NextResponse.json({ payload, live });

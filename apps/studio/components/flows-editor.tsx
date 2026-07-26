@@ -11,6 +11,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import type { FlowRenderMode, FlowRenderModeConfig, FlowSupportReport } from "@cardstack/core";
+import { crmDisplayLabel } from "../lib/crm-label";
 import { LoadFailed } from "./load-failed";
 
 interface FlowRow {
@@ -235,7 +236,7 @@ export function FlowsEditor() {
   }
   if (!data) return <div className="text-[12.5px] text-ink-45">Loading flows...</div>;
 
-  const crmLabel = data.connection.crm === "salesforce" ? "Salesforce" : "HubSpot";
+  const crmLabel = crmDisplayLabel(data.connection.crm);
   const chatReady = data.flows.filter((f) => f.support?.level === "full").length;
 
   return (

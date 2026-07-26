@@ -4,7 +4,7 @@
  */
 import { useState } from "react";
 import type { CrmTask, HomeCardPayload, RecentRecord } from "@cardstack/core";
-import { MakerChip } from "../shared/components.tsx";
+import { AsOfChip, MakerChip } from "../shared/components.tsx";
 import { formatDate, formatRelative } from "../shared/format.ts";
 import type { WidgetHost } from "../record-card/card.tsx";
 
@@ -83,7 +83,9 @@ export function HomeCard({
                   <span className="cs-pill hc-type-pill">{recent.objectLabel ?? recent.object}</span>
                   <span className="hc-row-name">{recent.name}</span>
                   <span className="cs-muted hc-row-note">
-                    {recent.note} · {formatRelative(recent.timestamp, locale)}
+                    {[recent.note, recent.timestamp ? formatRelative(recent.timestamp, locale) : null]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </span>
                 </button>
               ))}
@@ -109,7 +111,10 @@ export function HomeCard({
         {payload.capabilities.writeEnabled && (
           <span className="cs-muted rc-trust">Writes require confirmation</span>
         )}
-        <MakerChip provenance={payload.provenance} />
+        <span className="hc-footer-right">
+          <AsOfChip provenance={payload.provenance} locale={locale} />
+          <MakerChip provenance={payload.provenance} />
+        </span>
       </footer>
     </div>
   );
@@ -131,6 +136,9 @@ function FollowUps({
   host: WidgetHost | null;
 }) {
   const [states, setStates] = useState<Record<string, TaskState>>({});
+  // Failed check-offs surface the CRM's error verbatim (same standard as the
+  // record card) — a silent revert reads as "the product ate my write".
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const today = new Date().toISOString().slice(0, 10);
   const setState = (id: string, state: TaskState) =>
     setStates((prev) => ({ ...prev, [id]: state }));
@@ -138,9 +146,15 @@ function FollowUps({
   const complete = async (task: CrmTask) => {
     if (!host) return;
     setState(task.id, "writing");
+    setErrors((prev) => ({ ...prev, [task.id]: "" }));
     // Checking off a task IS a write → host round trip, confirmation included.
     const result = await host.callTool("crm_complete_task", { id: task.id });
     if (result.isError) {
+      const text = result.content?.find((c) => c.type === "text")?.text;
+      setErrors((prev) => ({
+        ...prev,
+        [task.id]: text ?? `${crmLabel} rejected the update.`,
+      }));
       setState(task.id, "open");
       return;
     }
@@ -154,9 +168,11 @@ function FollowUps({
       <h2 className="rc-section-label">Follow-ups</h2>
       {tasks.map((task) => {
         const state = states[task.id] ?? "open";
+        const error = errors[task.id];
         const overdue = task.dueDate !== null && task.dueDate < today && state !== "done";
         return (
-          <div key={task.id} className={`hc-task${overdue ? " hc-task--overdue" : ""}`}>
+          <div key={task.id}>
+          <div className={`hc-task${overdue ? " hc-task--overdue" : ""}`}>
             {state === "confirming" ? (
               <span className="hc-task-confirm">
                 Complete “{task.subject}” in {crmLabel}?
@@ -195,6 +211,12 @@ function FollowUps({
                 </span>
               </>
             )}
+          </div>
+          {error && (
+            <div className="hc-task-error" role="alert">
+              {error} <span className="cs-muted">Nothing was written — the task is still open.</span>
+            </div>
+          )}
           </div>
         );
       })}

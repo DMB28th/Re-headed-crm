@@ -1242,17 +1242,61 @@ export class SalesforceAdapter implements CrmAdapter {
       { Id: string; Name?: string; attributes: { type: string } }[]
     >("GET", `${API}/recent?limit=${limit}`);
     const global = await this.ensureGlobal().catch(() => null);
-    return items
+    const visible = items
       .filter((i) => !global || global.layoutable.has(i.attributes.type))
-      .slice(0, limit)
-      .map((i) => ({
+      .slice(0, limit);
+    if (visible.length === 0) return [];
+
+    // /recent returns no Name for subject-titled objects (Task, Event) and no
+    // view time at all. Both are repairable with real data: names via a
+    // per-type SOQL on the title field, view times via RecentlyViewed (the
+    // same store /recent reads). Either query failing degrades that datum,
+    // never the list.
+    const idList = visible.map((i) => `'${soqlEscape(i.Id)}'`).join(",");
+    const viewedAt = new Map<string, string>();
+    try {
+      const { records } = await this.soql<{ Id: string; LastViewedDate: string | null }>(
+        `SELECT Id, LastViewedDate FROM RecentlyViewed WHERE Id IN (${idList})`,
+      );
+      for (const r of records) if (r.LastViewedDate) viewedAt.set(r.Id, r.LastViewedDate);
+    } catch {
+      // no RecentlyViewed access — rows render without a relative time
+    }
+
+    const names = new Map<string, string>();
+    const nameless = visible.filter((i) => !i.Name);
+    const byType = new Map<string, string[]>();
+    for (const i of nameless) {
+      byType.set(i.attributes.type, [...(byType.get(i.attributes.type) ?? []), i.Id]);
+    }
+    for (const [type, ids] of byType) {
+      if (!SF_API_NAME.test(type)) continue;
+      const titleField = type === "Task" || type === "Event" ? "Subject" : "Name";
+      try {
+        const { records } = await this.soql<Record<string, string | null> & { Id: string }>(
+          `SELECT Id, ${titleField} FROM ${type} WHERE Id IN (${ids
+            .map((id) => `'${soqlEscape(id)}'`)
+            .join(",")})`,
+        );
+        for (const r of records) {
+          const title = r[titleField];
+          if (title) names.set(r.Id, title);
+        }
+      } catch {
+        // undescribable/unqueryable type — fall through to the id below
+      }
+    }
+
+    return visible.map((i) => {
+      const timestamp = viewedAt.get(i.Id);
+      return {
         id: i.Id,
         object: i.attributes.type,
         objectLabel: global?.byApi.get(i.attributes.type)?.label ?? i.attributes.type,
-        name: i.Name ?? i.Id,
-        note: "Recently viewed",
-        timestamp: new Date().toISOString(),
-      }));
+        name: i.Name ?? names.get(i.Id) ?? i.Id,
+        ...(timestamp ? { timestamp } : {}),
+      };
+    });
   }
 
   async getValidationRules(): Promise<RuleSummary[]> {

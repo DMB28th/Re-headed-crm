@@ -221,8 +221,11 @@ export interface RecentRecord {
   objectLabel?: string;
   name: string;
   /** One-line activity note ("Contract emailed · 2d ago" without the timestamp). */
-  note: string;
-  timestamp: string;
+  note?: string;
+  /** When the rep last touched it — REAL CRM data only; adapters that can't
+   * source it omit it rather than stamping fetch time (a fabricated "0m ago"
+   * on every render reads as a bug). */
+  timestamp?: string;
 }
 
 /** One row of a server-side aggregation (crm_aggregate). */

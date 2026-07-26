@@ -274,7 +274,11 @@ export function ViewsEditor({ object }: { object: string }) {
       aliasInput: (
         <input
           className="st-input w-full min-w-0 text-[11.5px]"
-          placeholder="my deals, open deals…"
+          placeholder={
+            describe
+              ? `my ${describe.labelPlural.toLowerCase()}, open ${describe.labelPlural.toLowerCase()}…`
+              : "my records, open records…"
+          }
           defaultValue={exposure.aliases.join(", ")}
           onBlur={(e) =>
             updateView(viewId, {

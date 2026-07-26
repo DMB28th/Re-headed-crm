@@ -1,6 +1,6 @@
 "use client";
 /** Publish flow (2b): the signing mechanic again — diff vs published, then commit. */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { LayoutDiff } from "@cardstack/config-store";
 import { usePortalInfo } from "../use-portal-info";
 
@@ -22,6 +22,7 @@ export function PublishModal({
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { info } = usePortalInfo();
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     (async () => {
@@ -30,6 +31,37 @@ export function PublishModal({
       setDiff(data.diff ?? { added: [], removed: [], changed: [] });
     })();
   }, [object]);
+
+  // Modal keyboard contract: Escape closes, Tab stays inside, and focus
+  // starts on the dialog instead of dying behind the overlay.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    dialog?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !dialog) return;
+      const focusable = dialog.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const publish = async () => {
     setPublishing(true);
@@ -45,8 +77,19 @@ export function PublishModal({
   const empty = diff && diff.added.length + diff.removed.length + diff.changed.length === 0;
 
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-[rgba(20,24,40,0.35)]">
-      <div className="st-card w-[460px] p-5">
+    <div
+      className="fixed inset-0 z-30 flex items-center justify-center bg-[rgba(20,24,40,0.35)]"
+      onClick={onClose}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Publish ${objectLabel ?? object} layout`}
+        tabIndex={-1}
+        className="st-card w-[460px] p-5 outline-none"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h2 className="text-[14px] font-semibold">
           Publish {objectLabel ?? object} layout {publishedRevision ? `v${publishedRevision + 1}` : ""}
         </h2>

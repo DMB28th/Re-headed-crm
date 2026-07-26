@@ -21,6 +21,7 @@ import type {
   WriteReceiptPayload,
 } from "@cardstack/core";
 import {
+  AsOfChip,
   FieldInfo,
   LayoutChip,
   MakerChip,
@@ -472,6 +473,7 @@ export function RecordCard({
           {mode.kind === "ready" && canEdit && (
             <span className="cs-muted rc-trust">Writes require confirmation</span>
           )}
+          <AsOfChip provenance={provenance} locale={locale} />
           <LayoutChip provenance={provenance} />
           <MakerChip provenance={provenance} />
         </span>
@@ -646,6 +648,14 @@ function Section({
               <div className="rc-field-label">
                 {isDirty && <span className="wd-dirty-dot" aria-label="unsaved change" />}
                 {fieldMeta?.label ?? field.api}
+                {/* At-rest affordance: a rep can glance and know what they can
+                    act on — without it, editable and read-only fields look
+                    identical until they hit "Edit fields" (design 1b). */}
+                {!editing && editableSet.has(field.api) && (
+                  <span className="rc-editable-mark" title="Editable from chat" aria-label="Editable from chat">
+                    ✎
+                  </span>
+                )}
                 {fieldMeta && (
                   <FieldInfo
                     {...(fieldMeta.description ? { description: fieldMeta.description } : {})}

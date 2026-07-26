@@ -4,8 +4,13 @@
     {
       "name": "studio",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@cardstack/studio", "dev"],
-      "port": 3002
+      "runtimeArgs": [
+        "--filter",
+        "@cardstack/studio",
+        "dev"
+      ],
+      "port": 3002,
+      "autoPort": true
     },
     {
       "name": "flow-widget-harness",
