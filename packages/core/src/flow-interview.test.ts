@@ -173,6 +173,26 @@ describe("flow interview interpreter (real fixture)", () => {
     if (name?.kind === "input") expect(name.defaultValue).toBe("Jane");
   });
 
+  it("back from the confirm-write pause re-renders the last screen unwritten", async () => {
+    const { s3, effects, created } = await driveToDecision(true);
+    const s4 = await continueFlowInterview(resolver, stateOf(s3), {}, {}, effects);
+    expect(s4.type).toBe("confirm-write");
+    const s5 = await continueFlowInterview(resolver, stateOf(s4), {}, { back: true }, effects);
+    expect(created).toHaveLength(0); // nothing was written on the way back
+    expect(s5.type).toBe("screen");
+    if (s5.type === "screen") expect(s5.screen.name).toBe("Rush_Confirm");
+    // …and the interview still completes forward from there
+    const s6 = await continueFlowInterview(resolver, stateOf(s5), {}, {}, effects);
+    expect(s6.type).toBe("confirm-write");
+  });
+
+  it("first screen never offers back, even when allowBack is true in metadata", async () => {
+    const { effects } = stubEffects();
+    const step = await startFlowInterview("Test_Screen_Flow", resolver, effects);
+    if (step.type !== "screen") throw new Error("expected screen");
+    expect(step.screen.allowBack).toBe(false); // metadata allows it; no previous exists
+  });
+
   it("round-trips state tokens and rejects garbage", async () => {
     const { effects } = stubEffects();
     const step = await startFlowInterview("Test_Screen_Flow", resolver, effects);

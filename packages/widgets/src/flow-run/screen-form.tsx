@@ -481,6 +481,14 @@ export function FlowScreenForm({
               type="button"
               className="fr-secondary"
               disabled={busy !== null}
+              onClick={() => call("back", { back: true })}
+            >
+              {busy === "back" ? "…" : "Back"}
+            </button>
+            <button
+              type="button"
+              className="fr-secondary"
+              disabled={busy !== null}
               onClick={() => call("cancel", { confirmWrite: false })}
             >
               Cancel
@@ -514,7 +522,7 @@ export function FlowScreenForm({
         ))}
       </div>
       <div className="fr-actions">
-        {screen.allowBack && screen.stepIndex > 1 && (
+        {screen.allowBack && (
           <button
             type="button"
             className="fr-secondary"

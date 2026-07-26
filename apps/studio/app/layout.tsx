@@ -1,3 +1,4 @@
+// Deploy touch 2026-07-25: flow-native widget changes live in packages/; watch patterns need an apps/ change.
 import type { Metadata } from "next";
 import "@fontsource-variable/instrument-sans";
 import "./globals.css";

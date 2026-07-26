@@ -1060,7 +1060,9 @@ async function renderScreen(
   return {
     name: screen.name,
     label: interpolate(screen.label ?? screen.name, frame, index),
-    allowBack: screen.allowBack ?? false,
+    // Back needs a previous screen in THIS frame — a subflow's first screen
+    // has none even when the interview as a whole is past step 1.
+    allowBack: (screen.allowBack ?? false) && frame.visitedScreens.length > 0,
     allowFinish: screen.allowFinish ?? true,
     stepIndex: frame.screenCount + 1,
     fields,
@@ -1551,6 +1553,18 @@ export async function continueFlowInterview(
     if (frame.pendingWrite) {
       const element = writeElementAt(frame.pendingWrite, index);
       if (!element) throw new FlowUnsupported(frame.pendingWrite, "pending write element not found");
+      if (opts.back) {
+        // Rep wants to fix something before writing: abandon the pause and
+        // re-render the last screen with answers intact. Nothing was written.
+        frame.pendingWrite = null;
+        const previousName = frame.visitedScreens.pop();
+        const previous = previousName ? index.screens.get(previousName) : undefined;
+        if (!previous) throw new FlowUnsupported(frame.cursor, "no previous screen to go back to");
+        frame.cursor = previous.name;
+        frame.screenCount = Math.max(0, frame.screenCount - 1);
+        const rendered = await renderScreen(previous, frame, index, effects);
+        return { type: "screen", screen: rendered, session };
+      }
       if (!opts.confirmWrite) {
         return {
           type: "finished",
