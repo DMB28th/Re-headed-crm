@@ -29,6 +29,7 @@ import {
   analyzeFlowSupport,
   decodeQuickActionState,
   encodeQuickActionState,
+  quickActionLayoutFields,
   quickActionMissingRequired,
   quickActionPendingWrite,
   quickActionScreen,
@@ -1695,11 +1696,14 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         } as unknown as Record<string, unknown>,
       });
 
-      // Confirmed → the CRM executes.
+      // Confirmed → the CRM executes. Only fields on the action's own layout
+      // are sent — Salesforce rejects strays, and nothing outside the rendered
+      // form should reach the write anyway (rule 2's server-side gate).
       if (state?.confirming && opts.confirmWrite === true) {
+        const layoutFields = new Set(quickActionLayoutFields(describe).map((f) => f.api));
         const fields: Record<string, CrmFieldValue> = {};
         for (const [name, value] of Object.entries(session.answers)) {
-          if (value !== null && value !== "") fields[name] = value;
+          if (layoutFields.has(name) && value !== null && value !== "") fields[name] = value;
         }
         const result = await adapter.executeQuickAction(
           args.actionApiName,
