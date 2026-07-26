@@ -657,13 +657,17 @@ export function Canvas({
                 ? "Record write"
                 : action.type === "create_related"
                   ? `Create ${action.object}`
-                  : "Screen flow";
+                  : action.type === "quick_action"
+                    ? "Quick action"
+                    : "Screen flow";
             const chatPhrase =
               action.type === "update_record"
                 ? "save these changes"
                 : action.type === "create_related"
                   ? `create ${action.object.toLowerCase()}`
-                  : flowLabel(action.flowApiName).toLowerCase();
+                  : action.type === "quick_action"
+                    ? action.label.toLowerCase()
+                    : flowLabel(action.flowApiName).toLowerCase();
             return (
               <div key={`${action.type}-${i}`} className="rounded-[10px] border border-line-soft bg-paper p-3">
                 <div className="flex items-start justify-between gap-3">
