@@ -1,5 +1,5 @@
 /**
- * Deploy touch 2026-07-25: flow-native Back fixes are packages-only; watch patterns need an apps/ change.
+ * Deploy touch 2026-07-26: flow-definition memo is packages-only; watch patterns need an apps/ change.
  * HTTP entry: streamable HTTP, stateless JSON — a fresh McpServer + transport
  * per request, nothing held in memory between calls (PLAN.md multi-tenancy rule).
  *
