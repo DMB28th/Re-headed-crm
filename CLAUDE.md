@@ -36,8 +36,18 @@ matrix + View-as (2f–2i beyond the teaching state), onboarding auto-generation
 history), actions editor (3a), related-list picker (3b), object picker (3c),
 requirements pass-through (3d), audience picker (3e). Stale-card strip and
 re-auth widget states also still open. PostgresConfigStore ships behind
-DATABASE_URL (Railway two-service deploys); audit log + preferences are
-still in-memory — move them to Postgres alongside multi-tenant auth (M7).
+DATABASE_URL (Railway two-service deploys).
+
+**Cardstack accounts and multi-workspace tenancy are in.** Sign-in is
+Salesforce OAuth against a Cardstack-owned connected app
+(`CARDSTACK_SF_CLIENT_ID/SECRET`); a workspace IS a Salesforce org, so the
+first signer from an org creates it and becomes admin and later signers
+auto-join as members. Studio identity is a session cookie backed by the
+store's KV — the `x-cardstack-*` headers are no longer trusted, and
+`CARDSTACK_TENANT_ID` is only a migration fallback, not a request default.
+Full model, env vars, and migration notes: **docs/accounts-and-workspaces.md**.
+Cross-tenant isolation is asserted in
+`packages/config-store/src/tenant-isolation.test.ts` — keep it passing.
 
 ## Hard rules
 
