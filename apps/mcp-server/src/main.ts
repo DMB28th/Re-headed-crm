@@ -100,17 +100,8 @@ app.get("/healthz", (_req, res) => {
   });
 });
 
-// Shared-secret gate on /mcp. Setting MCP_SHARED_SECRET requires a bearer on
-// every request; leaving it unset serves /mcp open (warned, louder in prod).
-// resolveMcpAuth never throws — the server must boot so the deploy succeeds and
-// /healthz stays up even when the secret isn't configured.
+// Shared-secret fallback for deployments that do not use per-user OAuth.
 const { secret: MCP_SECRET, warnOpen } = resolveMcpAuth(process.env);
-if (!MCP_SECRET) {
-  console.warn(
-    (warnOpen ? "⚠ PRODUCTION: " : "⚠ ") +
-      "/mcp is UNAUTHENTICATED — set MCP_SHARED_SECRET and send it as `Authorization: Bearer <secret>` (or x-cardstack-key) from the chat host.",
-  );
-}
 function authorized(req: express.Request): boolean {
   if (!MCP_SECRET) return true;
   const header = req.header("x-cardstack-key");
@@ -144,6 +135,14 @@ if (USER_AUTH_MODE && !oauthProvider) {
 if (process.env.NODE_ENV === "production" && !oauthProvider && !MCP_SECRET) {
   throw new Error(
     "Refusing to expose /mcp in production without configured per-user OAuth or MCP_SHARED_SECRET.",
+  );
+}
+if (oauthProvider) {
+  console.log("MCP auth: per-user OAuth");
+} else if (!MCP_SECRET) {
+  console.warn(
+    (warnOpen ? "⚠ PRODUCTION: " : "⚠ ") +
+      "/mcp is UNAUTHENTICATED — set MCP_SHARED_SECRET or configure per-user OAuth.",
   );
 }
 if (oauthProvider) {
