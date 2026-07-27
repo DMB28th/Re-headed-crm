@@ -53,7 +53,7 @@ async function layoutFor(tenantId: string, object: string, posted?: unknown): Pr
 
 export async function POST(req: Request) {
   try {
-    const user = getUserContextFromRequest(req);
+    const user = await getUserContextFromRequest(req);
     const { tenantId } = user;
     const body = (await req.json()) as PreviewBody;
     const store = await getStore();

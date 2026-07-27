@@ -96,7 +96,7 @@ export function Palette({
     );
 
   return (
-    <aside className="w-[264px] shrink-0 overflow-y-auto">
+    <aside className="max-h-[420px] w-full shrink-0 overflow-y-auto xl:max-h-none xl:w-[240px]">
       <input
         type="search"
         placeholder="Search fields…"

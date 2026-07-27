@@ -12,7 +12,7 @@ type Params = { params: Promise<{ object: string }> };
 export async function DELETE(req: Request, { params }: Params) {
   const { object } = await params;
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     await (await getStore()).removeObject(tenantId, object);
     return NextResponse.json({ ok: true });
   } catch (error) {

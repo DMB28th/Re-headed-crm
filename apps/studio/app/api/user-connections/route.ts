@@ -9,7 +9,7 @@ import { getStore } from "../../../lib/backend";
  * flag leaves the server.
  */
 export async function GET(req: Request) {
-  const { tenantId } = getUserContextFromRequest(req);
+  const { tenantId } = await getUserContextFromRequest(req);
   const store = await getStore();
   const users = await store.listUserConnections(tenantId);
   return NextResponse.json({

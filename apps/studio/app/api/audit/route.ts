@@ -6,7 +6,7 @@ import { getUserContextFromRequest } from "../../../lib/auth";
  *  field change (timestamp,actor,writtenAs,object,recordId,field,before,after). */
 export async function GET(req: Request) {
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     const entries = await (await getAuditLog()).list(tenantId);
     const url = new URL(req.url);
     if (url.searchParams.get("format") === "csv") {

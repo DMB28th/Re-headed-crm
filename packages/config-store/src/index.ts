@@ -1,4 +1,6 @@
 export * from "./types.js";
+export * from "./identity.js";
+export * from "./sign-in.js";
 export * from "./memory-store.js";
 export * from "./file-store.js";
 export * from "./postgres-store.js";

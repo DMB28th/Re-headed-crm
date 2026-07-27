@@ -2,7 +2,7 @@
 import type { Metadata } from "next";
 import "@fontsource-variable/instrument-sans";
 import "./globals.css";
-import { NavRail } from "../components/nav-rail";
+import { StudioShell } from "../components/studio-shell";
 
 export const metadata: Metadata = {
   title: "Cardstack Studio",
@@ -13,10 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <div className="flex min-h-screen">
-          <NavRail />
-          <main className="flex-1 min-w-0 px-7 py-6">{children}</main>
-        </div>
+        <StudioShell>{children}</StudioShell>
       </body>
     </html>
   );

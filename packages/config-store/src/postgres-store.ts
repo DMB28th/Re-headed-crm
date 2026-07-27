@@ -46,6 +46,7 @@ import type {
   PublishEvent,
   UserConnectionState,
 } from "./types.js";
+import type { Account, Membership, Workspace } from "./identity.js";
 import { defaultConnection, demoDealsLayout, demoHomeCard, demoViewExposures } from "./seed.js";
 import { openConnection, openKvValue, sealConnection, sealKvValue } from "./crypto.js";
 
@@ -148,7 +149,40 @@ CREATE TABLE IF NOT EXISTS kv_entries (
   expires_at timestamptz,
   PRIMARY KEY (namespace, key)
 );
+
+-- 2026-07-27: Cardstack's own accounts. Until these existed, identity was a
+-- self-asserted header and the workspace was an env var, so one deployment
+-- served one customer. A workspace IS a Salesforce org, hence the unique
+-- org_key -- it is what makes same-org auto-join work. org_key/sf_user_key hold
+-- the LOWERCASED 15-char id because Salesforce returns 15 or 18 chars for the
+-- same entity depending on the API, and both must resolve to one row.
+-- Additive: every other table stays keyed by the same opaque tenant_id.
+CREATE TABLE IF NOT EXISTS workspaces (
+  id         text PRIMARY KEY,
+  org_key    text NOT NULL UNIQUE,
+  config     jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS accounts (
+  id          text PRIMARY KEY,
+  sf_user_key text NOT NULL UNIQUE,
+  config      jsonb NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS memberships (
+  account_id   text NOT NULL,
+  workspace_id text NOT NULL,
+  role         text NOT NULL CHECK (role IN ('admin','member')),
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (account_id, workspace_id)
+);
+CREATE INDEX IF NOT EXISTS memberships_workspace_idx ON memberships (workspace_id);
 `;
+
+/** Salesforce returns 15- or 18-char ids for the same entity; key on the 15. */
+const idKey = (salesforceId: string): string => salesforceId.slice(0, 15).toLowerCase();
 
 export class PostgresConfigStore implements AdminConfigStore {
   private ready: Promise<void>;
@@ -345,6 +379,107 @@ export class PostgresConfigStore implements AdminConfigStore {
   async kvDelete(namespace: string, key: string): Promise<void> {
     await this.ready;
     await this.sql.query("DELETE FROM kv_entries WHERE namespace=$1 AND key=$2", [namespace, key]);
+  }
+
+  // ---- Identity (accounts / workspaces / memberships) ----
+
+  async getWorkspace(id: string): Promise<Workspace | undefined> {
+    await this.ready;
+    const { rows } = await this.sql.query("SELECT config FROM workspaces WHERE id=$1", [id]);
+    return rows[0] ? this.parse<Workspace>(rows[0].config) : undefined;
+  }
+
+  async getWorkspaceByOrgId(salesforceOrgId: string): Promise<Workspace | undefined> {
+    await this.ready;
+    const { rows } = await this.sql.query("SELECT config FROM workspaces WHERE org_key=$1", [
+      idKey(salesforceOrgId),
+    ]);
+    return rows[0] ? this.parse<Workspace>(rows[0].config) : undefined;
+  }
+
+  /**
+   * DO NOTHING on conflict, not DO UPDATE: two people from a new org can sign
+   * in simultaneously, and the loser must adopt the winner's workspace rather
+   * than overwrite it. resolveSignIn re-reads after calling this.
+   */
+  async createWorkspace(workspace: Workspace): Promise<void> {
+    await this.ready;
+    await this.sql.query(
+      `INSERT INTO workspaces (id, org_key, config) VALUES ($1,$2,$3)
+       ON CONFLICT (org_key) DO NOTHING`,
+      [workspace.id, idKey(workspace.salesforceOrgId), JSON.stringify(workspace)],
+    );
+  }
+
+  async getAccount(id: string): Promise<Account | undefined> {
+    await this.ready;
+    const { rows } = await this.sql.query("SELECT config FROM accounts WHERE id=$1", [id]);
+    return rows[0] ? this.parse<Account>(rows[0].config) : undefined;
+  }
+
+  async getAccountBySalesforceUserId(salesforceUserId: string): Promise<Account | undefined> {
+    await this.ready;
+    const { rows } = await this.sql.query("SELECT config FROM accounts WHERE sf_user_key=$1", [
+      idKey(salesforceUserId),
+    ]);
+    return rows[0] ? this.parse<Account>(rows[0].config) : undefined;
+  }
+
+  /** Refreshes name/email on return visits; the id and sf_user_key never move. */
+  async upsertAccount(account: Account): Promise<void> {
+    await this.ready;
+    await this.sql.query(
+      `INSERT INTO accounts (id, sf_user_key, config) VALUES ($1,$2,$3)
+       ON CONFLICT (id) DO UPDATE SET config = EXCLUDED.config, sf_user_key = EXCLUDED.sf_user_key`,
+      [account.id, idKey(account.salesforceUserId), JSON.stringify(account)],
+    );
+  }
+
+  async getMembership(accountId: string, workspaceId: string): Promise<Membership | undefined> {
+    await this.ready;
+    const { rows } = await this.sql.query(
+      "SELECT account_id, workspace_id, role, created_at FROM memberships WHERE account_id=$1 AND workspace_id=$2",
+      [accountId, workspaceId],
+    );
+    return rows[0] ? this.toMembership(rows[0]) : undefined;
+  }
+
+  async listMembershipsForAccount(accountId: string): Promise<Membership[]> {
+    await this.ready;
+    const { rows } = await this.sql.query(
+      "SELECT account_id, workspace_id, role, created_at FROM memberships WHERE account_id=$1",
+      [accountId],
+    );
+    return rows.map((r) => this.toMembership(r));
+  }
+
+  async listMembershipsForWorkspace(workspaceId: string): Promise<Membership[]> {
+    await this.ready;
+    const { rows } = await this.sql.query(
+      "SELECT account_id, workspace_id, role, created_at FROM memberships WHERE workspace_id=$1",
+      [workspaceId],
+    );
+    return rows.map((r) => this.toMembership(r));
+  }
+
+  async setMembership(membership: Membership): Promise<void> {
+    await this.ready;
+    await this.sql.query(
+      `INSERT INTO memberships (account_id, workspace_id, role) VALUES ($1,$2,$3)
+       ON CONFLICT (account_id, workspace_id) DO UPDATE SET role = EXCLUDED.role`,
+      [membership.accountId, membership.workspaceId, membership.role],
+    );
+  }
+
+  private toMembership(row: Record<string, unknown>): Membership {
+    const createdAt = row.created_at;
+    return {
+      accountId: row.account_id as string,
+      workspaceId: row.workspace_id as string,
+      role: row.role as Membership["role"],
+      createdAt:
+        createdAt instanceof Date ? createdAt.toISOString() : String(createdAt ?? ""),
+    };
   }
 
   async getLayoutRecord(tenantId: string, object: string, audience = "default"): Promise<LayoutRecord> {

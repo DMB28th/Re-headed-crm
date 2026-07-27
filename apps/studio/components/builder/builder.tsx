@@ -215,9 +215,9 @@ export function Builder({ object }: { object: string }) {
     // Viewport-bounded so palette / canvas / preview scroll INDEPENDENTLY —
     // on real portals the palette has hundreds of fields and must not scroll
     // the whole page (feedback round 2).
-    <div className="flex h-[calc(100vh-48px)] min-h-0 flex-col">
-      <header className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+    <div className="flex min-h-0 flex-col xl:h-[calc(100vh-56px)]">
+      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {configuredObjects.length > 1 ? (
             <select
               aria-label="Switch object"
@@ -255,7 +255,7 @@ export function Builder({ object }: { object: string }) {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {history.length > 0 && (
             <details className="relative">
               <summary className="st-btn cursor-pointer list-none">
@@ -373,7 +373,7 @@ export function Builder({ object }: { object: string }) {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 xl:flex-row xl:overflow-x-auto">
         <Palette
           describe={describe}
           crm={config.crm}

@@ -10,7 +10,7 @@ function redact(connection: UserConnectionState | undefined): Record<string, unk
 }
 
 export async function GET(req: Request) {
-  const { tenantId, userId } = getUserContextFromRequest(req);
+  const { tenantId, userId } = await getUserContextFromRequest(req);
   const store = await getStore();
   const [workspace, userConnection] = await Promise.all([
     store.getConnection(tenantId),
@@ -32,7 +32,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const { tenantId, userId } = getUserContextFromRequest(req);
+  const { tenantId, userId } = await getUserContextFromRequest(req);
   const body = (await req.json().catch(() => ({}))) as { action?: "disconnect" };
   if (body.action !== "disconnect") {
     return NextResponse.json({ error: "action must be disconnect" }, { status: 400 });

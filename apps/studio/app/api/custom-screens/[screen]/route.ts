@@ -8,7 +8,7 @@ export async function PUT(
   { params }: { params: Promise<{ screen: string }> },
 ) {
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     const { screen } = await params;
     const body = (await req.json()) as unknown;
     const draft = CustomScreenConfig.parse({
@@ -30,7 +30,7 @@ export async function POST(
   { params }: { params: Promise<{ screen: string }> },
 ) {
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     const { screen } = await params;
     const published = await (await getStore()).publishCustomScreen(tenantId, screen);
     return NextResponse.json({ published });

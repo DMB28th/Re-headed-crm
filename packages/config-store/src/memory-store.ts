@@ -24,6 +24,12 @@ import {
   type PublishEvent,
   type UserConnectionState,
 } from "./types.js";
+import {
+  membershipKey,
+  type Account,
+  type Membership,
+  type Workspace,
+} from "./identity.js";
 import { defaultConnection, demoDealsLayout, demoHomeCard, demoViewExposures } from "./seed.js";
 
 interface StoreState {
@@ -41,6 +47,12 @@ interface StoreState {
   userConnections?: Record<string, UserConnectionState>;
   /** Namespaced KV (MCP OAuth clients/codes/tokens). Keyed namespace::key. */
   kv?: Record<string, { value: Record<string, unknown>; expiresAt?: string }>;
+  /** Cardstack workspaces, keyed by workspace id (= tenantId). Absent = no one has signed in yet. */
+  workspaces?: Record<string, Workspace>;
+  /** Cardstack accounts, keyed by account id. */
+  accounts?: Record<string, Account>;
+  /** Keyed accountId::workspaceId. */
+  memberships?: Record<string, Membership>;
   publishes: PublishEvent[];
 }
 
@@ -184,6 +196,75 @@ export abstract class BaseConfigStore implements AdminConfigStore {
     const state = await this.load();
     if (!state.kv) return;
     delete state.kv[`${namespace}::${key}`];
+    await this.save(state);
+  }
+
+  // ---- Identity (accounts / workspaces / memberships) ----
+
+  async getWorkspace(id: string): Promise<Workspace | undefined> {
+    return (await this.load()).workspaces?.[id];
+  }
+
+  async getWorkspaceByOrgId(salesforceOrgId: string): Promise<Workspace | undefined> {
+    const state = await this.load();
+    // Match on the 15-char prefix: Salesforce APIs disagree about returning 15
+    // vs 18 chars for the same org, and both must find the one workspace.
+    const prefix = salesforceOrgId.slice(0, 15).toLowerCase();
+    return Object.values(state.workspaces ?? {}).find(
+      (w) => w.salesforceOrgId.slice(0, 15).toLowerCase() === prefix,
+    );
+  }
+
+  /** Idempotent on the org id — see resolveSignIn's creation-race note. */
+  async createWorkspace(workspace: Workspace): Promise<void> {
+    const state = await this.load();
+    const prefix = workspace.salesforceOrgId.slice(0, 15).toLowerCase();
+    const clash = Object.values(state.workspaces ?? {}).some(
+      (w) => w.salesforceOrgId.slice(0, 15).toLowerCase() === prefix,
+    );
+    if (clash) return;
+    state.workspaces = { ...(state.workspaces ?? {}), [workspace.id]: workspace };
+    await this.save(state);
+  }
+
+  async getAccount(id: string): Promise<Account | undefined> {
+    return (await this.load()).accounts?.[id];
+  }
+
+  async getAccountBySalesforceUserId(salesforceUserId: string): Promise<Account | undefined> {
+    const state = await this.load();
+    const prefix = salesforceUserId.slice(0, 15).toLowerCase();
+    return Object.values(state.accounts ?? {}).find(
+      (a) => a.salesforceUserId.slice(0, 15).toLowerCase() === prefix,
+    );
+  }
+
+  async upsertAccount(account: Account): Promise<void> {
+    const state = await this.load();
+    state.accounts = { ...(state.accounts ?? {}), [account.id]: account };
+    await this.save(state);
+  }
+
+  async getMembership(accountId: string, workspaceId: string): Promise<Membership | undefined> {
+    return (await this.load()).memberships?.[membershipKey(accountId, workspaceId)];
+  }
+
+  async listMembershipsForAccount(accountId: string): Promise<Membership[]> {
+    const state = await this.load();
+    return Object.values(state.memberships ?? {}).filter((m) => m.accountId === accountId);
+  }
+
+  async listMembershipsForWorkspace(workspaceId: string): Promise<Membership[]> {
+    const state = await this.load();
+    return Object.values(state.memberships ?? {}).filter((m) => m.workspaceId === workspaceId);
+  }
+
+  async setMembership(membership: Membership): Promise<void> {
+    const state = await this.load();
+    state.memberships = {
+      ...(state.memberships ?? {}),
+      [membershipKey(membership.accountId, membership.workspaceId)]: membership,
+    };
     await this.save(state);
   }
 

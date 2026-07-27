@@ -13,11 +13,27 @@ const USER_EMAIL_HEADER = "x-cardstack-user-email";
 const USER_NAME_HEADER = "x-cardstack-user-name";
 const AUDIENCE_HEADER = "x-cardstack-audience";
 
+/**
+ * Whether request headers may name the caller.
+ *
+ * They may not in production: `x-cardstack-tenant-id` is a claim, not a proof,
+ * so honoring it would let any holder of the shared secret read and write ANY
+ * workspace's records. Production identity comes from the OAuth bearer token
+ * (see oauth-provider.ts); this path exists for local demos and the pre-OAuth
+ * single-tenant deployments, where env vars — not the caller — set the context.
+ */
+function headerIdentityAllowed(): boolean {
+  if (process.env.NODE_ENV !== "production") return true;
+  return process.env.CARDSTACK_ALLOW_HEADER_IDENTITY === "1";
+}
+
 export function userContextFromHeaders(headers: {
   get(name: string): string | string[] | undefined;
 }): UserContext {
   const demo = defaultUserContext(process.env.CARDSTACK_TENANT_ID ?? DEMO_TENANT_ID);
+  const allowHeaders = headerIdentityAllowed();
   const header = (name: string): string | undefined => {
+    if (!allowHeaders) return undefined;
     const value = headers.get(name);
     return Array.isArray(value) ? value[0] : value;
   };

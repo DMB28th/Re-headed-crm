@@ -93,6 +93,10 @@ export function FlowsEditor() {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [query, setQuery] = useState("");
+  const [readiness, setReadiness] = useState<"all" | "ready" | "partial" | "handoff">("all");
+  const [showSystem, setShowSystem] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -238,15 +242,35 @@ export function FlowsEditor() {
 
   const crmLabel = crmDisplayLabel(data.connection.crm);
   const chatReady = data.flows.filter((f) => f.support?.level === "full").length;
+  const normalizedQuery = query.trim().toLowerCase();
+  const isSystemFlow = (flow: FlowRow) =>
+    /^(approvals workflow:|cms:)|reset password|review flow for activation|verify identity/i.test(
+      flow.label,
+    );
+  const visibleFlows = data.flows.filter((flow) => {
+    if (!showSystem && isSystemFlow(flow)) return false;
+    if (
+      normalizedQuery &&
+      !`${flow.label} ${flow.api}`.toLowerCase().includes(normalizedQuery)
+    ) {
+      return false;
+    }
+    if (readiness === "ready" && flow.support?.level !== "full") return false;
+    if (readiness === "partial" && flow.support?.level !== "partial") return false;
+    if (readiness === "handoff" && flow.support?.level !== "handoff" && flow.support !== null) {
+      return false;
+    }
+    return true;
+  });
 
   return (
-    <div className="max-w-[920px]">
+    <div className="max-w-[1040px]">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[16px] font-semibold">Flows</h1>
-          <p className="mt-1 text-[12.5px] text-ink-55">
-            Your org&apos;s screen flows, as they are — pick which ones reps can run from chat and
-            which cards offer them. Variables map themselves from the record.
+          <h1 className="text-[22px] font-semibold tracking-[-0.025em]">Automations</h1>
+          <p className="mt-1 max-w-[700px] text-[14px] text-ink-55">
+            Choose which CRM flows reps can run from a card. Search first, then configure
+            only the automations that belong in chat.
           </p>
         </div>
         <span className="st-chip-mono bg-crmmeta text-crmmeta-ink">{crmLabel}</span>
@@ -258,116 +282,132 @@ export function FlowsEditor() {
         </div>
       )}
 
-      <div className="mt-4 text-[11.5px] text-ink-45">
+      <div className="mt-5 flex flex-wrap items-center gap-2">
+        <input
+          type="search"
+          className="st-input min-w-[260px] flex-1 !px-3 !py-2"
+          placeholder="Search flows by name or API…"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <select
+          className="st-input !px-3 !py-2"
+          aria-label="Filter by readiness"
+          value={readiness}
+          onChange={(event) => setReadiness(event.target.value as typeof readiness)}
+        >
+          <option value="all">All readiness</option>
+          <option value="ready">Chat-ready</option>
+          <option value="partial">Partial</option>
+          <option value="handoff">Opens in CRM</option>
+        </select>
+        <button type="button" className="st-btn" onClick={() => setShowSystem((value) => !value)}>
+          {showSystem ? "Hide platform flows" : "Show platform flows"}
+        </button>
+      </div>
+
+      <div className="mt-3 text-[12.5px] text-ink-55">
         {data.flows.length} flows · {chatReady} chat-ready · exposing a flow publishes the card
         immediately (history keeps every revision).
       </div>
 
-      <div className="mt-3 grid grid-cols-1 gap-2.5">
-        {data.flows.length === 0 && (
+      <div className="st-card mt-3 overflow-hidden">
+        <div className="hidden grid-cols-[minmax(240px,1fr)_150px_170px_110px] gap-3 border-b border-line bg-paper px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-55 md:grid">
+          <span>Flow</span>
+          <span>Readiness</span>
+          <span>Available on</span>
+          <span className="text-right">Action</span>
+        </div>
+        {visibleFlows.length === 0 && (
           <div className="st-card px-4 py-5 text-[12.5px] text-ink-55">
-            No active screen flows found in this {crmLabel} connection.
+            No flows match these filters.
           </div>
         )}
 
-        {data.flows.map((flow) => {
+        {visibleFlows.map((flow) => {
           const assignedObjects = new Set(flow.assignedTo.map((a) => a.object));
           const currentMode = modeByFlow.get(flow.api)?.mode ?? "auto";
+          const open = expanded === flow.api;
           return (
-            <div key={flow.api} className="st-card p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
+            <div key={flow.api} className="border-b border-line-soft last:border-b-0">
+              <div className="grid items-center gap-3 px-4 py-3 md:grid-cols-[minmax(240px,1fr)_150px_170px_110px]">
                 <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[13px] font-semibold">{flow.label}</span>
-                    <SupportBadge support={flow.support} />
-                    {flow.screens > 0 && (
-                      <span className="st-chip-mono bg-paper text-ink-45">
-                        {flow.screens} screen{flow.screens === 1 ? "" : "s"}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-1">
-                    <span className="st-chip-mono bg-paper text-ink-45">{flow.api}</span>
+                  <div className="truncate text-[14px] font-semibold">{flow.label}</div>
+                  <div className="mt-0.5 truncate font-mono text-[11px] text-ink-45">
+                    {flow.api}
                   </div>
                 </div>
-                <div className="inline-flex overflow-hidden rounded-[8px] border border-line bg-surface">
-                  {MODES.map((mode) => (
-                    <button
-                      key={mode.value}
-                      type="button"
-                      className={`px-2 py-0.5 text-[11px] ${
-                        currentMode === mode.value ? "bg-accent text-white" : "text-ink-45"
-                      }`}
-                      onClick={() => saveMode(flow.api, mode.value)}
-                    >
-                      {mode.label}
-                    </button>
-                  ))}
+                <div>
+                  <SupportBadge support={flow.support} />
+                </div>
+                <div className="text-[13px] text-ink-55">
+                  {flow.assignedTo.length > 0
+                    ? flow.assignedTo.map((item) => item.object).join(", ")
+                    : "Not exposed"}
+                </div>
+                <div className="text-right">
+                  <button
+                    type="button"
+                    className={`st-btn ${open ? "st-btn--primary" : ""}`}
+                    aria-expanded={open}
+                    onClick={() => setExpanded(open ? null : flow.api)}
+                  >
+                    {open ? "Close" : "Configure"}
+                  </button>
                 </div>
               </div>
 
-              <div className="mt-3 grid gap-2 md:grid-cols-2">
-                <div className="rounded-[9px] border border-line-soft bg-paper px-3 py-2">
-                  <div className="st-section-label">Available on</div>
-                  {data.objects.length === 0 ? (
-                    <div className="mt-1 text-[11.5px] text-ink-45">
-                      No cards configured yet — build an object&apos;s card first.
-                    </div>
-                  ) : (
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      {data.objects.map((object) => {
-                        const on = assignedObjects.has(object);
-                        const busy = busyKey === `${flow.api}:${object}`;
-                        return (
+              {open && (
+                <div className="border-t border-line-soft bg-paper px-4 py-4">
+                  <div className="grid gap-4 lg:grid-cols-3">
+                    <div>
+                      <div className="st-section-label">Render mode</div>
+                      <div className="mt-2 inline-flex overflow-hidden rounded-[8px] border border-line bg-surface">
+                        {MODES.map((mode) => (
                           <button
-                            key={object}
+                            key={mode.value}
                             type="button"
-                            disabled={busy}
-                            className={`rounded-[8px] border px-2.5 py-1 text-[11.5px] ${
-                              on
-                                ? "border-accent bg-accent text-white"
-                                : "border-line bg-surface text-ink-55"
-                            } ${busy ? "opacity-60" : ""}`}
-                            title={
-                              on
-                                ? `Remove from the ${object} card`
-                                : `Expose on the ${object} card`
-                            }
-                            onClick={() => toggleAssignment(flow, object, !on)}
+                            className={`px-3 py-1.5 text-[12px] ${
+                              currentMode === mode.value ? "bg-accent text-white" : "text-ink-55"
+                            }`}
+                            onClick={() => saveMode(flow.api, mode.value)}
                           >
-                            {busy ? "…" : object}
+                            {mode.label}
                           </button>
-                        );
-                      })}
+                        ))}
+                      </div>
                     </div>
-                  )}
+                    <div>
+                      <div className="st-section-label">Available on cards</div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {data.objects.map((object) => {
+                          const on = assignedObjects.has(object);
+                          const busy = busyKey === `${flow.api}:${object}`;
+                          return (
+                            <button
+                              key={object}
+                              type="button"
+                              disabled={busy}
+                              className={`st-btn ${on ? "st-btn--primary" : ""}`}
+                              onClick={() => toggleAssignment(flow, object, !on)}
+                            >
+                              {busy ? "Updating…" : on ? `Remove ${object}` : `Add to ${object}`}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="st-section-label">Inputs</div>
+                      <div className="mt-2 text-[13px] text-ink-55">
+                        {flow.inputVariables.length > 0
+                          ? flow.inputVariables.map((variable) => variable.name).join(", ")
+                          : "Record ID is passed automatically."}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="rounded-[9px] border border-line-soft bg-paper px-3 py-2">
-                  <div className="st-section-label">Record → flow variables</div>
-                  {flow.inputVariables.length === 0 ? (
-                    <div className="mt-1 text-[11.5px] text-ink-45">
-                      No input variables — the record id is passed automatically.
-                    </div>
-                  ) : (
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      {flow.inputVariables.map((v) => (
-                        <span
-                          key={v.name}
-                          className="st-chip-mono bg-surface text-ink-45"
-                          title={
-                            v.name.toLowerCase() === "recordid"
-                              ? "Receives the record's id automatically."
-                              : "Auto-maps to a matching record field; otherwise the flow's own screens collect it."
-                          }
-                        >
-                          {v.name}
-                          {v.name.toLowerCase() === "recordid" ? " ← record" : ""}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
+              )}
             </div>
           );
         })}

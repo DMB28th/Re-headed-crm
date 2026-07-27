@@ -9,7 +9,7 @@ type Params = { params: Promise<{ object: string }> };
 export async function GET(_req: Request, { params }: Params) {
   const { object } = await params;
   try {
-    const user = getUserContextFromRequest(_req);
+    const user = await getUserContextFromRequest(_req);
     const { tenantId } = user;
     const adapter = await getAdapter(tenantId);
     const store = await getStore();
@@ -29,7 +29,7 @@ export async function GET(_req: Request, { params }: Params) {
 export async function PUT(req: Request, { params }: Params) {
   const { object } = await params;
   try {
-    const user = getUserContextFromRequest(req);
+    const user = await getUserContextFromRequest(req);
     const { tenantId } = user;
     const incoming = ViewExposuresConfig.parse(await req.json());
     if (incoming.object !== object || incoming.tenantId !== tenantId) {

@@ -17,7 +17,7 @@ interface StartBody {
 
 export async function POST(req: Request) {
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     const body = (await req.json()) as StartBody;
     const loginUrl = normalizeSalesforceLoginUrl(body.loginUrl);
     const clientId = body.clientId?.trim();

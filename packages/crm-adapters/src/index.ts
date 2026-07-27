@@ -17,6 +17,14 @@ export {
 } from "./salesforce/dev-adapter.js";
 export { readSalesforceCliToken, type SalesforceCliToken } from "./salesforce/cli-token.js";
 export {
+  cardstackSalesforceLoginApp,
+  fetchSalesforceSignerIdentity,
+  parseSalesforceIdentityUrl,
+  type SalesforceIdentityUrlParts,
+  type SalesforceLoginApp,
+  type SalesforceSignerIdentity,
+} from "./salesforce/identity.js";
+export {
   createAdapterForConnection,
   invalidateAdapterCache,
   type ConnectionSettings,

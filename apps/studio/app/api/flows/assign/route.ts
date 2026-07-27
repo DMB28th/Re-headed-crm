@@ -19,7 +19,7 @@ import { getUserContextFromRequest } from "../../../../lib/auth";
  */
 export async function POST(req: Request) {
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     const body = (await req.json()) as {
       flowApiName?: string;
       object?: string;

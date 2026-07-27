@@ -643,6 +643,11 @@ function HomeCardPreview({
           {drillError && (
             <div className="rounded-[10px] bg-drift p-3 text-[11.5px] text-drift-ink">{drillError}</div>
           )}
+          {!drill && !payload && !drillError && (
+            <div className="rounded-[10px] border border-line bg-surface p-4 text-center text-[13px] text-ink-55">
+              Loading live CRM preview…
+            </div>
+          )}
           {!drill && payload && (
             <HomeCard key={configJson} payload={payload} locale="en-US" host={homeHost} />
           )}

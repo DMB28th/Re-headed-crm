@@ -132,7 +132,7 @@ export function Preview({ config }: { config: LayoutConfig }) {
 
   if (collapsed) {
     return (
-      <aside className="w-[36px] shrink-0">
+      <aside className="w-full shrink-0 lg:w-[36px]">
         <button
           type="button"
           className="st-btn w-full !px-1 py-2"
@@ -184,7 +184,7 @@ export function Preview({ config }: { config: LayoutConfig }) {
   };
 
   return (
-    <aside className="w-[396px] shrink-0 overflow-y-auto">
+    <aside className="w-full max-w-[396px] shrink-0 overflow-y-auto xl:w-[340px]">
       <div className="mb-2 flex items-center justify-between">
         <span className="st-section-label">
           Live preview · real widget{live ? " · live data" : ""}

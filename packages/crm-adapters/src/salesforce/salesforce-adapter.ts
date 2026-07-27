@@ -348,7 +348,7 @@ export async function exchangeSalesforceAuthorizationCode(
     codeVerifier?: string;
   },
   fetchImpl: FetchLike = fetch,
-): Promise<SalesforceCredentials> {
+): Promise<SalesforceCredentials & { instanceUrl: string; accessToken: string }> {
   const loginUrl = normalizeSalesforceLoginUrl(args.loginUrl);
   const data = await postToken(fetchImpl, loginUrl, {
     grant_type: "authorization_code",

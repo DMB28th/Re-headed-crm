@@ -21,16 +21,16 @@ export default async function AuditPage() {
     .catch(() => []);
 
   return (
-    <div className="max-w-[860px]">
+    <div className="max-w-[980px]">
       <div className="flex items-center justify-between">
-        <h1 className="text-[16px] font-semibold">Audit log</h1>
+        <h1 className="text-[22px] font-semibold tracking-[-0.025em]">Write activity</h1>
         {entries.length > 0 && (
           <a href="/api/audit?format=csv" className="st-btn" download>
             Download CSV
           </a>
         )}
       </div>
-      <p className="mt-1 text-[12.5px] text-ink-55">
+      <p className="mt-1 max-w-[720px] text-[14px] text-ink-55">
         Every write reps confirm from chat, with before/after values, who triggered it and who it
         was written as. Durable across restarts.
       </p>
@@ -45,7 +45,7 @@ export default async function AuditPage() {
         </div>
       ) : (
         <div className="st-card mt-5 overflow-hidden">
-          <div className="grid grid-cols-[1.3fr_1.1fr_1.1fr_1fr_2fr] gap-3 border-b border-line-soft px-4 py-2">
+          <div className="hidden grid-cols-[1.3fr_1.1fr_1.1fr_1fr_2fr] gap-3 border-b border-line-soft px-4 py-2 md:grid">
             {["When", "Actor", "Written as", "Record", "Change"].map((h) => (
               <span key={h} className="st-section-label">
                 {h}
@@ -55,15 +55,20 @@ export default async function AuditPage() {
           {entries.map((e) => (
             <div
               key={e.id}
-              className="grid grid-cols-[1.3fr_1.1fr_1.1fr_1fr_2fr] gap-3 border-b border-line-soft px-4 py-2.5 text-[12px] last:border-b-0"
+              className="grid gap-2 border-b border-line-soft px-4 py-3 text-[13px] last:border-b-0 md:grid-cols-[1.3fr_1.1fr_1.1fr_1fr_2fr] md:gap-3"
             >
-              <span className="text-ink-55">{new Date(e.timestamp).toLocaleString()}</span>
-              <span>{e.actor?.name ?? "—"}</span>
-              <span>{e.user}</span>
               <span className="text-ink-55">
+                <span className="st-section-label mr-2 md:hidden">When</span>
+                {new Date(e.timestamp).toLocaleString()}
+              </span>
+              <span><span className="st-section-label mr-2 md:hidden">Actor</span>{e.actor?.name ?? "—"}</span>
+              <span><span className="st-section-label mr-2 md:hidden">Written as</span>{e.user}</span>
+              <span className="text-ink-55">
+                <span className="st-section-label mr-2 md:hidden">Record</span>
                 <span className="st-chip-mono bg-paper text-ink-45">{e.object}</span> {e.recordId}
               </span>
               <span className="flex flex-col gap-0.5">
+                <span className="st-section-label md:hidden">Change</span>
                 {e.changes.map((c, i) => (
                   <span key={i}>
                     <strong>{c.field}</strong> {formatValue(c.before)} → {formatValue(c.after)}
