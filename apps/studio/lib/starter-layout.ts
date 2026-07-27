@@ -13,6 +13,11 @@ const TITLE_CANDIDATES = [
   "hs_full_name_or_email",
   "name",
   "Name",
+  // Salesforce objects that have no Name: Task/Event title on Subject, Case on
+  // CaseNumber. Without these the fallback picks `Id` and every card is titled
+  // with a raw record id.
+  "Subject",
+  "CaseNumber",
   "subject",
   "email",
   "firstname",
@@ -99,10 +104,15 @@ export function generateStarterLayout(
   crm: "hubspot" | "salesforce" = "hubspot",
 ): LayoutConfig {
   const fields = describe.fields;
+  // The fallbacks skip system plumbing — `Id` is required, string-typed and
+  // first in Salesforce's describe, so an unfiltered search titles the card
+  // with a raw record id.
+  const titleable = fields.filter((f) => paletteGroup(f) !== "system");
   const title =
     pick(fields, TITLE_CANDIDATES) ??
-    fields.find((f) => f.required && f.type === "string") ??
-    fields.find((f) => f.type === "string") ??
+    titleable.find((f) => f.required && f.type === "string") ??
+    titleable.find((f) => f.type === "string") ??
+    titleable[0] ??
     fields[0];
   if (!title) throw new Error(`${describe.api} has no fields to build a layout from.`);
   const badge = pick(fields.filter((f) => f.api !== title.api), BADGE_CANDIDATES);

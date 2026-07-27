@@ -466,6 +466,14 @@ export class SalesforceAdapter implements CrmAdapter {
      * one-shot fallback before declaring the connection dead.
      */
     private readonly getFreshCredentials?: () => Promise<SalesforceCredentials | null>,
+    /**
+     * LOCAL DEV: mint an access token from an EXTERNAL source (the `sf` CLI)
+     * instead of an OAuth refresh or client-credentials grant. When present it
+     * wins over both — there is no refresh token in this mode, so a 401 is
+     * resolved by asking the source for a fresh token. Nothing minted here is
+     * ever persisted; see salesforce/cli-token.ts for why that matters.
+     */
+    private readonly tokenProvider?: () => Promise<{ accessToken: string; instanceUrl?: string }>,
   ) {
     this.token = credentials.accessToken ?? null;
     this.instanceUrl = credentials.instanceUrl ?? null;
@@ -500,6 +508,14 @@ export class SalesforceAdapter implements CrmAdapter {
   }
 
   private async grantToken(): Promise<string> {
+    // External token source (dev, sf CLI) — no refresh token exists in this
+    // mode, so re-asking the source IS the refresh.
+    if (this.tokenProvider) {
+      const minted = await this.tokenProvider();
+      this.token = minted.accessToken;
+      if (minted.instanceUrl) this.instanceUrl = minted.instanceUrl.replace(/\/$/, "");
+      return this.token;
+    }
     if (salesforceUsesOAuth(this.credentials as unknown as Record<string, string>)) {
       if (!this.refreshToken) {
         throw new CrmAuthError("Salesforce", "Salesforce authorization is missing a refresh token.");

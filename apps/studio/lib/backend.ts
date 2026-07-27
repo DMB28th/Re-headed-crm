@@ -24,7 +24,12 @@ import {
   type AdminConfigStore,
   type AuditLog,
 } from "@cardstack/config-store";
-import { createAdapterForConnection, type CrmAdapter } from "@cardstack/crm-adapters";
+import {
+  createAdapterForConnection,
+  createDevSalesforceAdapter,
+  devSalesforceOrg,
+  type CrmAdapter,
+} from "@cardstack/crm-adapters";
 
 export const TENANT_ID = process.env.CARDSTACK_TENANT_ID ?? DEMO_TENANT_ID;
 
@@ -51,6 +56,11 @@ export function getAuditLog(): Promise<AuditLog> {
 
 /** The tenant's adapter per its CURRENT connection (read fresh each call). */
 export async function getAdapter(tenantId = TENANT_ID): Promise<CrmAdapter> {
+  // LOCAL DEV: CARDSTACK_DEV_SF_ORG points the whole app at a real Salesforce
+  // org via the sf CLI's own auth, bypassing the stored connection entirely so
+  // no token of the deployed connected app is ever read, refreshed, or written.
+  const devOrg = devSalesforceOrg();
+  if (devOrg) return createDevSalesforceAdapter(devOrg);
   const store = await getStore();
   const connection = await store.getConnection(tenantId);
   return createAdapterForConnection({

@@ -70,6 +70,28 @@ still in-memory — move them to Postgres alongside multi-tenant auth (M7).
 - `pnpm demo:m3` — Golden Path 3 demo (publish → live layout change → rollback)
 - `pnpm demo:m4` — home card demo (lists/recents/follow-ups → confirmed task check-off)
 - `pnpm --filter @cardstack/studio dev` — Studio on :3002 (shares data/cardstack-config.json with the server)
+
+### Local dev against a REAL Salesforce org
+
+The stock seed is the HubSpot-shaped mock portal (`deals`/`dealname`) — fine for
+tests and demos, but it describes nothing in a Salesforce org. To develop
+against real data instead:
+
+- `pnpm --filter @cardstack/studio seed:salesforce -- --org <alias>` — reads the
+  org's actual objects, fields and list views and writes
+  `data/cardstack-salesforce.json` (gitignored). Defaults to Account, Contact,
+  Opportunity, Lead, Case, Task; `--objects A,B` to override.
+- `pnpm --filter @cardstack/studio dev:sf` — Studio on that store, live against
+  the org. `pnpm --filter @cardstack/mcp-server dev:sf` for the MCP server.
+  Both default to the `screenflow-org` alias (`CARDSTACK_DEV_SF_ORG` overrides).
+
+**Auth is the `sf` CLI's own, held in memory only.** `CARDSTACK_DEV_SF_ORG`
+bypasses the stored connection entirely, so a local run never reads, refreshes,
+or writes the connected app's refresh token — which matters because that app
+rotates refresh tokens with reuse detection, and a local refresh would revoke
+the deployed connection's whole grant family. Never persist a token from
+`readSalesforceCliToken` into a config store. Plain `pnpm dev` (no `:sf`) is
+untouched and still uses the mock portal.
 - `pnpm --filter @cardstack/mcp-server dev` — run the MCP server locally (streamable HTTP on :3001)
 - MCP Inspector: `npx @modelcontextprotocol/inspector` → connect to `http://localhost:3001/mcp`
 

@@ -16,6 +16,8 @@ import { mcpAuthRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
 import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
 import {
   createAdapterForConnection,
+  createDevSalesforceAdapter,
+  devSalesforceOrg,
   salesforceUsesOAuth,
   type ConnectionSettings,
 } from "@cardstack/crm-adapters";
@@ -275,7 +277,13 @@ app.all("/mcp", async (req, res) => {
       };
     }
   }
-  const adapter = createAdapterForConnection(adapterSettings);
+  // LOCAL DEV: CARDSTACK_DEV_SF_ORG routes every tool call at a real Salesforce
+  // org through the sf CLI's own auth, bypassing the stored connection so no
+  // deployed refresh token is read or rotated. Unset everywhere else.
+  const devOrg = devSalesforceOrg();
+  const adapter = devOrg
+    ? createDevSalesforceAdapter(devOrg)
+    : createAdapterForConnection(adapterSettings);
   const server = await createCardstackServer({
     adapter,
     configStore,
