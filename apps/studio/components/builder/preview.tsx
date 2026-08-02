@@ -109,6 +109,17 @@ export function Preview({ config }: { config: LayoutConfig }) {
           if (result.error) return { isError: true, content: [{ type: "text", text: result.error }] };
           return { structuredContent: result.payload as Record<string, unknown> };
         }
+        if (name === "crm_preview_update") {
+          const result = await previewCall({
+            kind: "preview-write",
+            object: config.object,
+            config: JSON.parse(configJson),
+            recordId: args.id,
+            patch: args.patch,
+          });
+          if (result.error) return { isError: true, content: [{ type: "text", text: result.error }] };
+          return { structuredContent: result.payload as Record<string, unknown> };
+        }
         if (name === "crm_update_record") {
           const result = await previewCall({
             kind: "write",

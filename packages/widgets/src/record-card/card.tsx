@@ -18,6 +18,7 @@ import type {
   RecordCardPayload,
   RecordPage,
   RelatedListConfig,
+  UpdatePreviewPayload,
   WriteReceiptPayload,
 } from "@cardstack/core";
 import {
@@ -179,13 +180,16 @@ export function RecordCard({
     setMode({ kind: "editing", draft });
   };
 
-  const confirmWrite = async (draft: Draft) => {
+  // editing → confirming goes through the SERVER: it re-reads the current values,
+  // applies the same write gauntlet, and returns the diff plus a token bound to
+  // it. A diff computed here in the browser could never be proven to the audit
+  // log, so the rep confirms what the server will actually write, not what the
+  // card happens to be holding.
+  const reviewChanges = async (draft: Draft) => {
     if (!host) return;
-    setMode({ kind: "writing", draft });
-    setLastDraft(draft);
+    setMode({ kind: "reviewing", draft });
     try {
-      // The write goes through the HOST as a tool call — auditable, never direct.
-      const result = await host.callTool("crm_update_record", {
+      const result = await host.callTool("crm_preview_update", {
         object: layout.object,
         id: record.id,
         patch: draft,
@@ -193,8 +197,41 @@ export function RecordCard({
       if (result.isError) {
         const text = result.content?.find((c) => c.type === "text");
         setMode({
+          kind: "editing",
+          draft,
+          previewError: text?.text ?? "Couldn't prepare these changes for review.",
+        });
+        return;
+      }
+      setMode({
+        kind: "confirming",
+        draft,
+        preview: result.structuredContent as UpdatePreviewPayload,
+      });
+    } catch (error) {
+      setMode({ kind: "editing", draft, previewError: String(error) });
+    }
+  };
+
+  const confirmWrite = async (draft: Draft, preview: UpdatePreviewPayload) => {
+    if (!host) return;
+    setMode({ kind: "writing", draft, preview });
+    setLastDraft(draft);
+    try {
+      // The write goes through the HOST as a tool call — auditable, never direct.
+      // The token is what makes the audit entry say "rep confirmed this diff".
+      const result = await host.callTool("crm_update_record", {
+        object: layout.object,
+        id: record.id,
+        patch: draft,
+        confirmToken: preview.confirmToken,
+      });
+      if (result.isError) {
+        const text = result.content?.find((c) => c.type === "text");
+        setMode({
           kind: "confirming",
           draft,
+          preview,
           writeError: text?.text ?? "The write failed. Nothing was saved.",
         });
         return;
@@ -221,7 +258,7 @@ export function RecordCard({
         receipt.failedCount > 0 ? { kind: "partial", receipt } : { kind: "receipt", receipt },
       );
     } catch (error) {
-      setMode({ kind: "confirming", draft, writeError: String(error) });
+      setMode({ kind: "confirming", draft, preview, writeError: String(error) });
     }
   };
 
@@ -306,16 +343,19 @@ export function RecordCard({
   };
 
   const collapsed = mode.kind === "receipt" || mode.kind === "partial";
+  // The rows come from the SERVER's preview — same values the confirm token is
+  // bound to, so what the rep reads and what gets written cannot drift apart.
+  // Lookup writes carry an ID, so the picked record's name (which only the
+  // browser knows) still supplies the display label.
   const diffRows =
     mode.kind === "confirming" || mode.kind === "writing"
-      ? Object.entries(mode.draft).map(([api, value]) => ({
-          label: meta[api]?.label ?? api,
-          before: fmt(api, record.fields[api] ?? null),
-          // A lookup draft carries an ID — the diff shows the picked record's name.
+      ? mode.preview.changes.map(({ field, label, before, after }) => ({
+          label,
+          before: fmt(field, before),
           after:
-            value !== null && draftLabels[api] !== undefined && meta[api]?.type === "reference"
-              ? draftLabels[api]!
-              : fmt(api, value),
+            after !== null && draftLabels[field] !== undefined && meta[field]?.type === "reference"
+              ? draftLabels[field]!
+              : fmt(field, after),
         }))
       : [];
 
@@ -397,7 +437,13 @@ export function RecordCard({
         </div>
       )}
 
-      {(mode.kind === "ready" || mode.kind === "editing") &&
+      {mode.kind === "editing" && mode.previewError && (
+        <div className="wd-write-error" role="alert">
+          {mode.previewError} <span className="cs-muted">Nothing was written.</span>
+        </div>
+      )}
+
+      {(mode.kind === "ready" || mode.kind === "editing" || mode.kind === "reviewing") &&
         sections
           .map((section) => ({
             ...section,
@@ -410,8 +456,10 @@ export function RecordCard({
               section={section}
               payload={payload}
               locale={locale}
-              editing={mode.kind === "editing"}
-              draft={mode.kind === "editing" ? mode.draft : undefined}
+              editing={mode.kind === "editing" || mode.kind === "reviewing"}
+              draft={
+                mode.kind === "editing" || mode.kind === "reviewing" ? mode.draft : undefined
+              }
               draftLabels={draftLabels}
               editableSet={editableSet}
               host={host}
@@ -458,14 +506,12 @@ export function RecordCard({
           onEdit={() => setMode({ kind: "editing", draft: {} })}
           onCreateRelated={runCreateRelated}
           onDiscard={() => setMode({ kind: "ready" })}
-          onReview={() =>
-            mode.kind === "editing" && setMode({ kind: "confirming", draft: mode.draft })
-          }
+          onReview={() => mode.kind === "editing" && void reviewChanges(mode.draft)}
           onBack={() =>
             mode.kind === "confirming" && setMode({ kind: "editing", draft: mode.draft })
           }
           onConfirm={() =>
-            (mode.kind === "confirming" || mode.kind === "writing") && confirmWrite(mode.draft)
+            mode.kind === "confirming" && void confirmWrite(mode.draft, mode.preview)
           }
         />
         <span className="rc-footer-right">
@@ -536,23 +582,30 @@ function FooterControls({
         </span>
       );
     }
-    case "editing": {
+    case "editing":
+    case "reviewing": {
+      const reviewing = mode.kind === "reviewing";
       const count = dirtyCount(mode.draft);
       return (
         <span className="rc-footer-left">
           <span className={`rc-dirty-count${count > 0 ? " rc-dirty-count--active" : ""}`}>
             {count} unsaved {count === 1 ? "change" : "changes"}
           </span>
-          <button type="button" className="cs-btn cs-btn--ghost" onClick={onDiscard}>
+          <button
+            type="button"
+            className="cs-btn cs-btn--ghost"
+            onClick={onDiscard}
+            disabled={reviewing}
+          >
             Discard
           </button>
           <button
             type="button"
             className="cs-btn cs-btn--primary"
             onClick={onReview}
-            disabled={count === 0}
+            disabled={count === 0 || reviewing}
           >
-            Review &amp; save…
+            {reviewing ? "Preparing…" : "Review & save…"}
           </button>
         </span>
       );

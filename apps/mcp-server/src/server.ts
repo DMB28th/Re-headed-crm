@@ -49,7 +49,9 @@ import {
   type LookupOptionsPayload,
   type RecordPage,
   type SearchQuery,
+  type UpdatePreviewPayload,
   type UserContext,
+  type WriteConfirmation,
   type WriteReceiptPayload,
 } from "@cardstack/core";
 import { scopeViewExposuresForUser } from "@cardstack/config-store";
@@ -64,6 +66,7 @@ import { getWidgetHtml, type WidgetName } from "@cardstack/widgets";
 import type { ConfigStore } from "./config/store.js";
 import type { PreferenceStore } from "./config/preferences.js";
 import type { AuditLog } from "./audit.js";
+import { mintConfirmToken, verifyConfirmToken } from "./confirm-token.js";
 import {
   describeExposedViews,
   resolveViewAsk,
@@ -1087,6 +1090,154 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     },
   );
 
+  // --- Shared update gauntlet (crm_preview_update + crm_update_record) ---
+  // Both tools MUST apply the same rules: a diff the rep confirms is only
+  // meaningful if the write path enforces exactly what the preview validated.
+  // Returns the normalized patch — the values the confirm token is bound to.
+  const prepareUpdate = async (
+    object: string | undefined,
+    id: string,
+    rawPatch: Record<string, CrmFieldValue>,
+  ) => {
+    await requireConnection();
+    const config = await requireLayout(object);
+    if (!config.permissions.writeEnabled) {
+      throw new Error(`Writes are disabled for ${config.object}.`);
+    }
+    const describe = await adapter.describeObject(config.object);
+    const describeByApi = new Map(describe.fields.map((f) => [f.api, f]));
+    const caps = buildCapabilities(config, describeByApi);
+    const patch = { ...rawPatch };
+    const disallowed = Object.keys(patch).filter((field) => !caps.editableFields.includes(field));
+    if (disallowed.length > 0) {
+      // Config violation, not a CRM rejection: refuse the whole call.
+      throw new Error(
+        `Not editable on this layout: ${disallowed.join(", ")}. Editable fields: ${caps.editableFields.join(", ")}.`,
+      );
+    }
+
+    // Required fields (design 2a) can't be cleared from chat — enforcement,
+    // not just a badge. A null/"" on a required field refuses the whole call.
+    // Both admin-marked (layout) and CRM-required (describe) count.
+    const requiredApis = new Set([
+      ...config.recordCard.sections
+        .flatMap((s) => s.fields)
+        .filter((f) => f.required)
+        .map((f) => f.api),
+      ...describe.fields.filter((f) => f.required).map((f) => f.api),
+    ]);
+    const cleared = Object.keys(patch).filter(
+      (field) => requiredApis.has(field) && (patch[field] === null || patch[field] === ""),
+    );
+    if (cleared.length > 0) {
+      const names = cleared.map((f) => describeByApi.get(f)?.label ?? f).join(", ");
+      throw new Error(
+        `${names} ${cleared.length > 1 ? "are" : "is"} required on this card and can't be cleared from chat.`,
+      );
+    }
+
+    // Normalize model-supplied picklist LABELS to internal values (the model
+    // sees labels in every text response, so it will write them). A label
+    // that matches valueLabels case-insensitively is swapped for its value.
+    // Normalizing BEFORE the token is minted means preview and write hash the
+    // same patch even when one of them was handed a label.
+    for (const field of Object.keys(patch)) {
+      const raw = patch[field];
+      const labels = describeByApi.get(field)?.valueLabels;
+      const values = describeByApi.get(field)?.values;
+      if (typeof raw !== "string" || !labels || !values) continue;
+      if (values.includes(raw)) continue; // already an internal value
+      const match = Object.entries(labels).find(
+        ([, label]) => label.toLowerCase() === raw.toLowerCase(),
+      );
+      if (match) patch[field] = match[0];
+    }
+
+    const before = await adapter.getRecord(config.object, id, Object.keys(patch));
+    return { config, describeByApi, patch, before };
+  };
+
+  // --- crm_preview_update (mints the confirmation the audit log can verify) ---
+  server.registerTool(
+    "crm_preview_update",
+    {
+      title: "Preview a CRM record update",
+      description:
+        "Compute the before/after diff for a proposed update WITHOUT writing, and mint a " +
+        "confirmation token. Writes nothing. The record card calls this to render the " +
+        "confirmation diff; passing the returned confirmToken to crm_update_record is what " +
+        "lets the audit log record the write as rep-confirmed rather than model-initiated.",
+      inputSchema: {
+        object: z.string().optional().describe("Object API name; omit for the workspace default"),
+        id: z.string(),
+        patch: z
+          .record(z.union([z.string(), z.number(), z.boolean(), z.null()]))
+          .describe("Field API name → proposed new value"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (args): Promise<CallToolResult> => {
+      try {
+        const { config, describeByApi, patch, before } = await prepareUpdate(
+          args.object,
+          args.id,
+          args.patch as Record<string, CrmFieldValue>,
+        );
+        // Only fields that actually change belong in a diff — and the token is
+        // bound to those, so a no-op field can't ride along into the write.
+        const changed = Object.keys(patch).filter(
+          (field) => (before.fields[field] ?? null) !== (patch[field] ?? null),
+        );
+        if (changed.length === 0) {
+          throw new Error("Nothing to change — every value matches what's already in the CRM.");
+        }
+        const boundPatch = Object.fromEntries(changed.map((f) => [f, patch[f] ?? null]));
+        const minted = mintConfirmToken({
+          tenantId,
+          object: config.object,
+          recordId: args.id,
+          patch: boundPatch,
+          actorUserId: userContext.userId,
+        });
+
+        const sanitized = applyDenylist(config);
+        const named = await adapter.getRecord(config.object, args.id, [
+          config.recordCard.header.title,
+        ]);
+        const payload: UpdatePreviewPayload = {
+          kind: "update-preview",
+          object: config.object,
+          recordId: args.id,
+          recordName: String(named.fields[config.recordCard.header.title] ?? args.id),
+          changes: changed.map((field) => ({
+            field,
+            label: describeByApi.get(field)?.label ?? field,
+            before: before.fields[field] ?? null,
+            after: patch[field] ?? null,
+          })),
+          confirmToken: minted.token,
+          expiresAt: minted.expiresAt,
+          provenance: provenanceFor(sanitized),
+        };
+        const lines = payload.changes.map(
+          (c) => `- ${c.label}: ${String(c.before ?? "—")} → ${String(c.after ?? "—")}`,
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Proposed changes to ${payload.recordName} — nothing written yet:\n${lines.join("\n")}`,
+            },
+          ],
+          structuredContent: payload as unknown as Record<string, unknown>,
+          isError: false,
+        };
+      } catch (error) {
+        return asToolError(error, { tool: "crm_preview_update" });
+      }
+    },
+  );
+
   // --- crm_update_record (widget-invoked after the confirmation diff, or model-invoked) ---
   server.registerTool(
     "crm_update_record",
@@ -1094,74 +1245,56 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       title: "Update a CRM record",
       description:
         "Write field changes to a CRM record. Only fields the layout marks editable are writable. " +
-        "Returns per-field outcomes — a validation failure on one field does not block the others.",
+        "Returns per-field outcomes — a validation failure on one field does not block the others. " +
+        "Pass the confirmToken from crm_preview_update when the change was confirmed by the rep; " +
+        "without one the write is logged as model-initiated.",
       inputSchema: {
         object: z.string().optional().describe("Object API name; omit for the workspace default"),
         id: z.string(),
         patch: z
           .record(z.union([z.string(), z.number(), z.boolean(), z.null()]))
           .describe("Field API name → new value"),
+        confirmToken: z
+          .string()
+          .optional()
+          .describe(
+            "Token from crm_preview_update, proving a rep confirmed this exact diff. Do not invent one.",
+          ),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },
     async (args): Promise<CallToolResult> => {
       try {
-        await requireConnection();
-        const config = await requireLayout(args.object);
-        if (!config.permissions.writeEnabled) {
-          throw new Error(`Writes are disabled for ${config.object}.`);
-        }
-        const describe = await adapter.describeObject(config.object);
-        const describeByApi = new Map(describe.fields.map((f) => [f.api, f]));
-        const caps = buildCapabilities(config, describeByApi);
-        const patch = args.patch as Record<string, CrmFieldValue>;
-        const disallowed = Object.keys(patch).filter(
-          (field) => !caps.editableFields.includes(field),
+        const { config, describeByApi, patch, before } = await prepareUpdate(
+          args.object,
+          args.id,
+          args.patch as Record<string, CrmFieldValue>,
         );
-        if (disallowed.length > 0) {
-          // Config violation, not a CRM rejection: refuse the whole call.
-          throw new Error(
-            `Not editable on this layout: ${disallowed.join(", ")}. Editable fields: ${caps.editableFields.join(", ")}.`,
-          );
-        }
 
-        // Required fields (design 2a) can't be cleared from chat — enforcement,
-        // not just a badge. A null/"" on a required field refuses the whole call.
-        // Both admin-marked (layout) and CRM-required (describe) count.
-        const requiredApis = new Set([
-          ...config.recordCard.sections
-            .flatMap((s) => s.fields)
-            .filter((f) => f.required)
-            .map((f) => f.api),
-          ...describe.fields.filter((f) => f.required).map((f) => f.api),
-        ]);
-        const cleared = Object.keys(patch).filter(
-          (field) => requiredApis.has(field) && (patch[field] === null || patch[field] === ""),
-        );
-        if (cleared.length > 0) {
-          const names = cleared.map((f) => describeByApi.get(f)?.label ?? f).join(", ");
-          throw new Error(
-            `${names} ${cleared.length > 1 ? "are" : "is"} required on this card and can't be cleared from chat.`,
-          );
-        }
-
-        // Normalize model-supplied picklist LABELS to internal values (the model
-        // sees labels in every text response, so it will write them). A label
-        // that matches valueLabels case-insensitively is swapped for its value.
-        for (const field of Object.keys(patch)) {
-          const raw = patch[field];
-          const labels = describeByApi.get(field)?.valueLabels;
-          const values = describeByApi.get(field)?.values;
-          if (typeof raw !== "string" || !labels || !values) continue;
-          if (values.includes(raw)) continue; // already an internal value
-          const match = Object.entries(labels).find(
-            ([, label]) => label.toLowerCase() === raw.toLowerCase(),
-          );
-          if (match) patch[field] = match[0];
-        }
+        // Provenance is decided BEFORE anything is written: a token that doesn't
+        // verify aborts the write rather than silently downgrading to "model",
+        // because a caller presenting a bad token is a bug or an attack, not a
+        // model write. No token at all is the legitimate model path.
+        const confirmation: WriteConfirmation = args.confirmToken
+          ? {
+              via: "widget",
+              ...verifyConfirmToken(args.confirmToken, {
+                tenantId,
+                object: config.object,
+                recordId: args.id,
+                // The token binds only the fields that actually changed, so a
+                // no-op field in the patch can't ride along unconfirmed.
+                patch: Object.fromEntries(
+                  Object.keys(patch)
+                    .filter((f) => (before.fields[f] ?? null) !== (patch[f] ?? null))
+                    .map((f) => [f, patch[f] ?? null]),
+                ),
+                actorUserId: userContext.userId,
+              }),
+            }
+          : { via: "model" };
 
         const fields = Object.keys(patch);
-        const before = await adapter.getRecord(config.object, args.id, fields);
         const results: FieldWriteResult[] = [];
         const resultFor = (field: string, ok: boolean, error?: string): FieldWriteResult => ({
           field,
@@ -1201,6 +1334,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
             recordId: args.id,
             changes: saved.map(({ field, before, after }) => ({ field, before, after })),
             timestamp,
+            confirmation,
           });
         }
 
@@ -1292,6 +1426,10 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
             after,
           })),
           timestamp: new Date().toISOString(),
+          // Creation has no confirmation diff to mint a token against: the card
+          // posts a chat followup and the model calls this tool (10b, the
+          // in-widget create form, is still open). Model-initiated is the truth.
+          confirmation: { via: "model" },
         });
         const sanitized = applyDenylist(config);
         const fresh = filterRecord(created, new Set(recordCardFieldPaths(sanitized)));

@@ -68,7 +68,13 @@ Cross-tenant isolation is asserted in
    `@modelcontextprotocol/ext-apps` SDK (types in node_modules) — do not trust
    training data or PLAN.md for exact `_meta` shapes.
 8. Every write is preceded by a confirmation diff — "require confirmation" is
-   locked ON; it is the product's spine, not a setting.
+   locked ON; it is the product's spine, not a setting. This is enforced
+   server-side, not by widget flow: `crm_preview_update` computes the diff and
+   mints a signed token bound to it, and `crm_update_record` verifies that token
+   before writing, so the audit log's "rep confirmed" is a finding the server
+   checked rather than a claim the caller made. Never widen a write tool to
+   accept confirmation as a boolean or a caller-supplied string.
+   See **docs/confirmation-provenance.md**.
 
 ## Commands
 

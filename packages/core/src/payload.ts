@@ -115,6 +115,43 @@ export interface FieldWriteResult {
   error?: string;
 }
 
+/**
+ * How a write came to be — the server's own answer, not the caller's claim
+ * (CLAUDE.md hard rule 8: the confirmation diff is the product's spine).
+ *
+ * - `widget`: the caller presented a valid confirm token, so the server itself
+ *   computed this exact diff and handed it to a rep who confirmed it.
+ * - `model`: no token. A legitimate model-driven write, but nobody was shown a
+ *   diff first. The audit log must not blur the two.
+ */
+export interface WriteConfirmation {
+  via: "widget" | "model";
+  /** Token id (jti) — ties the audit entry to the preview that minted it. */
+  confirmationId?: string;
+  /** When the diff the rep confirmed was generated. */
+  previewedAt?: string;
+}
+
+/**
+ * structuredContent for crm_preview_update — the server-computed confirmation
+ * diff (design 1c). The `before` values are read server-side at preview time,
+ * so the diff a rep confirms is the CRM's truth rather than whatever the card
+ * happened to be holding.
+ */
+export interface UpdatePreviewPayload {
+  kind: "update-preview";
+  object: string;
+  recordId: string;
+  recordName: string;
+  /** Only fields whose value actually changes; an empty diff is not writable. */
+  changes: { field: string; label: string; before: CrmFieldValue; after: CrmFieldValue }[];
+  /** Opaque, signed, single-use. Pass back to crm_update_record verbatim. */
+  confirmToken: string;
+  /** ISO timestamp the token stops verifying — the widget can warn before it lapses. */
+  expiresAt: string;
+  provenance: WidgetProvenance;
+}
+
 /** structuredContent for crm_update_record → consumed by the record-card widget. */
 export interface WriteReceiptPayload {
   kind: "write-receipt";
@@ -236,6 +273,7 @@ export interface ErrorPayload {
 export type WidgetPayload =
   | RecordCardPayload
   | ResultsTablePayload
+  | UpdatePreviewPayload
   | WriteReceiptPayload
   | ViewPickerPayload
   | HomeCardPayload

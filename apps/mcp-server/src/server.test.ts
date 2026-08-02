@@ -11,6 +11,7 @@ import type {
   LayoutConfig,
   RecordCardPayload,
   ResultsTablePayload,
+  UpdatePreviewPayload,
   UserContext,
   WriteReceiptPayload,
 } from "@cardstack/core";
@@ -243,6 +244,115 @@ describe("golden path 1: search → record card", () => {
   });
 });
 
+/**
+ * The confirmation diff is the product's spine (CLAUDE.md hard rule 8). These
+ * cover the part the server can actually enforce: that "a rep confirmed this"
+ * in the audit log is a verified finding rather than a caller's assertion.
+ */
+describe("confirmation provenance", () => {
+  const preview = async (patch: Record<string, unknown>) => {
+    const result = await client.callTool({
+      name: "crm_preview_update",
+      arguments: { object: "deals", id: "d-001", patch },
+    });
+    return result.structuredContent as unknown as UpdatePreviewPayload;
+  };
+
+  it("previews a diff without writing anything", async () => {
+    const payload = await preview({ amount: 135000 });
+    expect(payload.kind).toBe("update-preview");
+    expect(payload.changes).toEqual([
+      { field: "amount", label: "Amount", before: 128400, after: 135000 },
+    ]);
+    expect(payload.confirmToken).toBeTruthy();
+
+    // Nothing written, nothing logged.
+    const record = await client.callTool({
+      name: "crm_get_record",
+      arguments: { object: "deals", id: "d-001" },
+    });
+    expect((record.structuredContent as unknown as RecordCardPayload).record.fields.amount).toBe(
+      128400,
+    );
+    expect(await auditLog.list(DEMO_TENANT_ID)).toHaveLength(0);
+  });
+
+  it("records a token-backed write as rep-confirmed", async () => {
+    const { confirmToken } = await preview({ amount: 135000 });
+    const result = await client.callTool({
+      name: "crm_update_record",
+      arguments: { object: "deals", id: "d-001", patch: { amount: 135000 }, confirmToken },
+    });
+    expect(result.isError).toBeFalsy();
+    const [entry] = await auditLog.list(DEMO_TENANT_ID);
+    expect(entry!.confirmation?.via).toBe("widget");
+    expect(entry!.confirmation?.confirmationId).toBeTruthy();
+    expect(entry!.confirmation?.previewedAt).toBeTruthy();
+  });
+
+  it("refuses to write when the patch differs from what was confirmed", async () => {
+    // The rep approved 135000; the caller submits ten times that.
+    const { confirmToken } = await preview({ amount: 135000 });
+    const result = await client.callTool({
+      name: "crm_update_record",
+      arguments: { object: "deals", id: "d-001", patch: { amount: 1350000 }, confirmToken },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("doesn't match the changes being written");
+    expect(await auditLog.list(DEMO_TENANT_ID)).toHaveLength(0);
+
+    const record = await client.callTool({
+      name: "crm_get_record",
+      arguments: { object: "deals", id: "d-001" },
+    });
+    expect((record.structuredContent as unknown as RecordCardPayload).record.fields.amount).toBe(
+      128400,
+    );
+  });
+
+  it("refuses a forged token rather than downgrading it to model-initiated", async () => {
+    const result = await client.callTool({
+      name: "crm_update_record",
+      arguments: {
+        object: "deals",
+        id: "d-001",
+        patch: { amount: 135000 },
+        confirmToken: "bogus.token",
+      },
+    });
+    expect(result.isError).toBe(true);
+    expect(await auditLog.list(DEMO_TENANT_ID)).toHaveLength(0);
+  });
+
+  it("refuses a token minted for a different record", async () => {
+    const { confirmToken } = await preview({ amount: 135000 });
+    const result = await client.callTool({
+      name: "crm_update_record",
+      arguments: { object: "deals", id: "d-002", patch: { amount: 135000 }, confirmToken },
+    });
+    expect(result.isError).toBe(true);
+    expect(await auditLog.list(DEMO_TENANT_ID)).toHaveLength(0);
+  });
+
+  it("preview enforces the same gauntlet as the write (no token for a non-editable field)", async () => {
+    const result = await client.callTool({
+      name: "crm_preview_update",
+      arguments: { object: "deals", id: "d-001", patch: { createdate: "2020-01-01" } },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("Not editable on this layout");
+  });
+
+  it("will not mint a token for a no-op diff", async () => {
+    const result = await client.callTool({
+      name: "crm_preview_update",
+      arguments: { object: "deals", id: "d-001", patch: { amount: 128400 } },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("Nothing to change");
+  });
+});
+
 describe("golden path 2: confirmed write → receipt → audit", () => {
   it("writes a patch, returns per-field receipt, and logs the audit entry", async () => {
     const result = await client.callTool({
@@ -277,6 +387,15 @@ describe("golden path 2: confirmed write → receipt → audit", () => {
       before: "Contract sent",
       after: "Negotiation",
     });
+  });
+
+  it("logs a write with no confirm token as model-initiated", async () => {
+    await client.callTool({
+      name: "crm_update_record",
+      arguments: { object: "deals", id: "d-001", patch: { amount: 135000 } },
+    });
+    const [entry] = await auditLog.list(DEMO_TENANT_ID);
+    expect(entry!.confirmation).toEqual({ via: "model" });
   });
 
   it("lookup write: patch carries an ID, receipt shows the record's NAME", async () => {

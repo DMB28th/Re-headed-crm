@@ -8,6 +8,11 @@
  * - 2026-07-12: new module. PostgresAuditLog creates `audit_entries`
  *   (CREATE TABLE IF NOT EXISTS — safe on a live DB). FileAuditLog appends
  *   JSON-lines next to the file config store's data file.
+ * - 2026-08-02: AuditEntry gains `confirmation` (widget-confirmed vs
+ *   model-initiated). Optional, and entries are stored as whole JSON blobs
+ *   (JSONB / JSON-lines), so no schema change and no backfill is required —
+ *   pre-existing entries read back with `confirmation: undefined`, which
+ *   readers must render as "unknown" rather than assuming either origin.
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -27,6 +32,16 @@ export interface AuditEntry {
   recordId: string;
   changes: { field: string; before: unknown; after: unknown }[];
   timestamp: string;
+  /**
+   * Whether a rep confirmed a server-computed diff before this write, or the
+   * model called the write tool directly. Undefined on entries written before
+   * 2026-08-02, when the distinction wasn't recorded — render those as unknown.
+   */
+  confirmation?: {
+    via: "widget" | "model";
+    confirmationId?: string;
+    previewedAt?: string;
+  };
 }
 
 export interface AuditLog {
