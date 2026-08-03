@@ -564,6 +564,17 @@ function HomeCardPreview({
   const homeHost: WidgetHost = useMemo(
     () => ({
       callTool: async (name, args): Promise<WidgetHostResult> => {
+        // Preview check-offs hit the mock portal and are never audited, so the
+        // token is a visible placeholder — nothing here could be mistaken for a
+        // real confirmation the way a server-minted one is.
+        if (name === "crm_preview_complete_task") {
+          return {
+            structuredContent: {
+              taskId: args.id,
+              confirmToken: "preview-not-a-real-confirmation",
+            },
+          };
+        }
         if (name === "crm_complete_task") {
           const result = await previewCall({ kind: "complete-task", id: args.id });
           if (result.error) return { isError: true, content: [{ type: "text", text: result.error }] };

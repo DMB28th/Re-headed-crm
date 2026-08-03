@@ -66,7 +66,7 @@ import { getWidgetHtml, type WidgetName } from "@cardstack/widgets";
 import type { ConfigStore } from "./config/store.js";
 import type { PreferenceStore } from "./config/preferences.js";
 import type { AuditLog } from "./audit.js";
-import { mintConfirmToken, verifyConfirmToken } from "./confirm-token.js";
+import { mintConfirmToken, signState, verifyConfirmToken, verifyState } from "./confirm-token.js";
 import {
   describeExposedViews,
   resolveViewAsk,
@@ -1052,18 +1052,78 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     },
   );
 
+  // A task check-off is a one-value diff (open → completed), so its confirm
+  // step needs no diff payload — just the same signed, bound token every other
+  // write path uses, so the home card's inline confirm is provable too.
+  const TASK_COMPLETION_PATCH = { status: "completed" };
+  const taskTokenSubject = (id: string) => ({
+    tenantId,
+    object: "tasks",
+    recordId: id,
+    patch: TASK_COMPLETION_PATCH,
+    actorUserId: userContext.userId,
+  });
+
+  server.registerTool(
+    "crm_preview_complete_task",
+    {
+      title: "Preview completing a CRM task",
+      description:
+        "Mint a confirmation token for checking off a follow-up task. Writes nothing. The home " +
+        "card calls this when the rep clicks the checkbox; passing the token to crm_complete_task " +
+        "is what lets the audit log record it as rep-confirmed rather than model-initiated.",
+      inputSchema: { id: z.string() },
+      annotations: { readOnlyHint: true },
+    },
+    async (args): Promise<CallToolResult> => {
+      try {
+        await requireConnection();
+        const minted = mintConfirmToken(taskTokenSubject(args.id));
+        return {
+          content: [
+            { type: "text", text: `Ready to mark task ${args.id} complete — nothing written yet.` },
+          ],
+          structuredContent: {
+            taskId: args.id,
+            confirmToken: minted.token,
+            expiresAt: minted.expiresAt,
+          },
+          isError: false,
+        };
+      } catch (error) {
+        return asToolError(error, { tool: "crm_preview_complete_task" });
+      }
+    },
+  );
+
   // --- crm_complete_task (widget-invoked after inline confirm, or model-invoked) ---
   server.registerTool(
     "crm_complete_task",
     {
       title: "Complete a CRM task",
-      description: "Mark a CRM follow-up task as completed. This is a write and is logged.",
-      inputSchema: { id: z.string() },
+      description:
+        "Mark a CRM follow-up task as completed. This is a write and is logged. Pass the " +
+        "confirmToken from crm_preview_complete_task when the rep checked it off; without one " +
+        "the write is logged as model-initiated.",
+      inputSchema: {
+        id: z.string(),
+        confirmToken: z
+          .string()
+          .optional()
+          .describe(
+            "Token from crm_preview_complete_task, proving the rep checked this task off. Do not invent one.",
+          ),
+      },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },
     async (args): Promise<CallToolResult> => {
       try {
         await requireConnection();
+        // Verified BEFORE the write, and a bad token aborts rather than
+        // downgrading — same rule as crm_update_record.
+        const confirmation: WriteConfirmation = args.confirmToken
+          ? { via: "widget", ...verifyConfirmToken(args.confirmToken, taskTokenSubject(args.id)) }
+          : { via: "model" };
         const task = await adapter.completeTask(args.id);
         const writtenAs = await adapter.getConnectedUser();
         await auditLog.append({
@@ -1074,6 +1134,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           recordId: task.id,
           changes: [{ field: "status", before: "open", after: "completed" }],
           timestamp: new Date().toISOString(),
+          confirmation,
         });
         return {
           content: [
@@ -1454,27 +1515,15 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
   // model passes, so no interview session is persisted (PLAN spike #2). Only the
   // HANDOFF rung is wired — the flow opens in the CRM, which owns the screens and
   // the write. Native/Embedded rungs are gated behind their spikes.
-  // Interview state tokens round-trip through the model and the widget — sign
-  // them so a tampered token (which could alter write targets) is rejected.
-  // Core stays browser-safe, so the HMAC lives here.
-  const hmac = (body: string, secret: string): string =>
-    createHmac("sha256", secret).update(body).digest("base64url");
-  const signInterviewState = (token: string): string => {
-    const secret = process.env.CARDSTACK_ENCRYPTION_KEY;
-    return secret ? `${token}.${hmac(token, secret)}` : token;
-  };
-  const verifyInterviewState = (state: string): string => {
-    const secret = process.env.CARDSTACK_ENCRYPTION_KEY;
-    if (!secret) return state;
-    const [body, signature] = state.split(".");
-    const expected = hmac(body ?? "", secret);
-    const a = Buffer.from(signature ?? "");
-    const b = Buffer.from(expected);
-    if (!body || a.length !== b.length || !timingSafeEqual(a, b)) {
-      throw new Error("Interview state token failed verification — restart the flow.");
-    }
-    return body;
-  };
+  // Interview state round-trips through the model and the widget, and it is not
+  // just a cursor: it carries `pendingWrite` and the answers the write executes
+  // with, so a forged one is a forged write authorization. It shares the confirm
+  // token's signer (confirm-token.ts) so both write paths have ONE security
+  // floor — in particular neither ever degrades to unsigned when no
+  // CARDSTACK_ENCRYPTION_KEY is configured.
+  const signInterviewState = (token: string): string => signState(token);
+  const verifyInterviewState = (state: string): string =>
+    verifyState(state, "Interview state token failed verification — restart the flow.");
 
   const runFlow = async (
     args: { object?: string; recordId: string; flowApiName: string },
@@ -1586,6 +1635,16 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
               recordId,
               changes,
               timestamp: new Date().toISOString(),
+              // Reaching an interpreter write PROVES a rep confirmed it, by the
+              // same standard crm_update_record's token proves it: executeWrite
+              // has one call site, gated behind a `pendingWrite` frame that only
+              // the server mints (at a confirm-write pause) inside a SIGNED
+              // interview state, plus an explicit confirmWrite: true. The write
+              // uses the state's own answers — values passed on the confirming
+              // call are ignored — so it is bound to the diff the rep saw.
+              // No confirmationId: the gate is the signed state, not a minted
+              // token, and inventing an id would imply a receipt we don't hold.
+              confirmation: { via: "widget" },
             });
           };
           const effects: FlowRuntimeEffects = {
@@ -1879,6 +1938,10 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
             after,
           })),
           timestamp: new Date().toISOString(),
+          // Same standard as the interpreter: this branch requires a SIGNED
+          // quick-action state already in `confirming` plus an explicit
+          // confirmWrite: true, and the fields come from that state's answers.
+          confirmation: { via: "widget" },
         });
         const summary = `${label} done — ${describe.type === "Update" ? `${target} updated` : `${target} created${result.createdId ? ` (${result.createdId})` : ""}`}.`;
         return respond(

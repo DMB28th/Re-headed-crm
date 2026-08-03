@@ -73,19 +73,40 @@ No migration is needed: entries are stored as whole JSON blobs (Postgres JSONB /
 JSON-lines), so the new field is additive and old rows read back with
 `confirmation: undefined`.
 
-## Still open
+## One floor, four write paths
 
-`crm_update_record` is tokenized; `crm_create_record` records `model`, which is
-accurate today (the card posts a chat followup and the model calls the tool —
-in-widget create, design 10b, is still open).
+*Updated 2026-08-03.* Every write path is now gated to the same standard, though
+by two shapes of gate. Both are HMAC-signed by the **same** signer
+(`confirm-token.ts`), so there is one security floor rather than two.
 
-These write paths have a rep-facing confirm step in the widget that the server
-still cannot verify, so they log no confirmation at all rather than assert one:
+| Path | Gate | Logs |
+|---|---|---|
+| `crm_update_record` | Confirm token bound to the diff | `widget` / `model` |
+| `crm_complete_task` | Confirm token bound to the task | `widget` / `model` |
+| Native flow write (interpreter) | Signed interview state carrying `pendingWrite` + explicit `confirmWrite` | `widget` |
+| Quick-action execute | Signed quick-action state in `confirming` + explicit `confirmWrite` | `widget` |
+| `crm_create_record` | none | `model` |
 
-- `crm_complete_task` (home-card inline confirm)
-- quick-action execute
-- native flow writes (the interview state *is* signed, so a confirm pause could
-  plausibly be attested — worth doing when flows are next touched)
+**Why two shapes and not one.** A confirm token binds a *known diff computed up
+front*. A flow interview can't work that way — the write target isn't known until
+the interpreter has walked the rep through the screens, and it lives in
+server-held state the whole time. The interview state IS the binding: only the
+server mints it, only a `confirm-write` pause sets `pendingWrite`, and at that
+pause the interpreter deliberately **ignores caller-supplied answers**
+([flow-interview.ts:1553](../packages/core/src/flow-interview.ts:1553) returns
+before the merge at `:1594`), so the write executes with the values the rep saw.
+Same guarantee, reached the way a multi-screen interview has to reach it.
 
-Extending the mechanism to them is mostly plumbing: give each a preview step
-that mints against its own pending write, and pass the token through.
+`crm_create_record` genuinely has no confirm surface yet — the card posts a chat
+followup and the model calls the tool. In-widget create (design 10b) is the fix;
+until then `model` is the honest record.
+
+### The unsigned-passthrough hole (fixed)
+
+`signInterviewState`/`verifyInterviewState` used to pass state through **unsigned**
+whenever `CARDSTACK_ENCRYPTION_KEY` was absent. Interview state is not a cursor —
+it carries `pendingWrite` and the answers a write executes with — so an unsigned
+one was a forgeable *write authorization*: hand-craft a state, pass
+`confirmWrite: true`, and the server would execute it with attacker-chosen
+values. Production always had the key set, so this was never live, but dev and
+any self-host run without it. Both signers now share the non-degrading secret.

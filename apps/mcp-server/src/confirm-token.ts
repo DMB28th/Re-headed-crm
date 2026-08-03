@@ -50,6 +50,29 @@ export function resetConfirmTokenSecret(): void {
   ephemeralSecret = undefined;
 }
 
+/**
+ * Sign an opaque server-minted state token (flow interview state, quick-action
+ * state). Same secret and same never-unsigned guarantee as confirm tokens:
+ * these states carry `pendingWrite` and the answers a write executes with, so
+ * an unsigned one is a forgeable write authorization, not just a stale cursor.
+ */
+export function signState(body: string): string {
+  return `${body}.${sign(body)}`;
+}
+
+/** Verify and unwrap a state token minted by signState. */
+export function verifyState(state: string, onFailure: string): string {
+  const idx = state.lastIndexOf(".");
+  const body = idx === -1 ? "" : state.slice(0, idx);
+  const signature = idx === -1 ? "" : state.slice(idx + 1);
+  const expected = Buffer.from(sign(body));
+  const actual = Buffer.from(signature);
+  if (!body || actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+    throw new ConfirmTokenError(onFailure);
+  }
+  return body;
+}
+
 export interface ConfirmTokenSubject {
   tenantId: string;
   object: string;

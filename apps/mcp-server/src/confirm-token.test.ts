@@ -9,7 +9,9 @@ import {
   ConfirmTokenError,
   mintConfirmToken,
   resetConfirmTokenSecret,
+  signState,
   verifyConfirmToken,
+  verifyState,
 } from "./confirm-token.js";
 
 const subject = {
@@ -121,6 +123,29 @@ describe("confirm tokens", () => {
     expect(minted.token).toContain(".");
     expect(() => verifyConfirmToken(`${body}.`, subject)).toThrow(ConfirmTokenError);
     expect(() => verifyConfirmToken(body!, subject)).toThrow(ConfirmTokenError);
+  });
+
+  it("state tokens round-trip and reject tampering", () => {
+    const body = Buffer.from(JSON.stringify({ pendingWrite: "Create_Order" })).toString("base64url");
+    const signed = signState(body);
+    expect(verifyState(signed, "nope")).toBe(body);
+    expect(() => verifyState(body, "nope")).toThrow(ConfirmTokenError); // unsigned
+    expect(() => verifyState(`${body}.forged`, "nope")).toThrow(ConfirmTokenError);
+  });
+
+  it("state tokens stay signed with no encryption key — no unsigned passthrough", () => {
+    // signInterviewState used to return the body untouched when no key was set,
+    // which made a flow's pendingWrite state a forgeable write authorization.
+    delete process.env.CARDSTACK_ENCRYPTION_KEY;
+    resetConfirmTokenSecret();
+    const signed = signState("body");
+    expect(signed).not.toBe("body");
+    expect(() => verifyState("body", "nope")).toThrow(ConfirmTokenError);
+  });
+
+  it("state tokens tolerate a body containing dots", () => {
+    const body = "a.b.c";
+    expect(verifyState(signState(body), "nope")).toBe(body);
   });
 
   it("does not verify tokens minted under a different secret", () => {

@@ -72,8 +72,11 @@ Cross-tenant isolation is asserted in
    server-side, not by widget flow: `crm_preview_update` computes the diff and
    mints a signed token bound to it, and `crm_update_record` verifies that token
    before writing, so the audit log's "rep confirmed" is a finding the server
-   checked rather than a claim the caller made. Never widen a write tool to
-   accept confirmation as a boolean or a caller-supplied string.
+   checked rather than a claim the caller made. Flow and quick-action writes are
+   gated the same way by their SIGNED interview state (which carries
+   `pendingWrite`), not by a token — same floor, same signer. Never widen a write
+   tool to accept confirmation as a boolean or a caller-supplied string, and
+   never let a signer degrade to unsigned when no key is configured.
    See **docs/confirmation-provenance.md**.
 
 ## Commands

@@ -139,16 +139,39 @@ function FollowUps({
   // Failed check-offs surface the CRM's error verbatim (same standard as the
   // record card) — a silent revert reads as "the product ate my write".
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Confirm tokens, minted server-side when the rep opens the inline confirm.
+  // Same spine as the record card: the server, not this widget, is what attests
+  // that a rep confirmed the write.
+  const [tokens, setTokens] = useState<Record<string, string>>({});
   const today = new Date().toISOString().slice(0, 10);
   const setState = (id: string, state: TaskState) =>
     setStates((prev) => ({ ...prev, [id]: state }));
+
+  const beginConfirm = async (task: CrmTask) => {
+    setState(task.id, "confirming");
+    setErrors((prev) => ({ ...prev, [task.id]: "" }));
+    if (!host) return;
+    const result = await host.callTool("crm_preview_complete_task", { id: task.id });
+    if (result.isError) {
+      const text = result.content?.find((c) => c.type === "text")?.text;
+      setErrors((prev) => ({ ...prev, [task.id]: text ?? `${crmLabel} is unreachable.` }));
+      setState(task.id, "open");
+      return;
+    }
+    const { confirmToken } = result.structuredContent as { confirmToken?: string };
+    if (confirmToken) setTokens((prev) => ({ ...prev, [task.id]: confirmToken }));
+  };
 
   const complete = async (task: CrmTask) => {
     if (!host) return;
     setState(task.id, "writing");
     setErrors((prev) => ({ ...prev, [task.id]: "" }));
     // Checking off a task IS a write → host round trip, confirmation included.
-    const result = await host.callTool("crm_complete_task", { id: task.id });
+    const token = tokens[task.id];
+    const result = await host.callTool("crm_complete_task", {
+      id: task.id,
+      ...(token ? { confirmToken: token } : {}),
+    });
     if (result.isError) {
       const text = result.content?.find((c) => c.type === "text")?.text;
       setErrors((prev) => ({
@@ -192,7 +215,7 @@ function FollowUps({
                   className={`hc-check${state === "done" ? " hc-check--done" : ""}`}
                   disabled={!writeEnabled || state !== "open"}
                   aria-label={`Complete ${task.subject}`}
-                  onClick={() => setState(task.id, "confirming")}
+                  onClick={() => void beginConfirm(task)}
                 >
                   {state === "done" ? "✓" : state === "writing" ? "…" : ""}
                 </button>
