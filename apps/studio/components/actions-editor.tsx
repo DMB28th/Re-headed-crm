@@ -37,11 +37,13 @@ import {
   reorderActions,
   setActionEnabled,
   upsertAction,
+  type ActionInputMappings,
   type ActionRef,
   type CardAction,
   type LayoutConfig,
 } from "@cardstack/core";
 import type { LayoutRecord } from "@cardstack/config-store";
+import { ActionInputsEditor, type ActionInputVariable } from "./action-inputs-editor";
 import type { ActionSource, AvailableActionsResponse, DiscoveredAction } from "../lib/action-catalog";
 
 /** Stable string id for an ActionRef — sortable-item ids and picker keys. */
@@ -123,6 +125,9 @@ export function ActionsEditor({ object }: { object: string }) {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Screen-flow rows expand in place to show their input mapping editor —
+  // keyed by flowApiName so expansion survives reordering.
+  const [expandedFlows, setExpandedFlows] = useState<Set<string>>(new Set());
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   useEffect(() => {
@@ -176,6 +181,25 @@ export function ActionsEditor({ object }: { object: string }) {
   // screen adds or removes an action without a full re-fetch.
   const isConfigured = (ref: ActionRef) => findAction(actions, ref) !== undefined;
 
+  // A configured screen_flow action carries no `inputVariables` of its own
+  // (that's discovery metadata, not layout config) — look it up by
+  // flowApiName in the catalog's screen_flow source. `undefined` here means
+  // either the flow's definition was unreadable OR the catalog fetch never
+  // found this flow at all; both render the same caution state, which is
+  // the correct fallback for "we can't tell you what this flow needs."
+  const screenFlowEntries = catalog.sources.find((s) => s.kind === "screen_flow")?.entries ?? [];
+  const inputVariablesFor = (flowApiName: string) =>
+    screenFlowEntries.find((e) => e.ref.type === "screen_flow" && e.ref.flowApiName === flowApiName)
+      ?.inputVariables;
+
+  const toggleFlowExpanded = (flowApiName: string) =>
+    setExpandedFlows((prev) => {
+      const next = new Set(prev);
+      if (next.has(flowApiName)) next.delete(flowApiName);
+      else next.add(flowApiName);
+      return next;
+    });
+
   const onDragEnd = (event: DragEndEvent) => {
     const activeId = String(event.active.id);
     const overId = event.over ? String(event.over.id) : null;
@@ -222,6 +246,19 @@ export function ActionsEditor({ object }: { object: string }) {
                   mutateActions((current) => setActionEnabled(current, actionRef(action), action.enabled === false))
                 }
                 onRemove={() => mutateActions((current) => removeAction(current, actionRef(action)))}
+                expanded={action.type === "screen_flow" && expandedFlows.has(action.flowApiName)}
+                onToggleExpand={
+                  action.type === "screen_flow" ? () => toggleFlowExpanded(action.flowApiName) : undefined
+                }
+                inputVariables={action.type === "screen_flow" ? inputVariablesFor(action.flowApiName) : undefined}
+                onInputsChange={
+                  action.type === "screen_flow"
+                    ? (nextInputs: ActionInputMappings) =>
+                        mutateActions((current) =>
+                          upsertAction(current, { ...action, inputs: nextInputs }, { overwriteInputs: true }),
+                        )
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -269,12 +306,21 @@ function ActionRow({
   onCommitLabel,
   onToggleEnabled,
   onRemove,
+  expanded,
+  onToggleExpand,
+  inputVariables,
+  onInputsChange,
 }: {
   action: CardAction;
   isPrimary: boolean;
   onCommitLabel: (label: string) => void;
   onToggleEnabled: () => void;
   onRemove: () => void;
+  /** screen_flow only — undefined props below mean "not a screen_flow row". */
+  expanded?: boolean;
+  onToggleExpand?: () => void;
+  inputVariables?: ActionInputVariable[];
+  onInputsChange?: (next: ActionInputMappings) => void;
 }) {
   const id = refKey(actionRef(action));
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -284,64 +330,88 @@ function ActionRow({
 
   return (
     // Disabled rows stay in place, dimmed — their position is what `enabled`
-    // exists to preserve, so they never move to a separate list.
+    // exists to preserve, so they never move to a separate list. The outer
+    // element is no longer the flex row itself (it now also hosts the
+    // input-mapping panel below it), so drag styling and dimming move here
+    // and `[&>*]:invisible` hides both the row and the panel while dragging.
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`flex items-center gap-2 rounded-[10px] border border-line-soft bg-surface px-3 py-2.5 ${
+      className={`rounded-[10px] border border-line-soft bg-surface ${
         isDragging ? "!border-2 !border-dashed !border-accent bg-paper [&>*]:invisible" : ""
       } ${!enabled ? "opacity-45" : ""}`}
     >
-      <span {...attributes} {...listeners} className="cursor-grab text-ink-45" title="Drag to reorder">
-        ⠿
-      </span>
-      {isPrimary && <span className="st-chip-mono bg-published text-published-ink">Primary</span>}
-      <span className="st-chip-mono bg-surface text-ink-45">{actionKindLabel(action)}</span>
-      <input
-        className="st-input min-w-0 flex-1 py-1 text-[12.5px]"
-        aria-label={`Label for ${actionKindLabel(action).toLowerCase()} action`}
-        value={label}
-        onChange={(e) => setLabel(e.target.value)}
-        onBlur={() => {
-          const trimmed = label.trim();
-          if (!trimmed || trimmed === action.label) {
-            setLabel(action.label);
-            return;
-          }
-          onCommitLabel(trimmed);
-        }}
-      />
-      <button
-        type="button"
-        role="switch"
-        aria-checked={enabled}
-        aria-label={`${enabled ? "Disable" : "Enable"} ${action.label}`}
-        onClick={onToggleEnabled}
-        className={`h-5 w-9 shrink-0 rounded-full transition-colors ${enabled ? "bg-accent" : "bg-line"}`}
-      >
-        <span
-          className={`block h-4 w-4 rounded-full bg-white transition-transform ${
-            enabled ? "translate-x-4" : "translate-x-0.5"
-          }`}
+      <div className="flex items-center gap-2 px-3 py-2.5">
+        <span {...attributes} {...listeners} className="cursor-grab text-ink-45" title="Drag to reorder">
+          ⠿
+        </span>
+        {isPrimary && <span className="st-chip-mono bg-published text-published-ink">Primary</span>}
+        <span className="st-chip-mono bg-surface text-ink-45">{actionKindLabel(action)}</span>
+        <input
+          className="st-input min-w-0 flex-1 py-1 text-[12.5px]"
+          aria-label={`Label for ${actionKindLabel(action).toLowerCase()} action`}
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          onBlur={() => {
+            const trimmed = label.trim();
+            if (!trimmed || trimmed === action.label) {
+              setLabel(action.label);
+              return;
+            }
+            onCommitLabel(trimmed);
+          }}
         />
-      </button>
-      {/* update_record has no remove control: card.tsx:575 only falls back to
-          the legacy "Edit fields" button when `actions` is EMPTY, so removing
-          the sole update_record from a non-empty array leaves the card with
-          no edit affordance at all. The on/off switch is the footgun-free
-          equivalent — it lets an admin turn update_record off while keeping
-          its position, label, and the ability to re-enable it. Matches the
-          same carve-out in builder/canvas.tsx (`action.type !== "update_record"`
-          guarding its remove button). Do not "restore consistency" here. */}
-      {action.type !== "update_record" && (
+        {action.type === "screen_flow" && (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={onToggleExpand}
+            className="shrink-0 rounded-[8px] border border-dashed border-line px-2 py-1 text-[11px] text-ink-45 hover:text-ink"
+          >
+            {expanded ? "Close" : "Map inputs"}
+          </button>
+        )}
         <button
           type="button"
-          className="text-ink-45 hover:text-drift-ink"
-          aria-label={`Remove ${action.label}`}
-          onClick={onRemove}
+          role="switch"
+          aria-checked={enabled}
+          aria-label={`${enabled ? "Disable" : "Enable"} ${action.label}`}
+          onClick={onToggleEnabled}
+          className={`h-5 w-9 shrink-0 rounded-full transition-colors ${enabled ? "bg-accent" : "bg-line"}`}
         >
-          ×
+          <span
+            className={`block h-4 w-4 rounded-full bg-white transition-transform ${
+              enabled ? "translate-x-4" : "translate-x-0.5"
+            }`}
+          />
         </button>
+        {/* update_record has no remove control: card.tsx:575 only falls back to
+            the legacy "Edit fields" button when `actions` is EMPTY, so removing
+            the sole update_record from a non-empty array leaves the card with
+            no edit affordance at all. The on/off switch is the footgun-free
+            equivalent — it lets an admin turn update_record off while keeping
+            its position, label, and the ability to re-enable it. Matches the
+            same carve-out in builder/canvas.tsx (`action.type !== "update_record"`
+            guarding its remove button). Do not "restore consistency" here. */}
+        {action.type !== "update_record" && (
+          <button
+            type="button"
+            className="text-ink-45 hover:text-drift-ink"
+            aria-label={`Remove ${action.label}`}
+            onClick={onRemove}
+          >
+            ×
+          </button>
+        )}
+      </div>
+      {action.type === "screen_flow" && expanded && (
+        <div className="border-t border-line-soft px-3 py-2.5">
+          <ActionInputsEditor
+            variables={inputVariables}
+            value={action.inputs}
+            onChange={(next) => onInputsChange?.(next)}
+          />
+        </div>
       )}
     </div>
   );
