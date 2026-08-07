@@ -13,3 +13,4 @@ export * from "./flow-expressions.js";
 export * from "./flow-capabilities.js";
 export * from "./flow-analysis.js";
 export * from "./quick-action.js";
+export * from "./card-actions.js";
