@@ -5,6 +5,7 @@ import {
   findAction,
   removeAction,
   reorderActions,
+  selectRenderableActions,
   setActionEnabled,
   upsertAction,
 } from "./card-actions.js";
@@ -133,5 +134,43 @@ describe("reorderActions", () => {
 
   it("returns the list unchanged for out-of-range indices", () => {
     expect(reorderActions([edit, flow], 5, 0)).toEqual([edit, flow]);
+  });
+});
+
+describe("selectRenderableActions", () => {
+  it("preserves configured order rather than grouping by type", () => {
+    const result = selectRenderableActions([task, edit, flow], { canEdit: true });
+    expect(result.map((a) => a.type)).toEqual([
+      "create_related",
+      "update_record",
+      "screen_flow",
+    ]);
+  });
+
+  it("drops disabled actions", () => {
+    const result = selectRenderableActions([edit, { ...flow, enabled: false }, task], {
+      canEdit: true,
+    });
+    expect(result.map((a) => a.type)).toEqual(["update_record", "create_related"]);
+  });
+
+  it("skips update_record when editing is not permitted, promoting the next action", () => {
+    const result = selectRenderableActions([edit, flow], { canEdit: false });
+    expect(result.map((a) => a.type)).toEqual(["screen_flow"]);
+  });
+
+  it("returns an empty list when every action is disabled", () => {
+    const result = selectRenderableActions(
+      [
+        { ...edit, enabled: false },
+        { ...flow, enabled: false },
+      ],
+      { canEdit: true },
+    );
+    expect(result).toEqual([]);
+  });
+
+  it("returns an empty list for an empty configuration", () => {
+    expect(selectRenderableActions([], { canEdit: true })).toEqual([]);
   });
 });

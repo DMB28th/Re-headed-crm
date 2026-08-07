@@ -120,3 +120,26 @@ export function reorderActions(actions: CardAction[], from: number, to: number):
   next.splice(to, 0, moved);
   return next;
 }
+
+/**
+ * What the record card should render, in configured order.
+ *
+ * The FIRST element is the primary button — order is the admin's control over
+ * which action leads (design 3a). Disabled actions never render, and
+ * `update_record` is skipped when permissions or the layout leave nothing
+ * editable, so the next enabled action is promoted rather than leaving a gap.
+ *
+ * Callers must handle the empty result: an empty CONFIGURATION is not the same
+ * as an empty RESULT, and the card falls back to its legacy edit button only in
+ * the former case.
+ */
+export function selectRenderableActions(
+  actions: CardAction[],
+  opts: { canEdit: boolean },
+): CardAction[] {
+  return actions.filter((action) => {
+    if (action.enabled === false) return false;
+    if (action.type === "update_record" && !opts.canEdit) return false;
+    return true;
+  });
+}
