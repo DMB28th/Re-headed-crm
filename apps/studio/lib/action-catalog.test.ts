@@ -87,4 +87,21 @@ describe("buildActionCatalog", () => {
     const entry = catalog.sources.find((s) => s.kind === "screen_flow")!.entries[0]!;
     expect(entry.inputVariables?.map((v) => v.isCollection)).toEqual([true, false]);
   });
+
+  it("keeps an unreadable flow definition (undefined) distinct from a flow that declares no inputs ([])", () => {
+    const catalog = buildActionCatalog({
+      configured: [],
+      objects: [],
+      quickActions: [],
+      flows: [
+        { api: "Unreadable", label: "Unreadable", inputVariables: undefined },
+        { api: "NoInputs", label: "No inputs", inputVariables: [] },
+      ],
+    });
+    const entries = catalog.sources.find((s) => s.kind === "screen_flow")!.entries;
+    const unreadable = entries.find((e) => e.label === "Unreadable")!;
+    const noInputs = entries.find((e) => e.label === "No inputs")!;
+    expect(unreadable.inputVariables).toBeUndefined();
+    expect(noInputs.inputVariables).toEqual([]);
+  });
 });

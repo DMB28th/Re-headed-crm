@@ -66,13 +66,20 @@ export async function GET(req: Request, { params }: Params) {
               return {
                 api: flow.api,
                 label: def?.label ?? flow.label,
-                inputVariables: (def?.variables ?? [])
-                  .filter((v) => v.isInput)
-                  .map((v) => ({
-                    name: v.name,
-                    dataType: v.dataType ?? "String",
-                    isCollection: !!v.isCollection,
-                  })),
+                // def === null means the definition itself could not be
+                // read (unreadable/managed/installed flow) — undefined here
+                // so the picker's caution state fires. A readable def with
+                // zero input variables is a real fact, not a gap: [].
+                inputVariables:
+                  def === null
+                    ? undefined
+                    : (def.variables ?? [])
+                        .filter((v) => v.isInput)
+                        .map((v) => ({
+                          name: v.name,
+                          dataType: v.dataType ?? "String",
+                          isCollection: !!v.isCollection,
+                        })),
               };
             }),
           );

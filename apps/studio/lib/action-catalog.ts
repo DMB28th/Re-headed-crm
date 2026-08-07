@@ -14,7 +14,12 @@ import { findAction, type ActionRef, type CardAction, type QuickActionSummary } 
 export interface DiscoveredAction {
   ref: ActionRef;
   label: string;
-  /** Present for screen_flow only. */
+  /** `undefined` means no known input variables for this entry — for ANY
+   *  reason: not a screen flow, or a screen flow whose definition could not
+   *  be read (unreadable/managed/installed). Both cases get the same
+   *  downstream treatment (the picker's caution state), so they share the
+   *  same `undefined`. A screen flow whose definition WAS read but declares
+   *  zero input variables gets `[]`, which is a distinct, real fact. */
   inputVariables?: { name: string; dataType: string; isCollection: boolean }[];
   alreadyConfigured: boolean;
 }
@@ -35,7 +40,10 @@ export interface AvailableActionsResponse {
 export interface FlowCatalogInput {
   api: string;
   label: string;
-  inputVariables: { name: string; dataType: string; isCollection: boolean }[];
+  /** `undefined` when the flow's definition could not be read — passed
+   *  through unchanged to `DiscoveredAction.inputVariables` so the picker's
+   *  caution state fires. `[]` is a flow that genuinely declares none. */
+  inputVariables?: { name: string; dataType: string; isCollection: boolean }[];
 }
 
 export interface BuildActionCatalogInput {
