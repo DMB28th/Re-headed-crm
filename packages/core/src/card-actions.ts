@@ -55,8 +55,12 @@ export function findAction(actions: CardAction[], ref: ActionRef): CardAction | 
 
 /**
  * Adds the action if absent. If present, MERGES rather than replaces:
- * hand-mapped `inputs` and a customized label survive a re-add from a surface
- * that rebuilds the action from CRM metadata.
+ * hand-mapped `inputs` always survive a re-add from a surface that rebuilds
+ * the action from CRM metadata, but a customized label survives only when
+ * the INCOMING label is the bare api name (i.e. the re-adding surface had no
+ * better metadata to offer). When the incoming label is a real discovered
+ * name — e.g. `/api/flows/assign` after a successful `getFlowDefinition` —
+ * it overwrites the admin's rename. See `card-actions.test.ts:75-83`.
  */
 export function upsertAction(
   actions: CardAction[],

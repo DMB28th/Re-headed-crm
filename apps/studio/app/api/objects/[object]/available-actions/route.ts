@@ -55,6 +55,9 @@ export async function GET(req: Request, { params }: Params) {
     // null = the CRM call itself failed (unavailable); [] = the org genuinely
     // has no flows (a legitimate empty result) — kept distinct all the way
     // through so the picker can tell the two apart.
+    // Truncates the flow LIST itself, not just the definition fetch — an org
+    // with more than DEFINITION_FETCH_CAP flows silently loses the rest from
+    // the picker's catalog, not only their fetched definitions.
     const flows: FlowCatalogInput[] | null =
       flowSummaries === null
         ? null

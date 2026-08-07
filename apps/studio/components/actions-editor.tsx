@@ -10,9 +10,13 @@
  * "Action components" block), but only add/remove for create_related and
  * screen_flow, with no reorder, no enable/disable, and no quick_action
  * support — that block predates this screen and is left as-is. This is the
- * full editor design 3a calls for; both write through the same
- * `packages/core` mutation module (`upsertAction`/`removeAction`/…), so
- * neither surface can desync the other's edits.
+ * full editor design 3a calls for, and it routes every mutation through
+ * `packages/core`'s card-actions module (`upsertAction`/`removeAction`/…).
+ * canvas.tsx does NOT — it hand-rolls its own append/filter/splice logic and
+ * has not been migrated to these helpers. The two surfaces agree today only
+ * by coincidence (canvas's own already-configured filters happen to compute
+ * the same result), not by construction, so a change to either surface's
+ * mutation logic must be checked against the other.
  *
  * Every mutation goes through the `card-actions.ts` helpers — never a
  * hand-rolled filter/map/splice over `recordCard.actions` — so this screen,
@@ -404,6 +408,13 @@ function ActionRow({
           </button>
         )}
       </div>
+      {!enabled && (
+        <p className="px-3 pb-2 text-[11px] text-ink-45">
+          {action.type === "screen_flow" || action.type === "quick_action"
+            ? "Hidden from the card, and the model won't run it if a rep asks in chat."
+            : "Hidden from the card — the model can still do this if a rep asks in chat."}
+        </p>
+      )}
       {action.type === "screen_flow" && expanded && (
         <div className="border-t border-line-soft px-3 py-2.5">
           <ActionInputsEditor

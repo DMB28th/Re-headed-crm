@@ -1023,6 +1023,48 @@ describe("flow runtime (HANDOFF rung)", () => {
     });
     expect(result.isError).toBe(true);
   });
+
+  async function serverWithDisabledQuickActionLayout() {
+    const configStore = new InMemoryConfigStore();
+    const layout: LayoutConfig = {
+      ...structuredClone(demoDealsLayout),
+      recordCard: {
+        ...structuredClone(demoDealsLayout.recordCard),
+        actions: [
+          ...structuredClone(demoDealsLayout.recordCard.actions),
+          {
+            type: "quick_action",
+            actionApiName: "LogACall",
+            label: "Log a call",
+            enabled: false,
+          },
+        ],
+      },
+    };
+    await configStore.saveDraft(layout);
+    await configStore.publish(DEMO_TENANT_ID, "deals");
+    const server = await createCardstackServer({
+      adapter: new MockCrmAdapter(),
+      configStore,
+      auditLog: new InMemoryAuditLog(),
+      preferences: new InMemoryPreferenceStore(),
+      tenantId: DEMO_TENANT_ID,
+    });
+    const local = new Client({ name: "test-host", version: "0.0.1" });
+    const [c, s] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(s), local.connect(c)]);
+    return local;
+  }
+
+  it("crm_quick_action_start refuses a quick action that is configured but disabled", async () => {
+    const local = await serverWithDisabledQuickActionLayout();
+    const result = await local.callTool({
+      name: "crm_quick_action_start",
+      arguments: { object: "deals", recordId: "d-001", actionApiName: "LogACall" },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("not configured");
+  });
 });
 
 /**
