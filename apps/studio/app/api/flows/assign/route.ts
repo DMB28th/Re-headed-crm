@@ -1,21 +1,27 @@
 import { NextResponse } from "next/server";
-import { parseLayoutConfig, type ActionInputMappings, type CardAction } from "@cardstack/core";
+import { parseLayoutConfig, type ActionInputMappings } from "@cardstack/core";
 import { getAdapter, getStore } from "../../../../lib/backend";
 import { getUserContextFromRequest } from "../../../../lib/auth";
+import { planActionAssignment } from "../../../../lib/action-assignment";
 
 /**
- * Expose (or withdraw) an org screen flow on an object's record card.
+ * Expose (or withdraw) an org screen flow or quick action on an object's
+ * record card.
  *
- * Enabling writes a `screen_flow` action onto the object's layout and
- * publishes it, with input variables mapped AUTOMATICALLY by convention:
+ * Enabling writes (or re-enables) an action onto the object's layout, with
+ * input variables mapped AUTOMATICALLY by convention:
  *  - `recordId` is never mapped — the runtime always passes the record's id;
  *  - an input variable whose name matches a field API name on the object
  *    maps to that field (`source: "field"`);
  *  - everything else stays unmapped — the flow's own screens collect it.
- * Disabling removes the action and publishes.
+ * The decision itself — merge-on-enable, preserve-on-disable — lives in the
+ * shared `planActionAssignment` (`lib/action-assignment.ts`), the same module
+ * the actions editor uses, so the two surfaces can't disagree about what "off"
+ * means. Disabling sets `enabled: false` rather than removing the action, so
+ * hand-mapped inputs and label survive and the action stays re-enableable.
  *
- * The publish is immediate (no separate diff step) because exposing a flow IS
- * the admin's intent and the layout history keeps every revision rollbackable.
+ * This saves to the DRAFT, not published — matching every other Studio
+ * editor. It goes live at the next publish from the builder.
  */
 export async function POST(req: Request) {
   try {
@@ -47,27 +53,16 @@ export async function POST(req: Request) {
       );
     }
 
-    let actions: CardAction[] = base.recordCard.actions.filter((a) =>
-      kind === "screen_flow"
-        ? !(a.type === "screen_flow" && a.flowApiName === flowApiName)
-        : !(a.type === "quick_action" && a.actionApiName === flowApiName),
-    );
-    let mappedInputs: string[] = [];
-
+    // Disabling needs no CRM metadata — skip the adapter round-trip entirely
+    // so disabling still works when the org is unreachable.
+    let inputs: ActionInputMappings = {};
+    let discoveredLabel = flowApiName;
     if (body.enabled && kind === "quick_action") {
       const adapter = await getAdapter(tenantId);
       const describe = adapter.describeQuickAction
         ? await adapter.describeQuickAction(flowApiName).catch(() => null)
         : null;
-      actions = [
-        ...actions,
-        {
-          type: "quick_action",
-          actionApiName: flowApiName,
-          label: describe?.label ?? flowApiName,
-          enabled: true,
-        },
-      ];
+      discoveredLabel = describe?.label ?? flowApiName;
     } else if (body.enabled) {
       const adapter = await getAdapter(tenantId);
       const def = adapter.getFlowDefinition
@@ -77,7 +72,6 @@ export async function POST(req: Request) {
       const fieldByLower = new Map(
         (describe?.fields ?? []).map((f) => [f.api.toLowerCase(), f.api]),
       );
-      const inputs: ActionInputMappings = {};
       for (const variable of def?.variables ?? []) {
         if (!variable.isInput || variable.isCollection) continue;
         const lower = variable.name.toLowerCase();
@@ -85,32 +79,29 @@ export async function POST(req: Request) {
         const fieldApi = fieldByLower.get(lower);
         if (fieldApi) inputs[variable.name] = { source: "field", field: fieldApi };
       }
-      mappedInputs = Object.keys(inputs);
-      actions = [
-        ...actions,
-        {
-          type: "screen_flow",
-          flowApiName,
-          label: def?.label ?? flowApiName,
-          embed: "auto",
-          inputs,
-          enabled: true,
-        },
-      ];
+      discoveredLabel = def?.label ?? flowApiName;
     }
+
+    const { actions, mappedInputs } = planActionAssignment({
+      actions: base.recordCard.actions,
+      kind,
+      apiName: flowApiName,
+      enabled: body.enabled,
+      autoMappedInputs: inputs,
+      discoveredLabel,
+    });
 
     const draft = parseLayoutConfig({
       ...base,
       recordCard: { ...base.recordCard, actions },
     });
     await store.saveDraft(draft);
-    const published = await store.publish(tenantId, object);
     return NextResponse.json({
       ok: true,
       object,
       enabled: body.enabled,
-      revision: published.revision,
       mappedInputs,
+      saved: "draft",
     });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 400 });

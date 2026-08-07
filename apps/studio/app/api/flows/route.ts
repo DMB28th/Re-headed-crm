@@ -60,6 +60,7 @@ export async function GET(req: Request) {
       const record = await store.getLayoutRecord(tenantId, object).catch(() => null);
       const config = record?.draft ?? record?.published;
       for (const action of config?.recordCard.actions ?? []) {
+        if (action.enabled === false) continue;
         if (action.type === "screen_flow") {
           const list = assignments.get(action.flowApiName) ?? [];
           list.push({ object, label: action.label });

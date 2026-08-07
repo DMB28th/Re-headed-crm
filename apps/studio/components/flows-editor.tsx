@@ -6,8 +6,8 @@
  * the in-chat interpreter can do with it (Chat-ready / Partial / Opens in
  * CRM), toggles which object cards expose it, and reviews the automatic
  * input mapping (recordId always flows; name-matched fields map themselves;
- * the flow's own screens collect the rest). Enabling publishes immediately —
- * layout history keeps every revision rollbackable.
+ * the flow's own screens collect the rest). Toggling saves to the draft —
+ * like every other Studio editor — and goes live at the next publish.
  */
 import { useEffect, useMemo, useState } from "react";
 import type { FlowRenderMode, FlowRenderModeConfig, FlowSupportReport } from "@cardstack/core";
@@ -130,7 +130,7 @@ export function FlowsEditor() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ flowApiName: action.api, object, enabled, kind: "quick_action" }),
       });
-      const json = (await res.json()) as { ok?: boolean; revision?: number; error?: string };
+      const json = (await res.json()) as { ok?: boolean; error?: string };
       if (!res.ok || !json.ok) {
         setLoadError(json.error ?? `Request failed (${res.status}).`);
         return;
@@ -154,8 +154,8 @@ export function FlowsEditor() {
       );
       setNotice(
         enabled
-          ? `${action.label} is live on the ${object} card (rev ${json.revision})`
-          : `${action.label} removed from the ${object} card (rev ${json.revision})`,
+          ? `Saved to draft — ${action.label} will show on the ${object} card at the next publish`
+          : `Saved to draft — ${action.label} hidden from the ${object} card`,
       );
       setTimeout(() => setNotice(null), 3500);
     } finally {
@@ -175,7 +175,6 @@ export function FlowsEditor() {
       });
       const json = (await res.json()) as {
         ok?: boolean;
-        revision?: number;
         mappedInputs?: string[];
         error?: string;
       };
@@ -202,11 +201,11 @@ export function FlowsEditor() {
       );
       setNotice(
         enabled
-          ? `${flow.label} is live on the ${object} card (rev ${json.revision})` +
+          ? `Saved to draft — ${flow.label} will show on the ${object} card at the next publish` +
               (json.mappedInputs && json.mappedInputs.length > 0
                 ? ` — auto-mapped: ${json.mappedInputs.join(", ")}`
                 : "")
-          : `${flow.label} removed from the ${object} card (rev ${json.revision})`,
+          : `Saved to draft — ${flow.label} hidden from the ${object} card`,
       );
       setTimeout(() => setNotice(null), 3500);
     } finally {
@@ -307,8 +306,8 @@ export function FlowsEditor() {
       </div>
 
       <div className="mt-3 text-[12.5px] text-ink-55">
-        {data.flows.length} flows · {chatReady} chat-ready · exposing a flow publishes the card
-        immediately (history keeps every revision).
+        {data.flows.length} flows · {chatReady} chat-ready · changes save to the draft and go
+        live at the next publish.
       </div>
 
       <div className="st-card mt-3 overflow-hidden">
