@@ -21,6 +21,7 @@ import type {
   UpdatePreviewPayload,
   WriteReceiptPayload,
 } from "@cardstack/core";
+import { selectRenderableActions } from "@cardstack/core";
 import {
   AsOfChip,
   FieldInfo,
@@ -294,15 +295,21 @@ export function RecordCard({
   const subtitle = header.subtitle ? fmt(header.subtitle, record.fields[header.subtitle]) : null;
   const badgeLabel = header.badge ? fmt(header.badge, record.fields[header.badge]) : null;
 
-  // Configured layout actions (design 1a/3a): update_record names the primary
-  // edit button; create_related actions post a followup so the model drives
-  // crm_create_record (upgrades to the inline create form when 10b lands).
+  // Configured layout actions (design 1a/3a). Order is the admin's control over
+  // which action is primary; `selectRenderableActions` drops disabled ones and
+  // skips update_record when nothing is editable. Flow and quick actions hand
+  // off to the host so the model starts them and flow-run renders the screens.
   const actions = layout.recordCard.actions;
   const titleText = title ?? record.id;
   const runCreateRelated = (action: Extract<CardAction, { type: "create_related" }>) =>
     host?.sendFollowup?.(
       `Create a new ${action.object} related to "${titleText}" (id ${record.id})`,
     );
+  const runFlowAction = (action: Extract<CardAction, { type: "screen_flow" }>) =>
+    host?.sendFollowup?.(`Run the "${action.label}" flow on "${titleText}" (id ${record.id})`);
+
+  const runQuickAction = (action: Extract<CardAction, { type: "quick_action" }>) =>
+    host?.sendFollowup?.(`Run the "${action.label}" action on "${titleText}" (id ${record.id})`);
 
   // "Your lists" replaces the card with the real home card until Back.
   if (homeView) {
@@ -505,6 +512,8 @@ export function RecordCard({
           connectedUser={provenance.connectedUser}
           onEdit={() => setMode({ kind: "editing", draft: {} })}
           onCreateRelated={runCreateRelated}
+          onFlowAction={runFlowAction}
+          onQuickAction={runQuickAction}
           onDiscard={() => setMode({ kind: "ready" })}
           onReview={() => mode.kind === "editing" && void reviewChanges(mode.draft)}
           onBack={() =>
@@ -536,6 +545,8 @@ function FooterControls({
   connectedUser,
   onEdit,
   onCreateRelated,
+  onFlowAction,
+  onQuickAction,
   onDiscard,
   onReview,
   onBack,
@@ -548,6 +559,8 @@ function FooterControls({
   connectedUser?: string | undefined;
   onEdit: () => void;
   onCreateRelated: (action: Extract<CardAction, { type: "create_related" }>) => void;
+  onFlowAction: (action: Extract<CardAction, { type: "screen_flow" }>) => void;
+  onQuickAction: (action: Extract<CardAction, { type: "quick_action" }>) => void;
   onDiscard: () => void;
   onReview: () => void;
   onBack: () => void;
@@ -555,30 +568,67 @@ function FooterControls({
 }) {
   switch (mode.kind) {
     case "ready": {
-      const createActions = actions.filter(
-        (a): a is Extract<CardAction, { type: "create_related" }> => a.type === "create_related",
-      );
+      const rendered = selectRenderableActions(actions, { canEdit });
+      // An empty CONFIGURATION keeps the legacy button — every layout predating
+      // the actions editor has `actions: []` and must not silently lose its edit
+      // affordance. An empty RESULT (everything disabled) correctly renders none.
+      if (actions.length === 0) {
+        return (
+          <span className="rc-footer-left">
+            {canEdit && (
+              <button type="button" className="cs-btn cs-btn--primary" onClick={onEdit}>
+                Edit fields
+              </button>
+            )}
+          </span>
+        );
+      }
       return (
         <span className="rc-footer-left">
-          {/* Ready state opens editing; the actual save happens in the confirm
-              diff. Labeled "Edit" so it doesn't read like a one-click save. */}
-          {canEdit && (
-            <button type="button" className="cs-btn cs-btn--primary" onClick={onEdit}>
-              Edit fields
-            </button>
-          )}
-          {/* Actions are config-driven only — no hardcoded "Log a note". Add a
-              create-related action to log a task/note if you want one. */}
-          {createActions.map((action) => (
-            <button
-              key={`${action.object}:${action.label}`}
-              type="button"
-              className="cs-btn"
-              onClick={() => onCreateRelated(action)}
-            >
-              {action.label}
-            </button>
-          ))}
+          {rendered.map((action, i) => {
+            const className = i === 0 ? "cs-btn cs-btn--primary" : "cs-btn";
+            switch (action.type) {
+              case "update_record":
+                return (
+                  <button key="update_record" type="button" className={className} onClick={onEdit}>
+                    {action.label}
+                  </button>
+                );
+              case "create_related":
+                return (
+                  <button
+                    key={`create_related:${action.object}`}
+                    type="button"
+                    className={className}
+                    onClick={() => onCreateRelated(action)}
+                  >
+                    {action.label}
+                  </button>
+                );
+              case "quick_action":
+                return (
+                  <button
+                    key={`quick_action:${action.actionApiName}`}
+                    type="button"
+                    className={className}
+                    onClick={() => onQuickAction(action)}
+                  >
+                    {action.label}
+                  </button>
+                );
+              case "screen_flow":
+                return (
+                  <button
+                    key={`screen_flow:${action.flowApiName}`}
+                    type="button"
+                    className={className}
+                    onClick={() => onFlowAction(action)}
+                  >
+                    {action.label}
+                  </button>
+                );
+            }
+          })}
         </span>
       );
     }
