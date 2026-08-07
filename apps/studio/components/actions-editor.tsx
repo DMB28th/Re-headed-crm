@@ -325,14 +325,24 @@ function ActionRow({
           }`}
         />
       </button>
-      <button
-        type="button"
-        className="text-ink-45 hover:text-drift-ink"
-        aria-label={`Remove ${action.label}`}
-        onClick={onRemove}
-      >
-        ×
-      </button>
+      {/* update_record has no remove control: card.tsx:575 only falls back to
+          the legacy "Edit fields" button when `actions` is EMPTY, so removing
+          the sole update_record from a non-empty array leaves the card with
+          no edit affordance at all. The on/off switch is the footgun-free
+          equivalent — it lets an admin turn update_record off while keeping
+          its position, label, and the ability to re-enable it. Matches the
+          same carve-out in builder/canvas.tsx (`action.type !== "update_record"`
+          guarding its remove button). Do not "restore consistency" here. */}
+      {action.type !== "update_record" && (
+        <button
+          type="button"
+          className="text-ink-45 hover:text-drift-ink"
+          aria-label={`Remove ${action.label}`}
+          onClick={onRemove}
+        >
+          ×
+        </button>
+      )}
     </div>
   );
 }

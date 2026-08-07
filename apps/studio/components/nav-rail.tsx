@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const objectTabs = [
   { slug: "layouts", label: "Card design" },
+  { slug: "actions", label: "Card actions" },
   { slug: "lists", label: "Lists & views" },
   { slug: "permissions", label: "Write access" },
 ];
