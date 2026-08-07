@@ -919,6 +919,7 @@ export function Canvas({
                   type: "create_related",
                   object: rel.relatedObject,
                   label: `Add ${rel.label.replace(/s$/, "").toLowerCase()}`,
+                  enabled: true,
                 },
               ]);
             }}
@@ -945,6 +946,7 @@ export function Canvas({
                     label: flow.label,
                     embed: "auto",
                     inputs: defaultInputsForFlow(flow, describe),
+                    enabled: true,
                   },
                 ]);
               }}

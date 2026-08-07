@@ -61,7 +61,12 @@ export async function POST(req: Request) {
         : null;
       actions = [
         ...actions,
-        { type: "quick_action", actionApiName: flowApiName, label: describe?.label ?? flowApiName },
+        {
+          type: "quick_action",
+          actionApiName: flowApiName,
+          label: describe?.label ?? flowApiName,
+          enabled: true,
+        },
       ];
     } else if (body.enabled) {
       const adapter = await getAdapter(tenantId);
@@ -89,6 +94,7 @@ export async function POST(req: Request) {
           label: def?.label ?? flowApiName,
           embed: "auto",
           inputs,
+          enabled: true,
         },
       ];
     }
