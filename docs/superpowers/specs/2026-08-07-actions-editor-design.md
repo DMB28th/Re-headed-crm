@@ -25,6 +25,22 @@ So both halves need work: an editor, and a card that honors what the editor
 produces. Without the second half, design 3a's central gesture — reorder to set
 the primary action — would be an editor control with no effect.
 
+**There is already one write path, and it disagrees with this design.** The Flows
+admin page can add and remove `screen_flow` and `quick_action` actions on any
+object's card (`apps/studio/app/api/flows/assign/route.ts`), and `/api/flows`
+already performs the discovery this spec's section 3 describes. Its semantics
+differ from the editor's on every point that matters:
+
+| | Flows page (shipped) | Actions editor (this spec) |
+|---|---|---|
+| "Off" | deletes the action from the array | sets `enabled: false`, keeps it |
+| Save | publishes immediately | saves to draft |
+| Inputs | auto-mapped by name convention | hand-mapped by the admin |
+
+Left alone, an admin who hand-maps a flow's inputs in the editor and later toggles
+that flow on the Flows page loses the mappings — `assign` rebuilds the action from
+scratch. Unifying the write path is therefore part of this work, not a follow-on.
+
 Design reference: `design/README.md:51` (3a) — "reorderable list, first = Primary,
 built-ins + record actions, toggles; trust line non-removable."
 
@@ -39,6 +55,8 @@ In:
 - An input-mapping editor for `screen_flow` actions.
 - A record-card action row that honors configured order, configured labels, and
   all four action types.
+- A single shared write path for `recordCard.actions`, used by both the new editor
+  and the existing Flows admin toggle.
 
 Out (deliberate, with reasons):
 
@@ -90,6 +108,48 @@ Both chokepoints already exist and already reject unconfigured actions:
 The change is to extend each existing `.find()` predicate to also require
 `a.enabled !== false`. The error message stays in the same shape as the current
 "is not configured on the … card" text.
+
+### 2b. Shared action module (`packages/core/src/card-actions.ts`, new)
+
+Every mutation of `recordCard.actions` and every decision about what renders goes
+through one set of pure functions. `packages/widgets` has no test runner — its
+`test` script is a CSS coverage check — so putting this logic in `core`, which
+runs vitest, is what makes it testable at all. It also removes the duplication
+between the editor and the Flows admin toggle.
+
+```ts
+/** Identifies an action within a list, independent of position. */
+export type ActionRef =
+  | { type: "update_record" }
+  | { type: "create_related"; object: string }
+  | { type: "quick_action"; actionApiName: string }
+  | { type: "screen_flow"; flowApiName: string };
+
+export function actionRef(action: CardAction): ActionRef;
+export function findAction(actions: CardAction[], ref: ActionRef): CardAction | undefined;
+
+/** Adds if absent; if present, MERGES — preserving hand-mapped `inputs` and
+ *  the existing label unless explicitly overridden. */
+export function upsertAction(
+  actions: CardAction[],
+  action: CardAction,
+  opts?: { overwriteInputs?: boolean },
+): CardAction[];
+
+export function removeAction(actions: CardAction[], ref: ActionRef): CardAction[];
+export function setActionEnabled(actions: CardAction[], ref: ActionRef, enabled: boolean): CardAction[];
+export function reorderActions(actions: CardAction[], from: number, to: number): CardAction[];
+
+/** What the record card should render, in order. Skips disabled actions and
+ *  skips `update_record` when editing is not permitted. */
+export function selectRenderableActions(
+  actions: CardAction[],
+  opts: { canEdit: boolean },
+): CardAction[];
+```
+
+`upsertAction`'s merge behavior is the fix for the data-loss case: re-enabling a
+flow from the Flows page must not discard mappings the admin made in the editor.
 
 ### 3. Discovery API (`apps/studio/app/api/objects/[object]/available-actions`)
 
@@ -185,36 +245,64 @@ the edit button from existing cards. So when `actions` is empty and `canEdit` is
 true, the card falls back to today's "Edit fields" button. This fallback is
 behavior-preserving, and a test pins it.
 
+### 6. Unifying the Flows admin write path (`apps/studio/app/api/flows/assign/route.ts`)
+
+The route keeps its shape and its toggle, but changes three behaviors so that
+"off" means one thing product-wide:
+
+- **Disabling sets `enabled: false` via `setActionEnabled`** instead of filtering
+  the action out. The action, its label, and its input mappings survive, and the
+  actions editor shows it dimmed and re-enableable.
+- **Enabling uses `upsertAction`**, so an action that already exists keeps its
+  hand-mapped `inputs` rather than being rebuilt. Auto-mapping by name convention
+  still applies when the action is genuinely new.
+- **It saves to draft and no longer auto-publishes.** The route's current comment
+  argues immediate publish is right because "exposing a flow IS the admin's
+  intent". That rationale is superseded: two surfaces editing one field cannot
+  have opposite publish semantics, and the draft/publish/rollback path is the
+  product's model everywhere else. The Flows page gains the same "Saved to draft"
+  affordance the other editors use.
+
+This is a deliberate behavior change to a shipped surface. It is called out here
+so it appears in the PR note required by hard rule 6.
+
 ## Testing
 
-Written test-first, at four levels:
+Written test-first. `packages/widgets` has no test runner — its `test` script is
+`node scripts/check-css-coverage.mjs` — and this work does not add one. That is
+the reason the render decision lives in `selectRenderableActions` in `core`:
+the logic is unit-tested there, and `card.tsx` is left as a thin renderer whose
+behavior the golden-path demos exercise.
 
-**`packages/core`**
+**`packages/core` — schema**
 - A layout fixture with no `enabled` key parses, and every action defaults to enabled.
 - `enabled: false` round-trips through parse and serialize.
+
+**`packages/core` — `card-actions.ts`**
+- `selectRenderableActions` drops disabled actions and preserves configured order.
+- It skips `update_record` when `canEdit` is false, so the next enabled action
+  leads the list.
+- It returns `[]` when every action is disabled.
+- `upsertAction` on an existing action preserves hand-mapped `inputs` and the
+  existing label — the Flows-page data-loss case.
+- `upsertAction` with `overwriteInputs: true` replaces them.
+- `setActionEnabled` flips the flag without changing position or dropping the action.
+- `reorderActions` moves an action and leaves the rest in relative order.
+- `actionRef` / `findAction` match on identity, not array index.
 
 **`apps/mcp-server`**
 - `crm_flow_start` rejects a screen flow that is configured but disabled.
 - `crm_quick_action_start` rejects a quick action that is configured but disabled.
 - Both mirror the existing unconfigured-action test at `server.test.ts:963`.
 
-**`packages/widgets`**
-- Disabled actions do not render in the record card's action row.
-- The first enabled action is the primary button when earlier actions are disabled.
-- Actions render in configured array order, not grouped by type.
-- `update_record` uses its configured label rather than "Edit fields".
-- `screen_flow` and `quick_action` render as buttons and call `sendFollowup`
-  naming the action.
-- With `canEdit` false, `update_record` is skipped and the next enabled action
-  becomes primary.
-- **Back-compat:** an empty `actions` array with `canEdit` true still renders the
-  "Edit fields" button.
-
 **`apps/studio`**
 - The discovery route returns partial results with an `unavailable` marker when a
   source throws or returns empty, rather than failing the whole request.
 - Discovered entries already present in `recordCard.actions` are marked as
   already-configured.
+- `flows/assign` disabling sets `enabled: false` and leaves the action in place.
+- `flows/assign` re-enabling a previously hand-mapped flow preserves its `inputs`.
+- `flows/assign` saves to draft and does not publish.
 
 ## Verification
 
