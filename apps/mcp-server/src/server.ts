@@ -1537,7 +1537,9 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       const config = await requireLayout(args.object);
       const action = config.recordCard.actions.find(
         (a): a is Extract<CardAction, { type: "screen_flow" }> =>
-          a.type === "screen_flow" && a.flowApiName === args.flowApiName,
+          a.type === "screen_flow" &&
+          a.flowApiName === args.flowApiName &&
+          a.enabled !== false,
       );
       if (!action) {
         throw new Error(
@@ -1828,7 +1830,9 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       const config = await requireLayout(args.object);
       const action = config.recordCard.actions.find(
         (a): a is Extract<CardAction, { type: "quick_action" }> =>
-          a.type === "quick_action" && a.actionApiName === args.actionApiName,
+          a.type === "quick_action" &&
+          a.actionApiName === args.actionApiName &&
+          a.enabled !== false,
       );
       if (!action) {
         throw new Error(
