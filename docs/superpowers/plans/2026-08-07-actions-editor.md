@@ -17,7 +17,7 @@
 - **Hard rule 4:** widgets never call our API directly — writes go widget → host → MCP tool call.
 - **Hard rule 6:** UI must match `/design`; deviations require a PR note. This plan contains one deliberate deviation (Task 7, Flows page publish semantics) that must appear in the PR description.
 - **Hard rule 8:** every write is preceded by a confirmation diff; `requireConfirmation` is locked ON. Nothing in this plan weakens a write path.
-- `packages/widgets` has **no test runner** (`test` is `node scripts/check-css-coverage.mjs`). Do not add one. Widget logic is tested via `packages/core`.
+- `packages/widgets` has no test runner today (`test` is `node scripts/check-css-coverage.mjs`). **Task 4b adds one** (vitest + jsdom), and it must keep the existing CSS-coverage check running as part of `pnpm --filter @cardstack/widgets test`. Pure logic still belongs in `packages/core`; the widget suite covers JSX and interaction only.
 - Adapters never import from `apps/*`.
 - Microcopy: sentence case, verb-first buttons, errors say what happened + what to do.
 - Run `pnpm typecheck` before every commit; it catches cross-package breakage turbo would otherwise surface late.
@@ -257,6 +257,29 @@ describe("upsertAction", () => {
     expect(result.label).toBe("Run renewal");
   });
 
+  it("keeps an admin-renamed QUICK ACTION label too", () => {
+    const renamed: CardAction = {
+      type: "quick_action",
+      actionApiName: "NewTask",
+      label: "Book a follow-up",
+      enabled: true,
+    };
+    const rebuilt: CardAction = { ...renamed, label: "NewTask" };
+    const [result] = upsertAction([renamed], rebuilt);
+    expect(result.label).toBe("Book a follow-up");
+  });
+
+  it("accepts a genuinely new label for any type", () => {
+    const renamed: CardAction = {
+      type: "quick_action",
+      actionApiName: "NewTask",
+      label: "Book a follow-up",
+      enabled: true,
+    };
+    const [result] = upsertAction([renamed], { ...renamed, label: "New task" });
+    expect(result.label).toBe("New task");
+  });
+
   it("replaces inputs when overwriteInputs is set", () => {
     const rebuilt: CardAction = { ...flow, inputs: {} };
     const [result] = upsertAction([flow], rebuilt, { overwriteInputs: true }).filter(
@@ -395,12 +418,25 @@ export function upsertAction(
   if (index === -1) return [...actions, action];
 
   const existing = actions[index];
-  let merged: CardAction = { ...action, enabled: action.enabled };
+  // An incoming label equal to the action's own api name carries no admin
+  // intent — it is what a discovery source emits when the CRM gave it nothing
+  // better. It must never overwrite a label the admin chose. This applies to
+  // EVERY type: a renamed quick action is as much the admin's work as a
+  // renamed flow.
+  const bareApiName =
+    action.type === "screen_flow"
+      ? action.flowApiName
+      : action.type === "quick_action"
+        ? action.actionApiName
+        : undefined;
+  let merged: CardAction = {
+    ...action,
+    label: bareApiName !== undefined && action.label === bareApiName ? existing.label : action.label,
+  };
+  // Only screen_flow carries `inputs`, so only it can lose hand-mapped ones.
   if (existing.type === "screen_flow" && merged.type === "screen_flow") {
     merged = {
       ...merged,
-      // An incoming label equal to the bare api name carries no admin intent.
-      label: merged.label === merged.flowApiName ? existing.label : merged.label,
       inputs: opts.overwriteInputs
         ? merged.inputs
         : { ...merged.inputs, ...existing.inputs },
@@ -687,6 +723,84 @@ git commit -m "fix: refuse disabled card actions server-side"
 
 ---
 
+## Task 4b: Widget test harness
+
+**Files:**
+- Modify: `packages/widgets/package.json`
+- Create: `packages/widgets/vitest.config.ts`, `packages/widgets/src/record-card/card.test.tsx`
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: a working `pnpm --filter @cardstack/widgets test` that runs BOTH the existing CSS-coverage script and a vitest suite. Task 5 adds cases to `card.test.tsx`.
+
+**Why:** `packages/widgets` has had no test runner. Task 5 changes the card's most user-visible logic, and covering it only through `core` plus demos leaves the JSX dispatch itself unverified.
+
+- [ ] **Step 1: Add the dev dependencies**
+
+```bash
+pnpm --filter @cardstack/widgets add -D vitest@^3.0.0 jsdom @testing-library/react @testing-library/dom
+```
+
+Pin `vitest@^3.0.0` to match the version `packages/core`, `apps/studio`, and `apps/mcp-server` already use — a second major in one workspace causes duplicate-instance failures.
+
+- [ ] **Step 2: Add the vitest config**
+
+Create `packages/widgets/vitest.config.ts`:
+
+```ts
+import { defineConfig } from "vitest/config";
+import react from "@vitejs/plugin-react";
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    environment: "jsdom",
+    include: ["src/**/*.test.tsx"],
+  },
+});
+```
+
+`@vitejs/plugin-react` is already a devDependency — the build uses it.
+
+- [ ] **Step 3: Keep the CSS check in the test script**
+
+In `packages/widgets/package.json`, change:
+
+```json
+    "test": "node scripts/check-css-coverage.mjs && vitest run",
+```
+
+The CSS-coverage check must keep running. Dropping it to make room for vitest would silently retire an existing guard.
+
+- [ ] **Step 4: Write one smoke test**
+
+Create `packages/widgets/src/record-card/card.test.tsx` with a single test that renders the card with a minimal payload and asserts the record title appears. Read `packages/widgets/src/record-card/card.tsx` to find the component's exported name and its required props, and build the payload from the same shape the existing demos use. This test exists to prove the harness works; Task 5 adds the behavioral cases.
+
+- [ ] **Step 5: Run it**
+
+```bash
+pnpm --filter @cardstack/widgets test
+```
+
+Expected: the CSS-coverage check passes, then 1 vitest test passes.
+
+- [ ] **Step 6: Confirm the build still works**
+
+```bash
+pnpm --filter @cardstack/widgets build
+```
+
+Expected: all four HTML bundles build. The new config must not interfere — `vite build` reads `vite.config.*`, not `vitest.config.ts`.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add packages/widgets/package.json packages/widgets/vitest.config.ts packages/widgets/src/record-card/card.test.tsx pnpm-lock.yaml
+git commit -m "test: add a vitest harness to the widgets package"
+```
+
+---
+
 ## Task 5: Record card renders the configured action row
 
 **Files:**
@@ -811,7 +925,27 @@ Replace the comment at line 297-299, which describes the behavior this task remo
   const actions = layout.recordCard.actions;
 ```
 
-- [ ] **Step 5: Verify the build and the golden paths**
+- [ ] **Step 5: Add the behavioral tests**
+
+Extend `packages/widgets/src/record-card/card.test.tsx` (harness from Task 4b) with cases asserting, against a rendered card:
+
+- actions render in configured array order, not grouped by type — assert the rendered button labels in order;
+- the first rendered button carries the `cs-btn--primary` class and later ones do not;
+- a disabled action produces no button;
+- an `update_record` action's configured label is used, not "Edit fields";
+- a `screen_flow` button click calls the host's `sendFollowup` with text naming the action — pass a stub host whose `sendFollowup` is a `vi.fn()`;
+- with `canEdit` false, the `update_record` button is absent and the next action carries `cs-btn--primary`;
+- **back-compat:** an empty `actions` array with `canEdit` true still renders an "Edit fields" button.
+
+Build each payload from the same shape the Task 4b smoke test established.
+
+```bash
+pnpm --filter @cardstack/widgets test
+```
+
+Expected: all pass.
+
+- [ ] **Step 6: Verify the build and the golden paths**
 
 ```bash
 pnpm --filter @cardstack/widgets typecheck && pnpm build && pnpm demo:m1 && pnpm demo:m2
@@ -819,10 +953,10 @@ pnpm --filter @cardstack/widgets typecheck && pnpm build && pnpm demo:m1 && pnpm
 
 Expected: build succeeds; both demos pass. `demo:m2` is the confirmed-write path and exercises the edit button, which is now label-driven — if the demo layout configures an `update_record` action, its label appears instead of "Edit fields".
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add packages/widgets/src/record-card/card.tsx
+git add packages/widgets/src/record-card/card.tsx packages/widgets/src/record-card/card.test.tsx
 git commit -m "feat: record card renders configured action row in order"
 ```
 
