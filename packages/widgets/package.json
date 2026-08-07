@@ -19,7 +19,7 @@
   "scripts": {
     "build": "INPUT=record-card.html vite build && INPUT=results-table.html vite build && INPUT=home-card.html vite build && INPUT=flow-run.html vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node scripts/check-css-coverage.mjs"
+    "test": "node scripts/check-css-coverage.mjs && vitest run"
   },
   "dependencies": {
     "@cardstack/core": "workspace:*",
@@ -30,11 +30,15 @@
     "zod": "^3.25.1"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^30.0.1",
     "typescript": "^5.7.2",
     "vite": "^6.0.0",
-    "vite-plugin-singlefile": "^2.0.3"
+    "vite-plugin-singlefile": "^2.0.3",
+    "vitest": "^3.2.7"
   }
 }
