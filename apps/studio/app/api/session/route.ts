@@ -10,7 +10,15 @@ import {
   studioSessionCookieOptions,
 } from "../../../lib/studio-session";
 import { getStore, LEGACY_TENANT_ID } from "../../../lib/backend";
+import { clientKey, rateLimited } from "../../../lib/request-guard";
 import { parseSalesforceIdentityUrl } from "@cardstack/crm-adapters";
+
+/**
+ * Failed access-key attempts per minute per source address before this route
+ * starts refusing. Low on purpose: nobody types the key ten times a minute, and
+ * the value it guards is a workspace-admin session.
+ */
+const MAX_FAILURES_PER_MINUTE = 5;
 
 export async function POST(req: Request) {
   const signingSecret = sessionSigningSecrets(process.env)[0];
@@ -21,8 +29,23 @@ export async function POST(req: Request) {
       { status: 503 },
     );
   }
+  const source = clientKey(req);
   const body = (await req.json().catch(() => ({}))) as { secret?: string };
   if (!body.secret || body.secret !== accessKey) {
+    // Guessing this key used to be an unlimited online attack that left no
+    // trace anywhere. Count the failure, refuse past the limit, and always say
+    // so out loud — the log line matters more than the limit, because it is
+    // what makes an attempt visible at all.
+    const limited = rateLimited(`session-key:${source}`, { max: MAX_FAILURES_PER_MINUTE });
+    console.warn(
+      `[security] rejected workspace access key from ${source}${limited ? " (rate limited)" : ""}`,
+    );
+    if (limited) {
+      return NextResponse.json(
+        { error: "Too many attempts. Wait a minute and try again." },
+        { status: 429 },
+      );
+    }
     return NextResponse.json({ error: "That access key is not valid." }, { status: 401 });
   }
   const store = await getStore();
