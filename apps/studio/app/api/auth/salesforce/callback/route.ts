@@ -16,6 +16,7 @@ import { resolveSignIn } from "@cardstack/config-store";
 import { getStore } from "../../../../../lib/backend";
 import { studioOrigin } from "../../../../../lib/oauth";
 import { LOGIN_PENDING_NS, safeNext, type PendingLogin } from "../../../../../lib/login-flow";
+import { describeAdmins, workspaceAdmins } from "../../../../../lib/admins";
 import {
   createStudioSession,
   newSessionId,
@@ -73,8 +74,17 @@ export async function GET(req: Request) {
     const identity = await fetchSalesforceSignerIdentity(credentials);
     const { account, workspace, role } = await resolveSignIn(store, identity);
     if (role !== "admin") {
+      // Naming the admin is what turns this from a dead end into a path. Admin
+      // is granted exactly once — to the first person from the org to sign in
+      // through either lane — so the person who needs to act is often not the
+      // person who expected to, and "ask an admin" tells them nothing. The
+      // People page gives whoever is named a button that actually works.
+      const admins = await workspaceAdmins(store, workspace.id).catch(() => []);
+      const who = describeAdmins(admins.filter((a) => a.id !== account.id));
       return fail(
-        `You joined ${workspace.name}, but Studio is limited to workspace admins. Ask an admin to grant access.`,
+        who
+          ? `You've joined ${workspace.name}, but Studio is for workspace admins. Ask ${who} to add you on the People page.`
+          : `You've joined ${workspace.name}, but Studio is for workspace admins, and this workspace has none yet. Contact Cardstack support.`,
       );
     }
 

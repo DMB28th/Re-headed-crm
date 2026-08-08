@@ -73,3 +73,32 @@ describe("describeAdmins", () => {
     expect(describeAdmins(many)).toBe("A (A@x), B (B@x) or C (C@x), or 2 other admins");
   });
 });
+
+describe("the lockout message", () => {
+  // A2: the callback refuses a member a session. Before the People page there
+  // was nobody to ask and no mechanism to ask for, so the copy was a dead end.
+  it("has a named admin to point at once one exists", async () => {
+    const store = new InMemoryConfigStore();
+    await store.createWorkspace({ id: "w1", salesforceOrgId: "00D1", name: "Acme", createdAt: CREATED });
+    await store.upsertAccount({
+      id: "ada@acme.test",
+      salesforceUserId: "005A",
+      name: "Ada Admin",
+      email: "ada@acme.test",
+      createdAt: CREATED,
+    });
+    await store.setMembership({
+      accountId: "ada@acme.test",
+      workspaceId: "w1",
+      role: "admin",
+      createdAt: CREATED,
+    });
+    expect(describeAdmins(await workspaceAdmins(store, "w1"))).toBe("Ada Admin (ada@acme.test)");
+  });
+
+  it("falls back to generic copy for a workspace with no admin at all", async () => {
+    const store = new InMemoryConfigStore();
+    await store.createWorkspace({ id: "w1", salesforceOrgId: "00D1", name: "Acme", createdAt: CREATED });
+    expect(describeAdmins(await workspaceAdmins(store, "w1"))).toBeUndefined();
+  });
+});
