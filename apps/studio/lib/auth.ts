@@ -21,12 +21,15 @@
  * it enforced anything. A `requireAdmin()` helper would have been twenty-six
  * call sites to remember. Refusing to resolve the session at all is one.
  *
- * The single exception is local development (NODE_ENV !== "production"), where
- * `pnpm dev` / `dev:sf` / the demo scripts have no browser login to go through.
- * That fallback is compiled the same way but can never engage in a production
- * build, which is what keeps it from being a bypass.
+ * The single exception is local development, where `pnpm dev` / `dev:sf` / the
+ * demo scripts have no browser login to go through. It needs TWO conditions —
+ * a non-production build AND an explicit `CARDSTACK_DEV_IDENTITY=1` — and it
+ * reads ENV VARS ONLY. It used to read `x-cardstack-*` headers and cookies too,
+ * which meant a request could name its own identity on any non-production
+ * build: fine on a laptop, and exactly the shape you do not want reachable if a
+ * staging box is ever built without NODE_ENV set.
  */
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import {
   DEFAULT_AUDIENCE,
   DEFAULT_USER_NAME,
@@ -60,7 +63,9 @@ export interface StudioIdentity {
   role: MembershipRole;
 }
 
-const isDev = (): boolean => process.env.NODE_ENV !== "production";
+/** Both conditions, deliberately. See the module comment. */
+const devIdentityAllowed = (): boolean =>
+  process.env.NODE_ENV !== "production" && process.env.CARDSTACK_DEV_IDENTITY === "1";
 
 /**
  * Resolve the signed-in identity, or null. Verifies the cookie signature, then
@@ -165,7 +170,7 @@ export async function resolveStudioSession(
 export async function getUserContext(): Promise<UserContext> {
   const identity = await getStudioIdentity();
   if (identity) return userContextFor(identity);
-  if (!isDev()) {
+  if (!devIdentityAllowed()) {
     throw new Error("Not signed in.");
   }
   return devUserContext();
@@ -191,34 +196,20 @@ export function userContextFor(identity: StudioIdentity): UserContext {
   };
 }
 
-/** LOCAL DEV ONLY — the pre-login behavior, unreachable in a production build. */
-async function devUserContext(): Promise<UserContext> {
-  const [headerList, jar] = await Promise.all([headers(), cookies()]);
+/**
+ * LOCAL DEV ONLY — unreachable in a production build and without an explicit
+ * opt-in. Env vars only: no header, no cookie, so nothing a REQUEST carries can
+ * choose who it is, even here.
+ */
+function devUserContext(): UserContext {
   const demo = defaultUserContext(process.env.CARDSTACK_TENANT_ID ?? DEMO_TENANT_ID);
-  const pick = (header: string, cookie: string, env?: string): string | undefined =>
-    first(headerList.get(header), jar.get(cookie)?.value, env);
-
-  const email = pick("x-cardstack-user-email", "cardstack_user_email", process.env.CARDSTACK_USER_EMAIL);
-  const rawUserId =
-    pick("x-cardstack-user-id", "cardstack_user_id", process.env.CARDSTACK_USER_ID) ??
-    email ??
-    demo.userId;
+  const email = process.env.CARDSTACK_USER_EMAIL?.trim() || undefined;
+  const rawUserId = process.env.CARDSTACK_USER_ID?.trim() || email || demo.userId;
   return {
-    tenantId:
-      pick("x-cardstack-tenant-id", "cardstack_tenant_id", process.env.CARDSTACK_TENANT_ID) ??
-      demo.tenantId,
+    tenantId: process.env.CARDSTACK_TENANT_ID?.trim() || demo.tenantId,
     userId: normalizeUserId(rawUserId) || demo.userId,
-    name:
-      pick("x-cardstack-user-name", "cardstack_user_name", process.env.CARDSTACK_USER_NAME) ??
-      email ??
-      DEFAULT_USER_NAME,
+    name: process.env.CARDSTACK_USER_NAME?.trim() || email || DEFAULT_USER_NAME,
     ...(email ? { email } : {}),
-    audience:
-      pick("x-cardstack-audience", "cardstack_audience", process.env.CARDSTACK_AUDIENCE) ??
-      DEFAULT_AUDIENCE,
+    audience: process.env.CARDSTACK_AUDIENCE?.trim() || DEFAULT_AUDIENCE,
   };
-}
-
-function first(...values: (string | null | undefined)[]): string | undefined {
-  return values.find((v) => v !== null && v !== undefined && v.trim() !== "")?.trim();
 }

@@ -53,6 +53,21 @@ export async function POST(req: Request) {
   const workspaceId = process.env.CARDSTACK_TENANT_ID ?? LEGACY_TENANT_ID;
   const createdAt = new Date().toISOString();
 
+  // Self-retiring. Once someone has signed in to this workspace with a real
+  // Salesforce identity, the migration this bridge exists for is done — and
+  // leaving it open would keep a shared secret as a permanent second door into
+  // an account model whose whole point is that identity is verified.
+  if (await hasSalesforceAdmin(store, workspaceId)) {
+    console.warn(`[security] access-key sign-in refused for ${workspaceId}: it has a Salesforce admin`);
+    return NextResponse.json(
+      {
+        error:
+          "This workspace has a Salesforce admin now. Sign in with Salesforce instead — the access key is no longer accepted.",
+      },
+      { status: 410 },
+    );
+  }
+
   // Compatibility bridge for deployments that predate Cardstack accounts.
   // The shared access key represents the existing workspace administrator, so
   // create the additive identity rows once and let normal session resolution
@@ -142,4 +157,22 @@ export async function DELETE(req: Request) {
     ...expiredSessionCookieOptions(),
   });
   return response;
+}
+
+/**
+ * True when any admin of this workspace signed in through Salesforce rather
+ * than being minted by this bridge. The bridge writes a synthetic
+ * `legacy-user-` id; `resolveSignIn` writes a real 18-char Salesforce user id.
+ */
+async function hasSalesforceAdmin(
+  store: Awaited<ReturnType<typeof getStore>>,
+  workspaceId: string,
+): Promise<boolean> {
+  const memberships = await store.listMembershipsForWorkspace(workspaceId).catch(() => []);
+  for (const membership of memberships) {
+    if (membership.role !== "admin") continue;
+    const account = await store.getAccount(membership.accountId);
+    if (account && !account.salesforceUserId.startsWith("legacy-user-")) return true;
+  }
+  return false;
 }

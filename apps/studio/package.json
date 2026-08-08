@@ -3,14 +3,14 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "next dev -p ${PORT:-3002}",
+    "dev": "CARDSTACK_DEV_IDENTITY=1 next dev -p ${PORT:-3002}",
     "build": "next build",
     "start": "next start -p 3002",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "seed:salesforce": "tsx scripts/seed-from-salesforce.ts",
-    "dev:sf": "CARDSTACK_DEV_SF_ORG=${CARDSTACK_DEV_SF_ORG:-screenflow-org} CARDSTACK_CONFIG_PATH=${CARDSTACK_CONFIG_PATH:-../../data/cardstack-salesforce.json} next dev -p ${PORT:-3002}",
-    "backfill:admins": "tsx scripts/backfill-workspace-admins.ts"
+    "seed:salesforce": "CARDSTACK_DEV_IDENTITY=1 tsx scripts/seed-from-salesforce.ts",
+    "dev:sf": "CARDSTACK_DEV_IDENTITY=1 CARDSTACK_DEV_SF_ORG=${CARDSTACK_DEV_SF_ORG:-screenflow-org} CARDSTACK_CONFIG_PATH=${CARDSTACK_CONFIG_PATH:-../../data/cardstack-salesforce.json} next dev -p ${PORT:-3002}",
+    "backfill:admins": "CARDSTACK_DEV_IDENTITY=1 tsx scripts/backfill-workspace-admins.ts"
   },
   "dependencies": {
     "@cardstack/config-store": "workspace:*",

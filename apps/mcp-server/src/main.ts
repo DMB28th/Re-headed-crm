@@ -124,6 +124,12 @@ function authorized(req: express.Request): boolean {
 // Connected App to allowlist `<origin>/oauth/salesforce/callback`.
 const USER_AUTH_MODE = process.env.CARDSTACK_USER_AUTH === "oauth";
 const MCP_ORIGIN = (process.env.CARDSTACK_MCP_URL ?? "").trim().replace(/\/$/, "");
+// The legacy connected-app fallback is for deployments that predate the
+// Cardstack-owned app and still keep one on their tenant's admin connection.
+// It used to default to DEMO_TENANT_ID, which armed it on EVERY deployment
+// including ones that never had a legacy tenant. Arm it only when a legacy
+// tenant is named explicitly.
+const LEGACY_TENANT = process.env.CARDSTACK_TENANT_ID?.trim() || undefined;
 const oauthProvider =
   USER_AUTH_MODE && MCP_ORIGIN
     ? new CardstackOAuthProvider({
@@ -131,7 +137,7 @@ const oauthProvider =
         // rep signs in to, so one server serves every workspace.
         store: configStore,
         mcpOrigin: MCP_ORIGIN,
-        legacyTenantId: process.env.CARDSTACK_TENANT_ID ?? DEMO_TENANT_ID,
+        ...(LEGACY_TENANT ? { legacyTenantId: LEGACY_TENANT } : {}),
       })
     : undefined;
 if (USER_AUTH_MODE && !oauthProvider) {
