@@ -32,6 +32,7 @@ import { defaultConfigPath, FileConfigStore, DEMO_TENANT_ID } from "./config/sto
 import { userContextFromHeaders } from "./auth.js";
 import { resolveMcpAuth } from "./auth-config.js";
 import { CardstackOAuthProvider, userContextFromStoredUser } from "./oauth-provider.js";
+import { escapeHtml, renderConsent, renderConsentExpired } from "./consent.js";
 import {
   InMemoryAuditLog,
   FileAuditLog,
@@ -42,6 +43,12 @@ import {
 import { ConfigPreferenceStore } from "./config/preferences.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
+
+/** Sign-in failures are shown to a rep in a browser tab, so escape the cause. */
+function renderSignInFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return `<h3>Cardstack sign-in failed</h3><p>${escapeHtml(message)}</p><p>Close this tab and try connecting again from your chat app.</p>`;
+}
 
 // Durable-ish state shared across stateless requests. Config comes from the
 // store Studio writes to — published layouts are read at render time, so a
@@ -161,14 +168,45 @@ if (oauthProvider) {
       const { redirect } = await oauthProvider.completeSalesforceCallback(state, code);
       res.redirect(redirect);
     } catch (err) {
-      res
-        .status(400)
-        .send(
-          `<h3>Cardstack sign-in failed</h3><p>${
-            err instanceof Error ? err.message : String(err)
-          }</p><p>Close this tab and try connecting again from your chat app.</p>`,
-        );
+      res.status(400).send(renderSignInFailure(err));
     }
+  });
+
+  // C2: production or sandbox, chosen before the Salesforce leg. Only reachable
+  // with a signed pointer at a pending authorization this browser started.
+  app.get("/oauth/login-host", async (req, res) => {
+    const { t, env } = req.query as Record<string, string | undefined>;
+    const redirect = t ? await oauthProvider.chooseLoginHost(t, env ?? "production") : undefined;
+    if (!redirect) {
+      res.status(400).send(renderConsentExpired());
+      return;
+    }
+    res.redirect(redirect);
+  });
+
+  // A1: the consent interstitial. GET renders it, POST applies the decision.
+  // No cookie is involved, so there is nothing for a cross-site POST to ride —
+  // the signed continuation token is the only thing that authorizes either.
+  app.get("/oauth/consent", async (req, res) => {
+    const token = (req.query as Record<string, string | undefined>).t;
+    const prompt = token ? await oauthProvider.describeConsent(token) : undefined;
+    if (!prompt) {
+      res.status(400).send(renderConsentExpired());
+      return;
+    }
+    res.send(renderConsent(prompt, `${MCP_ORIGIN}/oauth/consent`));
+  });
+
+  app.post("/oauth/consent", express.urlencoded({ extended: false }), async (req, res) => {
+    const { token, decision } = (req.body ?? {}) as { token?: string; decision?: string };
+    const outcome = token
+      ? await oauthProvider.completeConsent(token, decision === "allow" ? "allow" : "deny")
+      : undefined;
+    if (!outcome) {
+      res.status(400).send(renderConsentExpired());
+      return;
+    }
+    res.redirect(outcome.redirect);
   });
   const bearer = requireBearerAuth({ verifier: oauthProvider });
   app.use("/mcp", (req, res, next) => bearer(req, res, next));

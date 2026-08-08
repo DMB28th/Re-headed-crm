@@ -42,10 +42,16 @@ import {
   type SalesforceLoginApp,
 } from "@cardstack/crm-adapters";
 import { resolveSignIn, type AdminConfigStore, type UserConnectionState } from "@cardstack/config-store";
+import { signState, verifyState } from "./confirm-token.js";
+import { isFirstPartyClient, renderLoginHostPicker } from "./consent.js";
 
 const NS = {
   clients: "oauth-clients",
   pending: "oauth-pending",
+  /** Signed in, not yet consented — the gap A1's fix inserts. */
+  consent: "oauth-consent-pending",
+  /** Remembered "allow" decisions, keyed by account+client. */
+  consented: "oauth-consent-granted",
   codes: "oauth-codes",
   access: "oauth-access",
   refresh: "oauth-refresh",
@@ -55,9 +61,22 @@ const ACCESS_TTL_MS = 60 * 60 * 1000; // 1h — claude.ai refreshes
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30d
 const PENDING_TTL_MS = 15 * 60 * 1000;
 const CODE_TTL_MS = 10 * 60 * 1000;
+/** A decision should be made now, not left open in a tab. */
+const CONSENT_TTL_MS = 10 * 60 * 1000;
+/** Remembered as long as the grant it authorizes could still be refreshed. */
+const CONSENT_MEMORY_MS = REFRESH_TTL_MS;
 
 const rand = (prefix: string) => `${prefix}_${randomBytes(24).toString("base64url")}`;
 const inMs = (ms: number) => new Date(Date.now() + ms).toISOString();
+const consentKey = (userId: string, clientId: string) => `${userId}::${clientId}`;
+
+function safeOrigin(value: string): string | undefined {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return undefined;
+  }
+}
 
 interface PendingAuth {
   clientId: string;
@@ -69,6 +88,33 @@ interface PendingAuth {
   sfLoginUrl: string;
   /** Set only while migrating a pre-workspace, single-tenant deployment. */
   legacyTenantId?: string;
+}
+
+/**
+ * A completed Salesforce sign-in whose authorization code has NOT been minted
+ * because the client is not one we recognize. Everything needed to finish is
+ * captured here so the decision itself carries no secrets — the browser only
+ * ever holds a signed pointer to this record.
+ */
+interface PendingConsent {
+  clientId: string;
+  clientName: string;
+  redirectUri: string;
+  codeChallenge: string;
+  mcpState: string | null;
+  user: StoredUser;
+  workspaceName: string;
+  signerEmail?: string;
+}
+
+/** What the consent page needs in order to render itself honestly. */
+export interface ConsentPrompt {
+  token: string;
+  signerName: string;
+  signerEmail?: string;
+  workspaceName: string;
+  clientName: string;
+  redirectOrigin: string;
 }
 
 interface StoredCode {
@@ -135,15 +181,29 @@ export class CardstackOAuthProvider implements OAuthServerProvider {
        * app still lives in the tenant's encrypted admin connection.
        */
       legacyTenantId?: string;
+      /** Overridable for tests; defaults to CARDSTACK_TRUSTED_CLIENT_ORIGINS. */
+      trustedClientOrigins?: string[];
     },
   ) {}
+
+  private isTrustedClient(client: { redirect_uris?: string[] }): boolean {
+    const configured = this.deps.trustedClientOrigins;
+    return isFirstPartyClient(
+      { redirect_uris: client.redirect_uris ?? [] },
+      configured ? { CARDSTACK_TRUSTED_CLIENT_ORIGINS: configured.join(",") } : process.env,
+    );
+  }
 
   private get loginApp(): SalesforceLoginApp | undefined {
     return this.deps.loginApp ?? cardstackSalesforceLoginApp();
   }
 
+  private get origin(): string {
+    return this.deps.mcpOrigin.replace(/\/$/, "");
+  }
+
   private get sfCallbackUri(): string {
-    return `${this.deps.mcpOrigin.replace(/\/$/, "")}/oauth/salesforce/callback`;
+    return `${this.origin}/oauth/salesforce/callback`;
   }
 
   private async loginConfig(
@@ -222,7 +282,6 @@ export class CardstackOAuthProvider implements OAuthServerProvider {
     }
     const sfState = rand("sfs");
     const sfVerifier = randomBytes(32).toString("base64url");
-    const sfChallenge = createHash("sha256").update(sfVerifier).digest("base64url");
     const pending: PendingAuth = {
       clientId: client.client_id,
       redirectUri: params.redirectUri,
@@ -238,15 +297,67 @@ export class CardstackOAuthProvider implements OAuthServerProvider {
       pending as unknown as Record<string, unknown>,
       inMs(PENDING_TTL_MS),
     );
+
+    // C2. Studio has always let someone pick production or sandbox; this lane
+    // never could, because the MCP SDK passes no custom parameters through to
+    // the provider — so a rep whose org is a sandbox got a generic failure and
+    // no control that would fix it. When the deployment has not pinned a login
+    // host, ask instead of guessing.
+    if (!login.legacyTenantId && !process.env.CARDSTACK_SF_LOGIN_URL?.trim()) {
+      res.send(renderLoginHostPicker(signState(sfState), `${this.origin}/oauth/login-host`));
+      return;
+    }
+
     res.redirect(
-      buildSalesforceAuthorizationUrl({
-        loginUrl: login.loginUrl,
-        clientId: login.app.clientId,
-        redirectUri: this.sfCallbackUri,
-        state: sfState,
-        codeChallenge: sfChallenge,
-      }),
+      this.salesforceRedirect(sfState, pending.sfLoginUrl, login.app.clientId, sfVerifier),
     );
+  }
+
+  /**
+   * Finish an `/authorize` that paused on the production-or-sandbox question.
+   * The token is a signed pointer at the pending record, so the choice cannot
+   * be made for a flow the caller does not already hold.
+   */
+  async chooseLoginHost(token: string, env: string): Promise<string | undefined> {
+    let sfState: string;
+    try {
+      sfState = verifyState(token, "login-host");
+    } catch {
+      return undefined;
+    }
+    const { store } = this.deps;
+    const pending = (await store.kvGet(NS.pending, sfState)) as unknown as PendingAuth | undefined;
+    if (!pending) return undefined;
+
+    const login = await this.loginConfig(pending.legacyTenantId);
+    if (!login) return undefined;
+    const loginUrl = normalizeSalesforceLoginUrl(
+      env === "sandbox" ? "https://test.salesforce.com" : "https://login.salesforce.com",
+    );
+    // The token exchange must go to the same host the authorize leg did.
+    await store.kvSet(
+      NS.pending,
+      sfState,
+      { ...pending, sfLoginUrl: loginUrl } as unknown as Record<string, unknown>,
+      inMs(PENDING_TTL_MS),
+    );
+    return this.salesforceRedirect(sfState, loginUrl, login.app.clientId, pending.sfVerifier);
+  }
+
+  /** The verifier stays server-side on the pending record; only its hash travels. */
+  private salesforceRedirect(
+    sfState: string,
+    loginUrl: string,
+    clientId: string,
+    sfVerifier: string,
+  ): string {
+    return buildSalesforceAuthorizationUrl({
+      loginUrl,
+      clientId,
+      redirectUri: this.sfCallbackUri,
+      state: sfState,
+      codeChallenge: createHash("sha256").update(sfVerifier).digest("base64url"),
+    });
   }
 
   /**
@@ -311,23 +422,128 @@ export class CardstackOAuthProvider implements OAuthServerProvider {
     };
     await store.setUserConnection(userConnection);
 
+    const user: StoredUser = {
+      tenantId,
+      userId: account.id,
+      name: account.name,
+      ...(account.email ? { email: account.email } : {}),
+    };
+
+    // A1. Everything above this line is identity resolution; everything below
+    // is granting access. An unrecognized client stops here — the authorization
+    // code is minted only past a decision the rep actually made.
+    const client = (await store.kvGet(NS.clients, pending.clientId)) as
+      | { client_name?: string; redirect_uris?: string[] }
+      | undefined;
+    const trusted = this.isTrustedClient(client ?? {});
+    const remembered = trusted
+      ? true
+      : !!(await store.kvGet(NS.consented, consentKey(account.id, pending.clientId)));
+
+    if (!trusted && !remembered) {
+      const consentId = rand("csn");
+      const record: PendingConsent = {
+        clientId: pending.clientId,
+        clientName: client?.client_name?.trim() || "An unrecognized app",
+        redirectUri: pending.redirectUri,
+        codeChallenge: pending.codeChallenge,
+        mcpState: pending.mcpState,
+        user,
+        workspaceName: workspace.name,
+        ...(account.email ? { signerEmail: account.email } : {}),
+      };
+      await store.kvSet(
+        NS.consent,
+        consentId,
+        record as unknown as Record<string, unknown>,
+        inMs(CONSENT_TTL_MS),
+      );
+      const token = signState(consentId);
+      return { redirect: `${this.origin}/oauth/consent?t=${encodeURIComponent(token)}` };
+    }
+
+    return { redirect: await this.mintCodeRedirect(pending, user) };
+  }
+
+  /** Shared tail of the two paths into an authorization code. */
+  private async mintCodeRedirect(
+    pending: Pick<PendingAuth, "clientId" | "redirectUri" | "codeChallenge" | "mcpState">,
+    user: StoredUser,
+  ): Promise<string> {
     const code = rand("csc");
     const stored: StoredCode = {
       clientId: pending.clientId,
       redirectUri: pending.redirectUri,
       codeChallenge: pending.codeChallenge,
-      user: {
-        tenantId,
-        userId: account.id,
-        name: account.name,
-        ...(account.email ? { email: account.email } : {}),
-      },
+      user,
     };
-    await store.kvSet(NS.codes, code, stored as unknown as Record<string, unknown>, inMs(CODE_TTL_MS));
+    await this.deps.store.kvSet(
+      NS.codes,
+      code,
+      stored as unknown as Record<string, unknown>,
+      inMs(CODE_TTL_MS),
+    );
     const redirect = new URL(pending.redirectUri);
     redirect.searchParams.set("code", code);
     if (pending.mcpState) redirect.searchParams.set("state", pending.mcpState);
-    return { redirect: redirect.toString() };
+    return redirect.toString();
+  }
+
+  /** What the consent page should say. Undefined when the token is stale or forged. */
+  async describeConsent(token: string): Promise<ConsentPrompt | undefined> {
+    const record = await this.readConsent(token);
+    if (!record) return undefined;
+    return {
+      token,
+      signerName: record.user.name,
+      ...(record.signerEmail ? { signerEmail: record.signerEmail } : {}),
+      workspaceName: record.workspaceName,
+      clientName: record.clientName,
+      redirectOrigin: safeOrigin(record.redirectUri) ?? record.redirectUri,
+    };
+  }
+
+  /**
+   * Apply the rep's decision. Single-use either way: the pending record is
+   * deleted before anything is minted, so a captured token cannot be replayed
+   * into a second authorization code.
+   */
+  async completeConsent(
+    token: string,
+    decision: "allow" | "deny",
+  ): Promise<{ redirect: string } | undefined> {
+    const record = await this.readConsent(token);
+    if (!record) return undefined;
+    await this.deps.store.kvDelete(NS.consent, verifyState(token, "consent"));
+
+    if (decision !== "allow") {
+      // RFC 6749 section 4.1.2.1 — tell the client, do not just drop the flow.
+      const redirect = new URL(record.redirectUri);
+      redirect.searchParams.set("error", "access_denied");
+      redirect.searchParams.set("error_description", "The user declined this app's request.");
+      if (record.mcpState) redirect.searchParams.set("state", record.mcpState);
+      return { redirect: redirect.toString() };
+    }
+
+    await this.deps.store.kvSet(
+      NS.consented,
+      consentKey(record.user.userId, record.clientId),
+      { decidedAt: new Date().toISOString() },
+      inMs(CONSENT_MEMORY_MS),
+    );
+    return { redirect: await this.mintCodeRedirect(record, record.user) };
+  }
+
+  private async readConsent(token: string): Promise<PendingConsent | undefined> {
+    let consentId: string;
+    try {
+      consentId = verifyState(token, "consent");
+    } catch {
+      return undefined;
+    }
+    return (await this.deps.store.kvGet(NS.consent, consentId)) as unknown as
+      | PendingConsent
+      | undefined;
   }
 
   async challengeForAuthorizationCode(
