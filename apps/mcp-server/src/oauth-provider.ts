@@ -124,6 +124,14 @@ interface StoredCode {
   user: StoredUser;
 }
 
+/**
+ * Display identity, cached on the token so a tool call does not need three
+ * store reads to render a name. **Not the authorization decision** — see
+ * `verifyAccessToken`, which re-reads the membership every time.
+ *
+ * `tenantId` and `userId` here ARE the workspace and account ids: that is what
+ * `resolveSignIn` wrote, and what every other table is keyed by.
+ */
 interface StoredUser {
   tenantId: string;
   userId: string;
@@ -590,6 +598,13 @@ export class CardstackOAuthProvider implements OAuthServerProvider {
     if (!stored || stored.clientId !== client.client_id) {
       throw new InvalidGrantError("Unknown or expired refresh token.");
     }
+    // Checked here too: otherwise a removed user refreshes their way back in
+    // and holds a fresh hour of access every time the chat host polls.
+    try {
+      await this.requireLiveMembership(stored.user);
+    } catch {
+      throw new InvalidGrantError("Your access to this workspace was removed. Sign in again.");
+    }
     return this.mintTokens(client.client_id, stored.user, refreshToken);
   }
 
@@ -630,6 +645,7 @@ export class CardstackOAuthProvider implements OAuthServerProvider {
       | unknown as StoredToken
       | undefined;
     if (!stored) throw new InvalidTokenError("Unknown or expired access token.");
+    await this.requireLiveMembership(stored.user);
     return {
       token,
       clientId: stored.clientId,
@@ -637,6 +653,29 @@ export class CardstackOAuthProvider implements OAuthServerProvider {
       expiresAt: Math.floor(Date.parse(stored.expiresAt) / 1000),
       extra: { user: stored.user },
     };
+  }
+
+  /**
+   * A4. The token's identity used to be frozen at issuance and never checked
+   * again, so removing someone from a workspace was instant in Studio and a
+   * no-op here for up to thirty days — and the docs claimed otherwise for both
+   * lanes. One store read, on a request path that already does two, buys the
+   * two lanes the same revocation story.
+   *
+   * Deliberately checks MEMBERSHIP, not role: members are the expected
+   * population on this lane. The gate is belonging to the workspace, not
+   * authority within it.
+   */
+  private async requireLiveMembership(user: StoredUser): Promise<void> {
+    if (!user?.userId || !user?.tenantId) {
+      // A token that verifies but carries no identity is a bug or a leftover
+      // from an older shape. There is no safe default to fall back to.
+      throw new InvalidTokenError("This token carries no identity. Sign in again.");
+    }
+    const membership = await this.deps.store.getMembership(user.userId, user.tenantId);
+    if (!membership) {
+      throw new InvalidTokenError("Your access to this workspace was removed. Sign in again.");
+    }
   }
 
   async revokeToken(

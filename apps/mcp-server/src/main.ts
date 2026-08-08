@@ -248,6 +248,14 @@ app.all("/mcp", async (req, res) => {
   const tokenUser = oauthProvider
     ? (req.auth?.extra?.user as Parameters<typeof userContextFromStoredUser>[0] | undefined)
     : undefined;
+  // B1: in OAuth mode this must FAIL, not fall through. A token that verifies
+  // but carries no user used to resolve to CARDSTACK_TENANT_ID as the default
+  // user — serving the legacy tenant's records to an unidentified caller. There
+  // is no safe default here; 401 is the only correct answer.
+  if (oauthProvider && !tokenUser) {
+    res.status(401).json({ error: "This token carries no identity. Sign in again." });
+    return;
+  }
   const userContext = tokenUser
     ? userContextFromStoredUser(tokenUser)
     : userContextFromHeaders({ get: (name) => req.header(name) });

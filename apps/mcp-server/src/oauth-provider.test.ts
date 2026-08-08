@@ -467,6 +467,61 @@ describe("CardstackOAuthProvider", () => {
       expect(new URL(captured.url!).origin).toBe("https://login.salesforce.com");
     });
   });
+  /**
+   * A4 — the MCP lane never re-checked membership, so removing someone was
+   * instant in Studio and a no-op here for up to thirty days. Both documents
+   * claimed the opposite, without distinguishing the lanes.
+   */
+  describe("revocation takes effect on the next call (A4)", () => {
+    async function connected() {
+      const { store, provider } = newProvider();
+      const client = await provider.clientsStore.registerClient!({
+        redirect_uris: ["https://claude.ai/cb"],
+        client_name: "Claude",
+      });
+      const sfState = await authorizeTo(provider, client, "https://claude.ai/cb");
+      const { redirect } = await provider.completeSalesforceCallback(sfState, "sf-code");
+      const code = new URL(redirect).searchParams.get("code")!;
+      const tokens = await provider.exchangeAuthorizationCode(client, code);
+      return { store, provider, client, tokens, userId: normalizeUserId("Dana@Example.com") };
+    }
+
+    /** The store has no delete for a membership; drop it at the state level. */
+    async function removeMembership(store: InMemoryConfigStore, userId: string) {
+      const state = await (store as unknown as { load(): Promise<Record<string, unknown>> }).load();
+      delete (state.memberships as Record<string, unknown>)[`${userId}::${WORKSPACE}`];
+    }
+
+    it("accepts the token while the membership stands", async () => {
+      const { provider, tokens } = await connected();
+      await expect(provider.verifyAccessToken(tokens.access_token)).resolves.toBeTruthy();
+    });
+
+    it("rejects the access token once the membership is gone", async () => {
+      const { store, provider, tokens, userId } = await connected();
+      await removeMembership(store, userId);
+      await expect(provider.verifyAccessToken(tokens.access_token)).rejects.toThrow(
+        /access to this workspace was removed/i,
+      );
+    });
+
+    it("refuses to refresh a token whose membership is gone", async () => {
+      const { store, provider, client, tokens, userId } = await connected();
+      await removeMembership(store, userId);
+      await expect(
+        provider.exchangeRefreshToken(client, tokens.refresh_token!),
+      ).rejects.toThrow(/removed/i);
+    });
+
+    it("rejects a token that carries no identity rather than defaulting (B1)", async () => {
+      const { store, provider, tokens } = await connected();
+      const record = (await store.kvGet("oauth-access", tokens.access_token)) as Record<string, unknown>;
+      await store.kvSet("oauth-access", tokens.access_token, { ...record, user: {} });
+      await expect(provider.verifyAccessToken(tokens.access_token)).rejects.toThrow(
+        /carries no identity/i,
+      );
+    });
+  });
 });
 
 function provider0() {
