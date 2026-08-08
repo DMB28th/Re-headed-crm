@@ -522,6 +522,102 @@ describe("CardstackOAuthProvider", () => {
       );
     });
   });
+  /**
+   * B5 — refresh tokens were returned unchanged forever, so a stolen one worked
+   * silently alongside the legitimate one and nothing would ever reveal it. We
+   * depend on Salesforce having reuse detection and did not have it ourselves.
+   *
+   * This concerns Cardstack's OWN bearer tokens. Nothing here touches the
+   * Salesforce grant.
+   */
+  describe("refresh-token rotation (B5)", () => {
+    async function connected() {
+      const { store, provider } = newProvider();
+      const client = await provider.clientsStore.registerClient!({
+        redirect_uris: ["https://claude.ai/cb"],
+        client_name: "Claude",
+      });
+      const sfState = await authorizeTo(provider, client, "https://claude.ai/cb");
+      const { redirect } = await provider.completeSalesforceCallback(sfState, "sf-code");
+      const code = new URL(redirect).searchParams.get("code")!;
+      const tokens = await provider.exchangeAuthorizationCode(client, code);
+      return { store, provider, client, tokens };
+    }
+
+    it("issues a NEW refresh token on every refresh", async () => {
+      const { provider, client, tokens } = await connected();
+      const first = await provider.exchangeRefreshToken(client, tokens.refresh_token!);
+      expect(first.refresh_token).not.toBe(tokens.refresh_token);
+      const second = await provider.exchangeRefreshToken(client, first.refresh_token!);
+      expect(second.refresh_token).not.toBe(first.refresh_token);
+    });
+
+    it("invalidates the old refresh token once rotated", async () => {
+      const { provider, client, tokens } = await connected();
+      await provider.exchangeRefreshToken(client, tokens.refresh_token!);
+      await expect(provider.exchangeRefreshToken(client, tokens.refresh_token!)).rejects.toThrow();
+    });
+
+    it("revokes the whole family when a rotated token is replayed", async () => {
+      const { provider, client, tokens } = await connected();
+      const rotated = await provider.exchangeRefreshToken(client, tokens.refresh_token!);
+
+      // The thief replays the token they captured.
+      await expect(provider.exchangeRefreshToken(client, tokens.refresh_token!)).rejects.toThrow(
+        /already used/i,
+      );
+      // The legitimate holder's current token is dead too — we cannot tell which
+      // party is which, so neither keeps the grant.
+      await expect(provider.exchangeRefreshToken(client, rotated.refresh_token!)).rejects.toThrow();
+    });
+
+    it("rotates a pre-rotation token normally on its first use", async () => {
+      // The migration case. A refresh token minted before families existed has
+      // no family record; treating that as reuse would revoke every live rep on
+      // deploy day.
+      const { store, provider, client, tokens } = await connected();
+      await store.kvDelete("oauth-token-family", `${normalizeUserId("Dana@Example.com")}::${client.client_id}`);
+
+      const refreshed = await provider.exchangeRefreshToken(client, tokens.refresh_token!);
+      expect(refreshed.access_token).toMatch(/^csa_/);
+      expect(refreshed.refresh_token).not.toBe(tokens.refresh_token);
+    });
+
+    it("keeps the grant's original creation time across refreshes", async () => {
+      const { store, provider, client, tokens } = await connected();
+      const key = `${normalizeUserId("Dana@Example.com")}::${client.client_id}`;
+      const before = (await store.kvGet("oauth-token-family", key)) as { createdAt: string };
+      await provider.exchangeRefreshToken(client, tokens.refresh_token!);
+      const after = (await store.kvGet("oauth-token-family", key)) as { createdAt: string };
+      // Otherwise the 90-day ceiling would reset on every refresh and never bite.
+      expect(after.createdAt).toBe(before.createdAt);
+    });
+
+    it("revoking an access token kills the refresh grant behind it", async () => {
+      const { provider, client, tokens } = await connected();
+      await provider.revokeToken(client, { token: tokens.access_token });
+      await expect(provider.exchangeRefreshToken(client, tokens.refresh_token!)).rejects.toThrow();
+    });
+
+    it("keeps two clients' grants independent", async () => {
+      const { provider, client, tokens } = await connected();
+      const other = await provider.clientsStore.registerClient!({
+        redirect_uris: ["https://claude.ai/other"],
+        client_name: "Claude Desktop",
+      });
+      const sfState = await authorizeTo(provider, other, "https://claude.ai/other");
+      const { redirect } = await provider.completeSalesforceCallback(sfState, "sf-code");
+      const otherTokens = await provider.exchangeAuthorizationCode(
+        other,
+        new URL(redirect).searchParams.get("code")!,
+      );
+
+      await provider.revokeToken(client, { token: tokens.refresh_token! });
+      await expect(
+        provider.exchangeRefreshToken(other, otherTokens.refresh_token!),
+      ).resolves.toBeTruthy();
+    });
+  });
 });
 
 function provider0() {

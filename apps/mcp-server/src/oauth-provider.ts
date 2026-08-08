@@ -44,6 +44,13 @@ import {
 import { resolveSignIn, type AdminConfigStore, type UserConnectionState } from "@cardstack/config-store";
 import { signState, verifyState } from "./confirm-token.js";
 import { isFirstPartyClient, renderLoginHostPicker } from "./consent.js";
+import {
+  decideRotation,
+  familyId,
+  FAMILY_MAX_AGE_MS,
+  RETIRED_MEMORY_MS,
+  type TokenFamily,
+} from "./token-family.js";
 
 const NS = {
   clients: "oauth-clients",
@@ -55,6 +62,10 @@ const NS = {
   codes: "oauth-codes",
   access: "oauth-access",
   refresh: "oauth-refresh",
+  /** One (account, client) grant, and which refresh token is live for it. */
+  family: "oauth-token-family",
+  /** Rotated-away refresh tokens, kept only long enough to spot a replay. */
+  retired: "oauth-token-retired",
 } as const;
 
 const ACCESS_TTL_MS = 60 * 60 * 1000; // 1h — claude.ai refreshes
@@ -596,6 +607,11 @@ export class CardstackOAuthProvider implements OAuthServerProvider {
       | unknown as StoredToken
       | undefined;
     if (!stored || stored.clientId !== client.client_id) {
+      // Rotation DELETES the superseded token, so a replay arrives here as
+      // "unknown" — and rejecting it as merely unknown is the whole reuse hole:
+      // the thief is turned away, the legitimate holder keeps going, and nobody
+      // ever learns the token leaked. Check the retirement record first.
+      await this.detectReplay(client.client_id, refreshToken);
       throw new InvalidGrantError("Unknown or expired refresh token.");
     }
     // Checked here too: otherwise a removed user refreshes their way back in
@@ -605,15 +621,73 @@ export class CardstackOAuthProvider implements OAuthServerProvider {
     } catch {
       throw new InvalidGrantError("Your access to this workspace was removed. Sign in again.");
     }
+    await this.guardRotation(client.client_id, stored.user, refreshToken);
     return this.mintTokens(client.client_id, stored.user, refreshToken);
   }
 
+  /**
+   * Refuse a replayed or over-age refresh grant (B5).
+   *
+   * A token minted before rotation existed has no family record and is rotated
+   * normally on first use. Treating it as reuse would revoke every live rep the
+   * moment this deploys, which is the one outcome this change must not have.
+   */
+  /**
+   * A refresh token we retired, presented again, is proof that two parties hold
+   * it. We cannot tell which is the thief, so the grant ends for both.
+   */
+  private async detectReplay(clientId: string, presented: string): Promise<void> {
+    const retired = (await this.deps.store.kvGet(NS.retired, presented)) as
+      | { userId?: string; clientId?: string }
+      | undefined;
+    if (!retired?.userId || retired.clientId !== clientId) return;
+    await this.revokeFamily(retired.userId, clientId);
+    throw new InvalidGrantError(
+      "That refresh token was already used. For safety every session for this app was ended — sign in again.",
+    );
+  }
+
+  private async guardRotation(
+    clientId: string,
+    user: StoredUser,
+    presented: string,
+  ): Promise<void> {
+    const { store } = this.deps;
+    const id = familyId(user.userId, clientId);
+    const [family, retired] = await Promise.all([
+      store.kvGet(NS.family, id) as unknown as Promise<TokenFamily | undefined>,
+      store.kvGet(NS.retired, presented),
+    ]);
+    const decision = decideRotation(family, presented, !!retired);
+    if (decision.reuseDetected) {
+      // We cannot tell the legitimate holder from the thief, so neither keeps it.
+      await this.revokeFamily(user.userId, clientId);
+      await store.kvDelete(NS.refresh, presented);
+      throw new InvalidGrantError(
+        "That refresh token was already used. For safety every session for this app was ended — sign in again.",
+      );
+    }
+    if (decision.expired) {
+      await this.revokeFamily(user.userId, clientId);
+      throw new InvalidGrantError("This authorization has expired. Sign in again.");
+    }
+  }
+
+  /**
+   * Issue an access token and a refresh token, retiring the presented one.
+   *
+   * Always rotates (B5). Previously the same refresh token came back forever,
+   * so a stolen one worked silently alongside the legitimate one and nothing
+   * would ever reveal the theft.
+   */
   private async mintTokens(
     clientId: string,
     user: StoredUser,
-    existingRefresh?: string,
+    previousRefresh?: string,
   ): Promise<OAuthTokens> {
     const { store } = this.deps;
+    const id = familyId(user.userId, clientId);
+
     const accessToken = rand("csa");
     const accessExpiry = inMs(ACCESS_TTL_MS);
     await store.kvSet(
@@ -622,22 +696,60 @@ export class CardstackOAuthProvider implements OAuthServerProvider {
       { clientId, user, expiresAt: accessExpiry } satisfies StoredToken as unknown as Record<string, unknown>,
       accessExpiry,
     );
-    let refreshToken = existingRefresh;
-    if (!refreshToken) {
-      refreshToken = rand("csr");
+
+    const refreshToken = rand("csr");
+    await store.kvSet(
+      NS.refresh,
+      refreshToken,
+      { clientId, user, expiresAt: inMs(REFRESH_TTL_MS) } satisfies StoredToken as unknown as Record<string, unknown>,
+      inMs(REFRESH_TTL_MS),
+    );
+
+    if (previousRefresh) {
+      // Retire before the family points elsewhere, so a replay in the gap is
+      // still recognized rather than merely unknown.
       await store.kvSet(
-        NS.refresh,
-        refreshToken,
-        { clientId, user, expiresAt: inMs(REFRESH_TTL_MS) } satisfies StoredToken as unknown as Record<string, unknown>,
-        inMs(REFRESH_TTL_MS),
+        NS.retired,
+        previousRefresh,
+        { familyId: id, userId: user.userId, clientId },
+        inMs(RETIRED_MEMORY_MS),
       );
+      await store.kvDelete(NS.refresh, previousRefresh);
     }
+
+    const existing = (await store.kvGet(NS.family, id)) as unknown as TokenFamily | undefined;
+    const family: TokenFamily = {
+      familyId: id,
+      // Keep the original creation time: the ceiling is measured from when the
+      // grant began, not from the last time it was refreshed.
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
+      current: refreshToken,
+    };
+    await store.kvSet(
+      NS.family,
+      id,
+      family as unknown as Record<string, unknown>,
+      new Date(Date.parse(family.createdAt) + FAMILY_MAX_AGE_MS).toISOString(),
+    );
+
     return {
       access_token: accessToken,
       token_type: "bearer",
       expires_in: Math.floor(ACCESS_TTL_MS / 1000),
       refresh_token: refreshToken,
     };
+  }
+
+  /** Kill every token in a grant. Used on reuse, expiry, and revocation. */
+  private async revokeFamily(userId: string, clientId: string): Promise<void> {
+    const { store } = this.deps;
+    const id = familyId(userId, clientId);
+    const family = (await store.kvGet(NS.family, id)) as unknown as TokenFamily | undefined;
+    if (family?.current) await store.kvDelete(NS.refresh, family.current);
+    await store.kvDelete(NS.family, id);
+    // Access tokens are short-lived and not enumerable by family; the hour they
+    // may survive is the accepted cost of staying stateless. The refresh grant
+    // — the part that renews indefinitely — dies immediately.
   }
 
   async verifyAccessToken(token: string): Promise<AuthInfo> {
@@ -678,6 +790,11 @@ export class CardstackOAuthProvider implements OAuthServerProvider {
     }
   }
 
+  /**
+   * Revoking either token kills the whole grant, not just the value presented.
+   * Deleting an access token while its refresh token lives on is not a
+   * revocation — the client mints a replacement on its next poll.
+   */
   async revokeToken(
     client: OAuthClientInformationFull,
     request: OAuthTokenRevocationRequest,
@@ -685,7 +802,9 @@ export class CardstackOAuthProvider implements OAuthServerProvider {
     const { store } = this.deps;
     for (const ns of [NS.access, NS.refresh]) {
       const stored = (await store.kvGet(ns, request.token)) as unknown as StoredToken | undefined;
-      if (stored && stored.clientId === client.client_id) await store.kvDelete(ns, request.token);
+      if (!stored || stored.clientId !== client.client_id) continue;
+      await store.kvDelete(ns, request.token);
+      await this.revokeFamily(stored.user.userId, client.client_id);
     }
   }
 }
