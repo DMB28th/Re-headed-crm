@@ -43,6 +43,22 @@ describe("Studio session", () => {
     expect(await readStudioSession(token, [], now)).toBeUndefined();
   });
 
+  // The failure mode a bare "returns undefined" test does NOT catch: falling
+  // back to a constant is still "closed" against a cookie signed with a
+  // different key, and wide open to anyone who knows the constant. So sign with
+  // the constants a fallback would plausibly use and require each be refused.
+  // "" is not in this list because HMAC refuses a zero-length key outright, so
+  // an empty string could never BE a fallback — sessionSigningSecrets filters
+  // blanks out, covered by "reports no secret at all" above.
+  it.each(["cardstack", "cardstack-studio", "development", "secret", "changeme"])(
+    "refuses a cookie signed with %p when no secret is configured",
+    async (guess) => {
+      const forged = await createStudioSession("session-123", guess, now);
+      expect(await readStudioSession(forged, [], now)).toBeUndefined();
+      expect(await readStudioSession(forged, sessionSigningSecrets({}), now)).toBeUndefined();
+    },
+  );
+
   it("signs with the real key when both are configured", () => {
     expect(
       sessionSigningSecrets({ CARDSTACK_SESSION_SECRET: "real", STUDIO_SHARED_SECRET: "shared" })[0],
