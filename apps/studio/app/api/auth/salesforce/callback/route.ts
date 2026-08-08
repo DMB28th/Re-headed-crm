@@ -91,7 +91,13 @@ export async function GET(req: Request) {
       new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString(),
     );
 
-    const response = NextResponse.redirect(new URL(safeNext(pending.next), origin));
+    // Belt and braces on A6: safeNext rejects the authority-introducing
+    // prefixes, and this re-checks the RESOLVED origin so a future encoding
+    // trick that slips past the string check still cannot leave this origin.
+    const target = new URL(safeNext(pending.next), origin);
+    const response = NextResponse.redirect(
+      target.origin === new URL(origin).origin ? target : new URL("/", origin),
+    );
     response.cookies.set(
       STUDIO_SESSION_COOKIE,
       await createStudioSession(sessionId, secret),
