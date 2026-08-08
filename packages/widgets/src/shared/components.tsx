@@ -156,9 +156,20 @@ interface ErrorCardHost {
 
 /**
  * Typed tool-failure card (design 1e). "unauthorized" gets the re-auth
- * treatment ("{CRM} connection expired" + "Reconnect {CRM}"); everything else
- * gets the error message + Retry re-invoking the original call. Never says
- * "Nothing was written." — that copy is reserved for write failures.
+ * treatment; everything else gets the error message + Retry re-invoking the
+ * original call. Never says "Nothing was written." — that copy is reserved for
+ * write failures.
+ *
+ * The two unauthorized cases are NOT the same (finding C1), and the server
+ * decides which this is — the widget never guesses:
+ *
+ * - `user` — the reader's own CRM authorization ended. Only they can fix it,
+ *   by reconnecting Cardstack in their chat app. The old card sent them to
+ *   Studio to "ask the admin", which fails twice: an admin cannot reconnect
+ *   someone else's per-user token, and Studio refuses non-admins a session, so
+ *   the link dead-ends after four redirects.
+ * - `admin` — the workspace's shared connection is broken. Naming the admin is
+ *   the point; the reader may well not be one.
  */
 export function ErrorCard<P>({
   payload,
@@ -185,22 +196,67 @@ export function ErrorCard<P>({
   };
 
   if (payload.reason === "unauthorized") {
+    // Default to the rep's own case: it is by far the common one, and it is the
+    // one where sending them to an admin wastes their time.
+    const kind = payload.reauth?.kind ?? "user";
+    const who = payload.reauth?.adminName;
+
+    if (kind === "admin") {
+      return (
+        <MessageCard
+          title={`${crm} isn't connected`}
+          body={
+            who
+              ? `${payload.message} ${who} can reconnect it in Cardstack Studio.`
+              : `${payload.message} A workspace admin can reconnect it in Cardstack Studio.`
+          }
+          action={
+            <button
+              type="button"
+              className="cs-btn cs-btn--primary"
+              onClick={() =>
+                host?.sendFollowup?.(
+                  who
+                    ? `Cardstack's ${crm} connection needs reconnecting — ask ${who} to do it in Cardstack Studio.`
+                    : `Cardstack's ${crm} connection needs reconnecting — a workspace admin can do it in Cardstack Studio.`,
+                )
+              }
+            >
+              Tell me who to ask
+            </button>
+          }
+        />
+      );
+    }
+
+    const url = payload.reauth?.url;
     return (
       <MessageCard
-        title={`${crm} connection expired`}
-        body={payload.message}
+        title={`Reconnect your ${crm} account`}
+        body={`${payload.message} Nobody else can do this for you — it authorizes Cardstack as you.`}
         action={
-          <button
-            type="button"
-            className="cs-btn cs-btn--primary"
-            onClick={() =>
-              host?.sendFollowup?.(
-                `My ${crm} connection expired — please ask the admin to reconnect ${crm} in Cardstack Studio.`,
-              )
-            }
-          >
-            Reconnect {crm}
-          </button>
+          url ? (
+            <a
+              className="cs-btn cs-btn--primary"
+              href={url}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Reconnect {crm}
+            </a>
+          ) : (
+            <button
+              type="button"
+              className="cs-btn cs-btn--primary"
+              onClick={() =>
+                host?.sendFollowup?.(
+                  `My ${crm} authorization expired. How do I reconnect the Cardstack connector in this app?`,
+                )
+              }
+            >
+              How do I reconnect?
+            </button>
+          )
         }
       />
     );

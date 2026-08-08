@@ -336,13 +336,15 @@ app.all("/mcp", async (req, res) => {
       };
     } else {
       const studioBase = (process.env.CARDSTACK_STUDIO_URL ?? "http://localhost:3002").replace(/\/$/, "");
-      // Point at the Studio connections page (a GET-able page), not the OAuth
-      // start endpoint — that is now POST-only so a rep clicking a link can't
-      // trigger it. The page's "Connect my Salesforce user" button POSTs.
+      // C1: this branch already knows whose problem it is, and the card used to
+      // throw that away. A rep signed in through a chat host owns their own
+      // per-user grant; the Studio link only helps when the WORKSPACE's shared
+      // connection is what broke, and only an admin can follow it anyway.
       runtimeAuth = {
         missingUserAuth: true,
         crmLabel: "Salesforce",
-        connectUrl: `${studioBase}/connections`,
+        reauthKind: "user",
+        connectUrl: `${studioBase}/me/connection`,
       };
     }
   }

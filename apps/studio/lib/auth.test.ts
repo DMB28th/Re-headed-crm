@@ -157,3 +157,46 @@ describe("resolveStudioSession", () => {
     expect(expiry - NOW).toBe(DAY);
   });
 });
+
+describe("getSelfServiceIdentity's allowance", () => {
+  /**
+   * C1: /me/connection is the one page a member may open. The allowance is an
+   * explicit option on the choke point, never a default, so a route that forgets
+   * to ask for it gets the admin-only behaviour.
+   */
+  beforeEach(async () => {
+    await seed();
+    await store.setMembership({
+      accountId: "ada@example.com",
+      workspaceId: "w1",
+      role: "member",
+      createdAt: new Date(NOW).toISOString(),
+    });
+  });
+
+  it("still refuses a member by default", async () => {
+    expect(await resolveStudioSession(store, "sid", NOW)).toBeNull();
+  });
+
+  it("admits a member when the caller explicitly allows it", async () => {
+    const identity = await resolveStudioSession(store, "sid", NOW, { allowMembers: true });
+    expect(identity).toMatchObject({ role: "member", account: { id: "ada@example.com" } });
+  });
+
+  it("still refuses a member whose membership was removed entirely", async () => {
+    const record = await store.kvGet(STUDIO_SESSION_NS, "sid");
+    const removed = new InMemoryConfigStore();
+    await removed.kvSet(STUDIO_SESSION_NS, "sid", record as Record<string, unknown>);
+    expect(await resolveStudioSession(removed, "sid", NOW, { allowMembers: true })).toBeNull();
+  });
+
+  it("still refuses an idle member session", async () => {
+    await store.kvSet(
+      STUDIO_SESSION_NS,
+      "sid",
+      { accountId: "ada@example.com", workspaceId: "w1", role: "member", createdAt: new Date(NOW - 10 * DAY).toISOString(), lastSeenAt: new Date(NOW - 5 * DAY).toISOString() },
+      new Date(NOW + DAY).toISOString(),
+    );
+    expect(await resolveStudioSession(store, "sid", NOW, { allowMembers: true })).toBeNull();
+  });
+});

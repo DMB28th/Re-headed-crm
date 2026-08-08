@@ -92,11 +92,19 @@ export interface ServerDeps {
   tenantId: string;
   /** Authenticated app user. Defaults to the demo rep for scripts/tests. */
   userContext?: UserContext;
-  /** Runtime auth gate for CRMs that need the product user's own OAuth token. */
+  /**
+   * Runtime auth gate for CRMs that need the product user's own OAuth token.
+   *
+   * `reauthKind` distinguishes the two cases the card used to conflate (C1):
+   * the REP's own grant is missing (only they can fix it, in their chat app) or
+   * the WORKSPACE's shared connection is broken (only an admin can, in Studio).
+   */
   runtimeAuth?: {
     missingUserAuth?: boolean;
     crmLabel: string;
     connectUrl?: string;
+    reauthKind?: "user" | "admin";
+    adminName?: string;
   };
 }
 
@@ -365,6 +373,18 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       crmLabel: connection?.crm === "salesforce" ? "Salesforce" : "HubSpot",
       // Retry only re-invokes reads; failed writes go back through the diff.
       ...(call?.readOnly ? { retry: { tool: call.tool, args: call.args ?? {} } } : {}),
+      // C1: whose problem this is, decided here rather than guessed by the card.
+      ...(reason === "unauthorized"
+        ? {
+            reauth: {
+              kind: deps.runtimeAuth?.reauthKind ?? "user",
+              // The URL differs by case, and that IS the fix: a rep goes to the
+              // page they can actually open, an admin to Connections.
+              ...(deps.runtimeAuth?.connectUrl ? { url: deps.runtimeAuth.connectUrl } : {}),
+              ...(deps.runtimeAuth?.adminName ? { adminName: deps.runtimeAuth.adminName } : {}),
+            },
+          }
+        : {}),
     };
     return {
       content: [{ type: "text", text: message }],

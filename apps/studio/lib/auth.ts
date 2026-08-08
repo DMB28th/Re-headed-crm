@@ -81,6 +81,24 @@ export async function resolveSessionId(sessionId: string): Promise<StudioIdentit
 }
 
 /**
+ * The one identity resolution that admits members: `/me/connection`, where a
+ * rep manages their OWN CRM authorization and nothing else.
+ *
+ * Written as a separate entry point rather than a flag on `resolveStudioSession`
+ * on purpose. The choke point stays absolute — there is no parameter that makes
+ * it let a member through — so this is a decision each caller makes explicitly
+ * and a reviewer can find by grepping for one name.
+ */
+export async function getSelfServiceIdentity(): Promise<StudioIdentity | null> {
+  const secrets = sessionSigningSecrets();
+  if (secrets.length === 0) return null;
+  const jar = await cookies();
+  const sessionId = await readStudioSession(jar.get(STUDIO_SESSION_COOKIE)?.value, secrets);
+  if (!sessionId) return null;
+  return resolveStudioSession(await getStore(), sessionId, Date.now(), { allowMembers: true });
+}
+
+/**
  * Store-level session resolution — the choke point itself, taking its store so
  * it can be tested without a running Next.js.
  *
@@ -93,6 +111,8 @@ export async function resolveStudioSession(
   store: Pick<AdminConfigStore, "kvGet" | "kvSet" | "kvDelete" | "getAccount" | "getWorkspace" | "getMembership">,
   sessionId: string,
   now: number = Date.now(),
+  /** Set ONLY by `getSelfServiceIdentity`. See its comment. */
+  options: { allowMembers?: boolean } = {},
 ): Promise<StudioIdentity | null> {
   const record = (await store.kvGet(STUDIO_SESSION_NS, sessionId)) as
     | StudioSessionRecord
@@ -120,7 +140,7 @@ export async function resolveStudioSession(
   // 3. Studio is for workspace admins. A member holds no Studio session at all
   //    — not a read-only one — so this is where a demotion takes effect, on the
   //    next request rather than in fourteen days.
-  if (membership.role !== "admin") return null;
+  if (membership.role !== "admin" && !options.allowMembers) return null;
 
   // 4. Touch, throttled. The absolute expiry is recomputed from createdAt so a
   //    refresh can never push the session past its 14-day cap.
