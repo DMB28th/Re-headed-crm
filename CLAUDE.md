@@ -49,6 +49,23 @@ Full model, env vars, and migration notes: **docs/accounts-and-workspaces.md**.
 Cross-tenant isolation is asserted in
 `packages/config-store/src/tenant-isolation.test.ts` — keep it passing.
 
+**The two lanes are separated, and each has ONE authorization choke point.**
+Studio: `resolveStudioSession` (`apps/studio/lib/auth.ts`) refuses a non-admin
+or idle session, so members hold no Studio session at all and a demotion takes
+effect on the next request. The single exception is `/me/connection`, reached
+via `getSelfServiceIdentity` — grep that name to find every place a member is
+admitted. MCP: `verifyAccessToken` re-reads the membership on every call, so
+removal takes effect on the next tool call rather than in 30 days. Do not add a
+`requireAdmin()` helper alongside these; per-route checks are the failure mode
+the choke points exist to prevent.
+
+An `/authorize` from a client outside `CARDSTACK_TRUSTED_CLIENT_ORIGINS` stops
+for consent AFTER the Salesforce leg, where the signer and the redirect target
+are both known. Never move that earlier, and never mint an authorization code
+before it. Findings and design:
+**docs/superpowers/specs/2026-08-08-auth-review.md** and
+**docs/superpowers/specs/2026-08-08-auth-redesign.md**.
+
 ## Hard rules
 
 1. **Layout config schema changes** require updating the zod schema in
