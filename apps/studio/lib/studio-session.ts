@@ -38,16 +38,33 @@ export interface StudioSessionRecord {
 }
 
 /**
- * Secret the cookie is signed with. `CARDSTACK_SESSION_SECRET` is the real one;
- * `STUDIO_SHARED_SECRET` is accepted so deployments that already set it keep
- * working through this change. Undefined means auth is misconfigured — callers
- * must fail closed and say so, never fall back to a constant (a predictable
- * signing key would let anyone mint a session for any account).
+ * Secrets the cookie may be verified with. **Signing always uses the first.**
+ *
+ * `CARDSTACK_SESSION_SECRET` is the real one. `STUDIO_SHARED_SECRET` is still
+ * ACCEPTED FOR VERIFICATION so that cookies signed before a deployment set the
+ * real key keep working for the length of one session lifetime. Once the real
+ * key IS set it sorts first, so every newly minted cookie is bound to it and the
+ * shared secret decays into a verify-only key. A deployment that has not set the
+ * real key yet still signs with the shared secret, because the alternative is
+ * refusing to serve — that is the state the migration exists to leave.
+ *
+ * That distinction is the whole point. `STUDIO_SHARED_SECRET` is also the
+ * human-typed access key on the login page: a value transcribed into chat, a
+ * ticket, a screenshot. Using it as an HMAC key means anyone who ever saw it
+ * can forge a session cookie for any session id. Once the migration window has
+ * elapsed it must be dropped from this list entirely (see
+ * docs/superpowers/specs/2026-08-08-auth-redesign.md, section 5 step 5).
+ *
+ * An empty list means auth is misconfigured — callers must fail closed and say
+ * so, never fall back to a constant. A predictable signing key would let anyone
+ * mint a session for any account.
  */
-export function sessionSigningSecret(
+export function sessionSigningSecrets(
   env: Record<string, string | undefined> = process.env,
-): string | undefined {
-  return env.CARDSTACK_SESSION_SECRET?.trim() || env.STUDIO_SHARED_SECRET?.trim() || undefined;
+): string[] {
+  return [env.CARDSTACK_SESSION_SECRET?.trim(), env.STUDIO_SHARED_SECRET?.trim()].filter(
+    (value): value is string => !!value,
+  );
 }
 
 function bytes(value: string): ArrayBuffer {
@@ -103,18 +120,24 @@ export async function createStudioSession(
  */
 export async function readStudioSession(
   token: string | undefined,
-  secret: string,
+  secret: string | string[],
   now = Date.now(),
 ): Promise<string | undefined> {
   if (!token) return undefined;
+  const secrets = (Array.isArray(secret) ? secret : [secret]).filter(Boolean);
+  if (secrets.length === 0) return undefined; // Misconfigured: fail closed.
   const parts = token.split(".");
   if (parts.length !== 3) return undefined;
   const [sessionId, issuedAt, supplied] = parts;
   if (!sessionId || !issuedAt || !supplied || !/^\d+$/.test(issuedAt)) return undefined;
   const age = Math.floor(now / 1000) - Number(issuedAt);
+  // Cheap checks first: an expired or malformed cookie short-circuits before
+  // any HMAC work, so a retired secret costs nothing on the common path.
   if (age < 0 || age > SESSION_MAX_AGE_SECONDS) return undefined;
-  if (!equal(supplied, await signature(secret, sessionId, issuedAt))) return undefined;
-  return sessionId;
+  for (const candidate of secrets) {
+    if (equal(supplied, await signature(candidate, sessionId, issuedAt))) return sessionId;
+  }
+  return undefined;
 }
 
 export function studioSessionCookieOptions() {

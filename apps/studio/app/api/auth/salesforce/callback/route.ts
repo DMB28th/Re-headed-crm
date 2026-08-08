@@ -20,7 +20,7 @@ import {
   createStudioSession,
   newSessionId,
   SESSION_TTL_SECONDS,
-  sessionSigningSecret,
+  sessionSigningSecrets,
   STUDIO_SESSION_COOKIE,
   STUDIO_SESSION_NS,
   studioSessionCookieOptions,
@@ -42,8 +42,9 @@ export async function GET(req: Request) {
   const state = url.searchParams.get("state");
   if (!code || !state) return fail("Salesforce sign-in was missing its code or state.");
 
-  const secret = sessionSigningSecret();
-  if (!secret) {
+  const secrets = sessionSigningSecrets();
+  const signingSecret = secrets[0];
+  if (!signingSecret) {
     return fail("Sign-in is not configured on this deployment: CARDSTACK_SESSION_SECRET is unset.");
   }
   const app = cardstackSalesforceLoginApp();
@@ -100,7 +101,7 @@ export async function GET(req: Request) {
     );
     response.cookies.set(
       STUDIO_SESSION_COOKIE,
-      await createStudioSession(sessionId, secret),
+      await createStudioSession(sessionId, signingSecret),
       studioSessionCookieOptions(),
     );
     return response;

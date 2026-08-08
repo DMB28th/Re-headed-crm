@@ -32,7 +32,7 @@ import {
 import { getStore } from "./backend";
 import {
   readStudioSession,
-  sessionSigningSecret,
+  sessionSigningSecrets,
   STUDIO_SESSION_COOKIE,
   STUDIO_SESSION_NS,
   type StudioSessionRecord,
@@ -53,10 +53,10 @@ const isDev = (): boolean => process.env.NODE_ENV !== "production";
  * while the cookie is still cryptographically valid.
  */
 export async function getStudioIdentity(): Promise<StudioIdentity | null> {
-  const secret = sessionSigningSecret();
-  if (!secret) return null;
+  const secrets = sessionSigningSecrets();
+  if (secrets.length === 0) return null;
   const jar = await cookies();
-  const sessionId = await readStudioSession(jar.get(STUDIO_SESSION_COOKIE)?.value, secret);
+  const sessionId = await readStudioSession(jar.get(STUDIO_SESSION_COOKIE)?.value, secrets);
   if (!sessionId) return null;
   return resolveSessionId(sessionId);
 }

@@ -4,7 +4,7 @@ import {
   expiredSessionCookieOptions,
   newSessionId,
   readStudioSession,
-  sessionSigningSecret,
+  sessionSigningSecrets,
   STUDIO_SESSION_NS,
   STUDIO_SESSION_COOKIE,
   studioSessionCookieOptions,
@@ -13,7 +13,7 @@ import { getStore, LEGACY_TENANT_ID } from "../../../lib/backend";
 import { parseSalesforceIdentityUrl } from "@cardstack/crm-adapters";
 
 export async function POST(req: Request) {
-  const signingSecret = sessionSigningSecret(process.env);
+  const signingSecret = sessionSigningSecrets(process.env)[0];
   const accessKey = process.env.STUDIO_SHARED_SECRET?.trim();
   if (!signingSecret || !accessKey) {
     return NextResponse.json(
@@ -89,16 +89,17 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const secret = sessionSigningSecret(process.env);
+  const secrets = sessionSigningSecrets(process.env);
   const cookie = req.headers
     .get("cookie")
     ?.split(";")
     .map((part) => part.trim())
     .find((part) => part.startsWith(`${STUDIO_SESSION_COOKIE}=`))
     ?.slice(STUDIO_SESSION_COOKIE.length + 1);
-  const sessionId = secret
-    ? await readStudioSession(cookie ? decodeURIComponent(cookie) : undefined, secret)
-    : undefined;
+  const sessionId =
+    secrets.length > 0
+      ? await readStudioSession(cookie ? decodeURIComponent(cookie) : undefined, secrets)
+      : undefined;
   if (sessionId) await (await getStore()).kvDelete(STUDIO_SESSION_NS, sessionId);
   const response = NextResponse.json({ ok: true });
   response.cookies.set(STUDIO_SESSION_COOKIE, "", {

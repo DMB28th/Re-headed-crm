@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
   readStudioSession,
-  sessionSigningSecret,
+  sessionSigningSecrets,
   STUDIO_SESSION_COOKIE,
 } from "./lib/studio-session";
 
@@ -16,11 +16,11 @@ const isPublic = (path: string): boolean =>
   PUBLIC_PATHS.has(path) || path.startsWith("/api/auth/") || path.includes("/oauth/callback");
 
 export async function middleware(req: NextRequest) {
-  const secret = sessionSigningSecret(process.env);
+  const secrets = sessionSigningSecrets(process.env);
   const path = req.nextUrl.pathname;
   if (isPublic(path)) return NextResponse.next();
 
-  if (!secret) {
+  if (secrets.length === 0) {
     if (process.env.NODE_ENV !== "production") return NextResponse.next();
     return NextResponse.json(
       { error: "Studio is locked because its session signing secret is not configured." },
@@ -30,7 +30,7 @@ export async function middleware(req: NextRequest) {
 
   const sessionId = await readStudioSession(
     req.cookies.get(STUDIO_SESSION_COOKIE)?.value,
-    secret,
+    secrets,
   );
   if (sessionId) return NextResponse.next();
   if (path.startsWith("/api/")) {
