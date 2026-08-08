@@ -1,20 +1,36 @@
 /** Studio home (design 6b): object cards with inline status, recent publishes. */
 import Link from "next/link";
 import { getAdapter, getStore } from "../lib/backend";
-import { getUserContext } from "../lib/auth";
+import { getStudioIdentity, getUserContext, userContextFor } from "../lib/auth";
 import { AddObjectCard } from "../components/add-object-card";
 import { NoConnection } from "../components/no-connection";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const { tenantId } = await getUserContext();
+  const identity = await getStudioIdentity();
+  const { tenantId } = identity ? userContextFor(identity) : await getUserContext();
   const store = await getStore();
-  const adapter = await getAdapter(tenantId);
   const connection = await store.getConnection(tenantId);
   if (connection.status !== "connected") {
-    return <NoConnection />;
+    // "Never connected" is onboarding, not an error, and it needs different
+    // copy from "was connected, isn't now" — the second promises that layouts
+    // come back, which is a lie to a brand-new workspace.
+    const everConnected = !!(await store.tenantConfigCrm(tenantId).catch(() => undefined));
+    const others = identity
+      ? (await store.listMembershipsForAccount(identity.account.id).catch(() => [])).filter(
+          (m) => m.workspaceId !== tenantId,
+        ).length
+      : 0;
+    return (
+      <NoConnection
+        everConnected={everConnected}
+        otherWorkspaces={others}
+        {...(identity ? { workspaceName: identity.workspace.name } : {})}
+      />
+    );
   }
+  const adapter = await getAdapter(tenantId);
 
   // Real portal facts; null = unknown — the copy drops the number, never invents one.
   let userCount: number | null = null;

@@ -8,6 +8,7 @@
  */
 import { NextResponse } from "next/server";
 import {
+  describeSalesforceAuthError,
   exchangeSalesforceAuthorizationCode,
   cardstackSalesforceLoginApp,
   fetchSalesforceSignerIdentity,
@@ -38,7 +39,16 @@ export async function GET(req: Request) {
   };
 
   const oauthError = url.searchParams.get("error_description") ?? url.searchParams.get("error");
-  if (oauthError) return fail(oauthError);
+  if (oauthError) {
+    // Self-signup's most common blocker is org policy, not anything Cardstack
+    // did. Hand over the exact request to make instead of an error code.
+    return fail(
+      describeSalesforceAuthError(oauthError, {
+        name: "Cardstack",
+        clientId: cardstackSalesforceLoginApp()?.clientId,
+      }).message,
+    );
+  }
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   if (!code || !state) return fail("Salesforce sign-in was missing its code or state.");

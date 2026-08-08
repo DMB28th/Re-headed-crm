@@ -16,6 +16,7 @@ import { mcpAuthRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
 import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
 import {
   cardstackSalesforceLoginApp,
+  describeSalesforceAuthError,
   createAdapterForConnection,
   createDevSalesforceAdapter,
   devSalesforceOrg,
@@ -44,10 +45,21 @@ import { ConfigPreferenceStore } from "./config/preferences.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
 
-/** Sign-in failures are shown to a rep in a browser tab, so escape the cause. */
+/**
+ * Sign-in failures are shown to a rep in a browser tab, so escape the cause —
+ * and translate Salesforce's policy refusals, which are the ones a rep can
+ * actually do something about (by asking the right person for the right thing).
+ */
 function renderSignInFailure(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return `<h3>Cardstack sign-in failed</h3><p>${escapeHtml(message)}</p><p>Close this tab and try connecting again from your chat app.</p>`;
+  const raw = error instanceof Error ? error.message : String(error);
+  const guidance = describeSalesforceAuthError(raw, {
+    name: "Cardstack",
+    clientId: cardstackSalesforceLoginApp()?.clientId,
+  });
+  const next = guidance.needsSalesforceAdmin
+    ? "Once that is done, connect Cardstack again from your chat app."
+    : "Close this tab and try connecting again from your chat app.";
+  return `<h3>Cardstack sign-in failed</h3><p>${escapeHtml(guidance.message)}</p><p>${escapeHtml(next)}</p>`;
 }
 
 // Durable-ish state shared across stateless requests. Config comes from the
