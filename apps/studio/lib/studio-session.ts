@@ -23,18 +23,51 @@
 const SESSION_PREFIX = "cardstack-studio";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14; // 14d; KV expiry matches.
 
+/**
+ * Idle cutoff, enforced on the KV record rather than the cookie.
+ *
+ * The absolute cap above deliberately does NOT slide: `issuedAt` is inside the
+ * HMAC, so a cookie can never be extended indefinitely. That is the property
+ * worth keeping, and it is also why there was no idle timeout at all — an admin
+ * session on a laptop left open stayed live for the full fourteen days. This
+ * adds the missing axis without touching the cookie format.
+ */
+const IDLE_TIMEOUT_SECONDS = 60 * 60 * 24 * 3; // 3d of no requests ends a session.
+
+/**
+ * How stale `lastSeenAt` may get before a request refreshes it. Writing on
+ * every request would be a store write on every request; the effective idle
+ * window is therefore IDLE_TIMEOUT_SECONDS plus this, which is the accepted
+ * imprecision (see the redesign spec, section 8.4).
+ */
+const LAST_SEEN_THROTTLE_SECONDS = 5 * 60;
+
 export const STUDIO_SESSION_COOKIE = "cardstack_studio_session";
 /** KV namespace holding the live session records. */
 export const STUDIO_SESSION_NS = "studio-sessions";
 
 export const SESSION_TTL_SECONDS = SESSION_MAX_AGE_SECONDS;
+export const SESSION_IDLE_SECONDS = IDLE_TIMEOUT_SECONDS;
+export const SESSION_LAST_SEEN_THROTTLE_SECONDS = LAST_SEEN_THROTTLE_SECONDS;
 
-/** What a session id resolves to in the store. */
+/**
+ * What a session id resolves to in the store.
+ *
+ * `role` is a snapshot from sign-in kept for debugging only — **never read it
+ * to make an authorization decision.** The membership is re-read on every
+ * request precisely so that a demotion takes effect on the next one rather than
+ * when a cookie happens to expire (see `lib/auth.ts`).
+ *
+ * `lastSeenAt` is absent on records written before idle expiry existed; treat
+ * that as `createdAt` rather than as "idle forever", so a live admin is not
+ * logged out by a deploy.
+ */
 export interface StudioSessionRecord {
   accountId: string;
   workspaceId: string;
   role: "admin" | "member";
   createdAt: string;
+  lastSeenAt?: string;
 }
 
 /**

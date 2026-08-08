@@ -91,6 +91,14 @@ export interface IdentityStore {
   /** Find-or-create keys on this — the whole auto-join model depends on it. */
   getWorkspaceByOrgId(salesforceOrgId: string): Promise<Workspace | undefined>;
   createWorkspace(workspace: Workspace): Promise<void>;
+  /**
+   * Every workspace on this deployment. Operational only — nothing
+   * request-scoped may call this, because a request belongs to exactly one
+   * workspace and enumerating the rest is the tenancy leak the model exists to
+   * prevent. Backs the zero-admin backfill (see
+   * apps/studio/scripts/backfill-workspace-admins.ts).
+   */
+  listWorkspaces(): Promise<Workspace[]>;
 
   getAccount(id: string): Promise<Account | undefined>;
   getAccountBySalesforceUserId(salesforceUserId: string): Promise<Account | undefined>;
@@ -104,3 +112,13 @@ export interface IdentityStore {
   listMembershipsForWorkspace(workspaceId: string): Promise<Membership[]>;
   setMembership(membership: Membership): Promise<void>;
 }
+
+/**
+ * What a sign-in actually needs: everything except the operational enumeration.
+ *
+ * Typed as an exclusion rather than as `IdentityStore` so a request-path caller
+ * physically cannot reach `listWorkspaces` through it. The comment on that
+ * method says never call it from a request path; this is what makes the
+ * compiler agree.
+ */
+export type SignInStore = Omit<IdentityStore, "listWorkspaces">;

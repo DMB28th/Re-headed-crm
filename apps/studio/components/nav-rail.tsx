@@ -298,6 +298,9 @@ export function NavRail() {
           <RailLink href="/audit" active={pathname === "/audit"}>
             Activity
           </RailLink>
+          <RailLink href="/people" active={pathname === "/people"}>
+            People
+          </RailLink>
           <RailLink href="/custom-screens" active={pathname === "/custom-screens"}>
             <span className="flex items-center justify-between">
               <span>Labs</span>

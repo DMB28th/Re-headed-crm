@@ -9,7 +9,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "seed:salesforce": "tsx scripts/seed-from-salesforce.ts",
-    "dev:sf": "CARDSTACK_DEV_SF_ORG=${CARDSTACK_DEV_SF_ORG:-screenflow-org} CARDSTACK_CONFIG_PATH=${CARDSTACK_CONFIG_PATH:-../../data/cardstack-salesforce.json} next dev -p ${PORT:-3002}"
+    "dev:sf": "CARDSTACK_DEV_SF_ORG=${CARDSTACK_DEV_SF_ORG:-screenflow-org} CARDSTACK_CONFIG_PATH=${CARDSTACK_CONFIG_PATH:-../../data/cardstack-salesforce.json} next dev -p ${PORT:-3002}",
+    "backfill:admins": "tsx scripts/backfill-workspace-admins.ts"
   },
   "dependencies": {
     "@cardstack/config-store": "workspace:*",

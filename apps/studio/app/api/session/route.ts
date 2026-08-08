@@ -82,12 +82,24 @@ export async function POST(req: Request) {
       : {}),
     createdAt,
   });
-  await store.setMembership({
-    accountId,
-    workspaceId,
-    role: "admin",
-    createdAt,
-  });
+  // Grant admin once, on first use. Do NOT clobber an existing membership: if
+  // this account has since been demoted on the People page, the access key must
+  // not silently re-promote it — that would make the bridge a permanent way
+  // around the role model rather than a migration step out of it.
+  const existing = await store.getMembership(accountId, workspaceId);
+  if (!existing) {
+    await store.setMembership({ accountId, workspaceId, role: "admin", createdAt });
+  }
+  // Read the role back rather than asserting it. The store is authoritative
+  // everywhere else; a session record that disagrees with it would be the one
+  // place a claim outranks the data.
+  const membership = await store.getMembership(accountId, workspaceId);
+  if (membership?.role !== "admin") {
+    return NextResponse.json(
+      { error: "That account is no longer an admin of this workspace." },
+      { status: 403 },
+    );
+  }
 
   const sessionId = newSessionId();
   const now = new Date();
@@ -97,8 +109,9 @@ export async function POST(req: Request) {
     {
       accountId,
       workspaceId,
-      role: "admin",
+      role: membership.role,
       createdAt: now.toISOString(),
+      lastSeenAt: now.toISOString(),
     },
     new Date(now.getTime() + studioSessionCookieOptions().maxAge * 1_000).toISOString(),
   );

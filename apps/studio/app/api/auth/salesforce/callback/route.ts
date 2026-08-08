@@ -79,11 +79,13 @@ export async function GET(req: Request) {
     }
 
     const sessionId = newSessionId();
+    const startedAt = new Date().toISOString();
     const record: StudioSessionRecord = {
       accountId: account.id,
       workspaceId: workspace.id,
       role,
-      createdAt: new Date().toISOString(),
+      createdAt: startedAt,
+      lastSeenAt: startedAt,
     };
     await store.kvSet(
       STUDIO_SESSION_NS,
