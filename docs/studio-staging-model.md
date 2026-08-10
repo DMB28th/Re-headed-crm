@@ -95,7 +95,9 @@ surface keys and publishes them.
 - The nav rail grows a **Pending changes (N)** entry above `Objects`, driven
   by `/api/pending`. It replaces the per-object amber dot as the source of
   truth (the dot stays, but the tray is the place that lists everything).
-- **Review & publish** is a dialog listing each staged surface with its diff,
+- **Review & publish** is a route (`/publish`), not a dialog as first drafted:
+  every editor's "Staged" chip links to it, so it needs an address. It lists
+  each staged surface with its diff,
   checkboxes (default all), and one primary action. Layout diffs reuse
   `diff.ts`; `diff.ts` grows `diffViewExposures`, `diffFlowModes` and
   `diffHomeCard` returning the same `LayoutDiff`-ish added/removed/changed
@@ -155,6 +157,19 @@ now" / "Saved to draft" / a green `saved` chip / nothing, at 1.4s, 1.6s and
 2.0s. `staged` is new and is what the four converted editors show after an
 edit; it links to the pending-changes tray, so the rail and the editor can
 never disagree about whether something is live.
+
+## Status
+
+Steps 1-4 shipped. Verified end to end against the running Studio: staging a
+list, a flow policy and a home-card edit leaves all three invisible to the MCP
+read side; publishing the batch flips all three and writes three events under
+one `batchId`; publishing a batch containing one bad key returns 207 with
+per-surface results and leaves the successful surface live.
+
+Still open: the keyboard/focus pass (KeyboardSensor on both dnd canvases), and
+`remove-object-zone` keeps its type-the-name confirmation rather than moving to
+`ConfirmPopover` — a destructive, irreversible-feeling action deserves the
+heavier gesture.
 
 ## Sequencing
 

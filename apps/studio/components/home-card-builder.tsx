@@ -7,7 +7,7 @@
  * table, recent rows into the real record card (feedback 2026-07-11).
  */
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -35,6 +35,8 @@ import type {
 } from "@cardstack/core";
 import { HomeCard, RecordCard, ResultsTable, type WidgetHost, type WidgetHostResult } from "@cardstack/widgets/react";
 import { LoadFailed } from "./load-failed";
+import { ConfirmButton } from "./ui/confirm";
+import { StatusChip, useSaveStatus } from "./ui/status-chip";
 import "@cardstack/widgets/styles/theme.css";
 import "@cardstack/widgets/styles/home-card.css";
 import "@cardstack/widgets/styles/results-table.css";
@@ -89,8 +91,11 @@ export function HomeCardBuilder() {
   const [connectedUser, setConnectedUser] = useState<string>("the rep");
   const [liveHubspot, setLiveHubspot] = useState(false);
   const [publishedRevision, setPublishedRevision] = useState<number>(1);
-  const [publishing, setPublishing] = useState(false);
-  const [publishedNote, setPublishedNote] = useState(false);
+  const [staged, setStaged] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
+  const { status, setStatus, track } = useSaveStatus("staged");
+  // The first setConfig after a load is the load itself — don't save it back.
+  const skipNextSave = useRef(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [draggingBlock, setDraggingBlock] = useState<HomeCardBlock["type"] | null>(null);
@@ -103,6 +108,8 @@ export function HomeCardBuilder() {
         const res = await fetch("/api/home-card");
         const data = (await res.json()) as {
           homeCard: HomeCardConfig | null;
+          staged?: boolean;
+          publishedRevision?: number | null;
           exposedViews: ExposedViewInfo[];
           connectedUser: string | null;
           connection?: { crm: string; live?: boolean };
@@ -113,8 +120,11 @@ export function HomeCardBuilder() {
           return;
         }
         if (data.homeCard) {
+          skipNextSave.current = true;
           setConfig(data.homeCard);
-          setPublishedRevision(data.homeCard.revision);
+          setPublishedRevision(data.publishedRevision ?? data.homeCard.revision);
+          setStaged(!!data.staged);
+          setStatus(data.staged ? "staged" : "clean");
         }
         setExposedViews(data.exposedViews);
         if (data.connectedUser) setConnectedUser(data.connectedUser);
@@ -125,22 +135,67 @@ export function HomeCardBuilder() {
     })();
   }, [reloadKey]);
 
-  const publish = async () => {
+  /**
+   * Autosave the draft. This used to not exist: edits lived in React state and
+   * Publish was the first write, so closing the tab lost the work outright
+   * (docs/studio-staging-model.md).
+   */
+  useEffect(() => {
     if (!config) return;
-    setPublishing(true);
-    const res = await fetch("/api/home-card", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(config),
-    });
-    if (res.ok) {
-      const { published } = (await res.json()) as { published: HomeCardConfig };
+    if (skipNextSave.current) {
+      skipNextSave.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      void track(
+        async () => {
+          const res = await fetch("/api/home-card", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(config),
+          });
+          if (!res.ok) throw new Error("save failed");
+          setStaged(true);
+        },
+        { done: "saved", settleTo: "staged" },
+      );
+    }, 500);
+    return () => clearTimeout(timer);
+    // `track`/`setStatus` are stable enough for this debounce; config drives it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config]);
+
+  const publish = async () => {
+    const published = await track(
+      async () => {
+        const res = await fetch("/api/home-card/publish", { method: "POST" });
+        if (!res.ok) {
+          throw new Error(((await res.json()) as { error?: string }).error ?? "Publish failed.");
+        }
+        return ((await res.json()) as { published: HomeCardConfig }).published;
+      },
+      { pending: "publishing", done: "published", settleTo: "clean" },
+    );
+    if (published) {
+      skipNextSave.current = true;
       setConfig(published);
       setPublishedRevision(published.revision);
-      setPublishedNote(true);
-      setTimeout(() => setPublishedNote(false), 2000);
+      setStaged(false);
     }
-    setPublishing(false);
+  };
+
+  const discardDraft = async () => {
+    setDiscarding(true);
+    try {
+      const res = await fetch("/api/home-card", { method: "DELETE" });
+      if (res.ok) {
+        setStaged(false);
+        setStatus("clean");
+        setReloadKey((key) => key + 1);
+      }
+    } finally {
+      setDiscarding(false);
+    }
   };
 
   if (loadError) {
@@ -187,7 +242,6 @@ export function HomeCardBuilder() {
   };
 
   const listsBlock = blockOf("lists");
-  const dirty = config.revision === publishedRevision; // revision bumps only on publish
 
   const blockBody = (type: HomeCardBlock["type"]) => {
     if (type !== "lists" || !listsBlock) return null;
@@ -267,17 +321,33 @@ export function HomeCardBuilder() {
           <h1 className="text-[16px] font-semibold">Home card</h1>
           <span className="st-chip-mono bg-published text-published-ink">v{publishedRevision}</span>
           <span className="text-[11.5px] text-ink-45">
-            {publishedNote ? "Published" : "The launcher reps get for “open my CRM”"}
+            The launcher reps get for “open my CRM”
           </span>
+          <StatusChip status={status} />
         </div>
-        <button
-          type="button"
-          className="st-btn st-btn--primary"
-          onClick={publish}
-          disabled={publishing || !dirty}
-        >
-          {publishing ? "Publishing…" : "Publish home card"}
-        </button>
+        <div className="flex items-center gap-2">
+          {staged && (
+            <ConfirmButton
+              label="Discard draft"
+              title="Discard this draft?"
+              detail={`Throws away every unpublished edit and puts the builder back to v${publishedRevision}, the card reps already see.`}
+              confirmLabel="Discard"
+              busyLabel="Discarding…"
+              busy={discarding}
+              tone="danger"
+              onConfirm={discardDraft}
+            />
+          )}
+          <button
+            type="button"
+            className="st-btn st-btn--primary"
+            onClick={publish}
+            disabled={status === "publishing" || !staged}
+            title={staged ? undefined : "Nothing staged — edit a block to stage a change."}
+          >
+            {status === "publishing" ? "Publishing…" : "Publish home card"}
+          </button>
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1 gap-4">

@@ -2,10 +2,14 @@
 /**
  * Flows (design 10c/11d): synced CRM flows plus Cardstack render-mode policy.
  * Runtime tools land next; this page is the durable admin contract they read.
+ *
+ * A render-mode change STAGES as a draft (docs/studio-staging-model.md) — it
+ * changes how every rep's flow renders, so it publishes with everything else.
  */
 import { useEffect, useMemo, useState } from "react";
 import type { FlowRenderMode, FlowRenderModeConfig, FlowSummary } from "@cardstack/core";
 import { LoadFailed } from "./load-failed";
+import { StatusChip, STATUS_FLASH_MS } from "./ui/status-chip";
 
 const MODES: { value: FlowRenderMode; label: string; note: string }[] = [
   { value: "auto", label: "Auto", note: "Native first, embed when needed, hand off if blocked." },
@@ -17,6 +21,8 @@ const MODES: { value: FlowRenderMode; label: string; note: string }[] = [
 interface FlowsResponse {
   flows: FlowSummary[];
   modes: FlowRenderModeConfig[];
+  /** Flow api names with an unpublished draft policy. */
+  staged?: string[];
   connection: { status: "connected" | "disconnected"; crm: "hubspot" | "salesforce"; live?: boolean };
   error?: string;
 }
@@ -72,7 +78,7 @@ export function FlowsEditor() {
         : prev,
     );
     setSavedFlow(flowApiName);
-    setTimeout(() => setSavedFlow(null), 1400);
+    setTimeout(() => setSavedFlow(null), STATUS_FLASH_MS);
   };
 
   if (loadError) {
@@ -124,8 +130,8 @@ export function FlowsEditor() {
                     <span className="text-[13px] font-semibold">{flow.label}</span>
                     <span className="st-chip-mono bg-crmmeta text-crmmeta-ink">Flow action</span>
                     <span className="st-chip-mono bg-paper text-ink-45">{flow.screens} screens</span>
-                    {savedFlow === flow.api && (
-                      <span className="st-chip-mono bg-published text-published-ink">saved</span>
+                    {(savedFlow === flow.api || data.staged?.includes(flow.api)) && (
+                      <StatusChip status="staged" />
                     )}
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
