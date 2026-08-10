@@ -58,11 +58,18 @@ export async function GET(req: Request) {
 export async function PUT(req: Request) {
   try {
     const { tenantId } = getUserContextFromRequest(req);
-    const body = (await req.json()) as { flowApiName?: string; mode?: string };
+    const body = (await req.json()) as {
+      flowApiName?: string;
+      mode?: string;
+      active?: boolean;
+    };
     const config = FlowRenderModeConfig.parse({
       version: 1,
       tenantId,
       flowApiName: body.flowApiName,
+      // Off unless the caller says otherwise — a synced flow is a candidate,
+      // not an offering, and crm_flow_start enforces the same rule.
+      active: body.active ?? false,
       mode: body.mode ?? "auto",
       fallback: "open-in-salesforce",
       updatedAt: new Date().toISOString(),

@@ -358,8 +358,9 @@ export function Canvas({
   const unconfiguredRelationships = describe.relationships.filter(
     (rel) => !config.recordCard.relatedLists.some((r) => r.relationship === rel.api),
   );
-  const modeForFlow = (flowApiName: string) =>
-    flowModes.find((mode) => mode.flowApiName === flowApiName)?.mode ?? "auto";
+  const policyForFlow = (flowApiName: string) =>
+    flowModes.find((mode) => mode.flowApiName === flowApiName);
+  const modeForFlow = (flowApiName: string) => policyForFlow(flowApiName)?.mode ?? "auto";
   const flowLabel = (flowApiName: string) => flows.find((flow) => flow.api === flowApiName)?.label ?? flowApiName;
   const configuredFlowActions = new Set(
     config.recordCard.actions
@@ -673,14 +674,25 @@ export function Canvas({
                           {modeForFlow(action.flowApiName)}
                         </span>
                       )}
-                      {action.type === "screen_flow" && (
-                        <span
-                          className="st-chip-mono bg-published text-published-ink"
-                          title="Reps can run this flow from chat via the open-in-Salesforce handoff. Native/Embedded modes fall back to handoff."
-                        >
-                          handoff live
-                        </span>
-                      )}
+                      {/* A flow action on the card does nothing unless the flow
+                          itself is switched on under Flows — crm_flow_start
+                          refuses an inactive one, so say so here. */}
+                      {action.type === "screen_flow" &&
+                        (policyForFlow(action.flowApiName)?.active ? (
+                          <span
+                            className="st-chip-mono bg-published text-published-ink"
+                            title="This flow is switched on for chat under Flows."
+                          >
+                            active
+                          </span>
+                        ) : (
+                          <span
+                            className="st-chip-mono bg-draft text-draft-ink"
+                            title="This flow is off — reps can't run it. Switch it on under Flows."
+                          >
+                            flow is off
+                          </span>
+                        ))}
                     </div>
                     <div className="mt-1 text-[11.5px] text-ink-55">
                       Button: {action.label} <span className="text-ink-45">/</span> Chat: "{chatPhrase}"

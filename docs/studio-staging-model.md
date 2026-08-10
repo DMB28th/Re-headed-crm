@@ -242,3 +242,45 @@ header and here. The milestone map is also relevant: PLAN.md scopes the custom
 screen SDK to **M6** ("do not start before M5 lands"), and the page still
 carries a `RuntimePendingBanner` for the M6 runtime — so this is tidying a
 surface that shipped ahead of its milestone, not building M6 early.
+
+
+---
+
+## Addendum (2026-08-10c): flows are opt-in and render in chat
+
+The Flows page presented four render modes as equal choices, one of which —
+`handoff` — is the only one the runtime actually implements. The flow-run
+widget's sole action is `host.openLink(launchUrl)`: a chat card whose button
+opens a Salesforce browser tab. That is the opposite of the product's premise,
+and Studio was quietly recommending it.
+
+**Change.**
+
+- `FlowRenderModeConfig` gains **`active`** (default **false**). A flow synced
+  from the CRM is a candidate, not an offering — the same rule lists already
+  follow. **Behavior change:** before this, every synced flow was startable
+  from chat whether or not it had a stored policy.
+- The toggle is a real gate, not decoration: `crm_flow_start` refuses a flow
+  that isn't switched on, with a message pointing at Studio → Flows.
+- Render mode becomes a **pick list** offering only in-chat rungs —
+  `auto` / `native` / `embedded`. `handoff` stays in the zod enum so configs
+  written earlier still parse (same storage-tolerance pattern as
+  `flowApiName`), but it is no longer something an admin can choose.
+  `IN_CHAT_RENDER_MODES` in `packages/core` is the list Studio renders.
+- The layout builder's flow-action chip said "handoff live"; it now reads
+  `active` or `flow is off`, because an action attached to an inactive flow
+  does nothing.
+
+**What this does NOT fix.** In-card rendering still doesn't exist. A flow
+switched on today still finishes in a browser tab — the page says so in the
+banner and again on every active flow. Removing the handoff runtime outright
+would leave flows with no path at all, so it stays as runtime fallback while
+ceasing to be a design choice. Native and embedded rendering are the M5/M6
+runtime work; `MODES[].delivered` in `flows-editor.tsx` is the flag to flip
+when a widget actually branches on `renderMode`.
+
+**Design deviation (hard rule 6):** 11c/11d specify a three-rung ladder ending
+in HANDOFF, and a per-flow mode set of Auto / Native only / Embedded
+end-to-end. The ladder is unchanged in the runtime; what changed is that
+Studio no longer offers the third rung as a destination, and flows are
+off-by-default rather than implicitly on.

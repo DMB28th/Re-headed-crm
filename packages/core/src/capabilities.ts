@@ -4,6 +4,15 @@
  * Migration notes:
  * - v1: initial flow render-mode config and custom-screen config. Both are
  *   tenant-scoped shared resources, not object-scoped layout blocks.
+ * - 2026-08-10c: FlowRenderModeConfig gains `active` (default FALSE) — an
+ *   explicit per-flow switch for "reps can use this in chat". Nothing is
+ *   offered until an admin turns it on, matching how list exposure works: a
+ *   synced flow is not a published one. BEHAVIOR CHANGE: before this, every
+ *   synced flow was startable from chat whether or not it had a stored policy.
+ *   `handoff` also stays in the FlowRenderMode enum for storage tolerance of
+ *   rows written earlier, but Studio no longer OFFERS it — opening Salesforce
+ *   in a browser tab is a fallback the runtime may still do, not a render mode
+ *   an admin should be choosing. The picker exposes auto/native/embedded.
  * - 2026-08-10b: a custom screen is a SCREEN-FLOW screen and nothing else.
  *   `flowApiName` stays OPTIONAL in storage so rows written before this still
  *   parse (one unattached row must not sink the whole list, cf. the exposures
@@ -21,7 +30,14 @@
 import { z } from "zod";
 import { ActionInputMappings } from "./layout-config.js";
 
+/**
+ * `handoff` is retained so configs written before 2026-08-10c parse, but it is
+ * NOT an admin-selectable mode — see IN_CHAT_RENDER_MODES.
+ */
 export const FlowRenderMode = z.enum(["auto", "native", "embedded", "handoff"]);
+
+/** The modes Studio offers. All of them render inside the chat card. */
+export const IN_CHAT_RENDER_MODES = ["auto", "native", "embedded"] as const;
 export type FlowRenderMode = z.infer<typeof FlowRenderMode>;
 
 export const FlowRenderModeConfig = z.object({
@@ -30,6 +46,12 @@ export const FlowRenderModeConfig = z.object({
   flowApiName: z.string().min(1),
   /** Publish revision — bumps on publish, indexes rollback history. */
   revision: z.number().int().positive().default(1),
+  /**
+   * Whether reps can run this flow from chat at all. Defaults to false: a flow
+   * synced from the CRM is a candidate, not an offering. Enforced server-side
+   * in crm_flow_start, so the toggle is a real gate and not decoration.
+   */
+  active: z.boolean().default(false),
   mode: FlowRenderMode.default("auto"),
   /** Required fallback for hosts that block embedded Salesforce screens. */
   fallback: z.literal("open-in-salesforce").default("open-in-salesforce"),

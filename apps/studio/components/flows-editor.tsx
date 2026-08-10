@@ -15,22 +15,23 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { IN_CHAT_RENDER_MODES } from "@cardstack/core";
 import type { FlowRenderMode, FlowRenderModeConfig, FlowSummary } from "@cardstack/core";
 import { LoadFailed } from "./load-failed";
 import { StatusChip, STATUS_FLASH_MS } from "./ui/status-chip";
 
 /**
- * `delivered` is whether the CHAT RUNTIME implements the rung, not whether the
- * policy stores. Studio is the durable admin contract the runtime will read, so
- * an undelivered rung stays selectable — but the card has to say what a rep
- * actually gets today rather than presenting four equal options.
+ * The modes Studio offers. All THREE render inside the chat card — handing a
+ * rep off to a Salesforce browser tab is not a render mode an admin should be
+ * choosing (2026-08-10c). `handoff` survives in the zod enum only so configs
+ * written earlier still parse; it is deliberately absent here.
  *
- * Reality check before changing these: `renderMode` reaches the widget payload
- * (core/payload.ts) and no widget reads it, so every mode resolves to handoff.
- * Flip a flag here only when a widget actually branches on it.
+ * `delivered` is whether the CHAT RUNTIME implements the rung, not whether the
+ * policy stores. Reality check before flipping one: the flow-run widget's only
+ * action today is host.openLink(launchUrl), so nothing renders in-card yet.
  */
 const MODES: {
-  value: FlowRenderMode;
+  value: (typeof IN_CHAT_RENDER_MODES)[number];
   label: string;
   note: string;
   delivered: boolean;
@@ -38,45 +39,22 @@ const MODES: {
   {
     value: "auto",
     label: "Auto",
-    note: "Native first, embed when needed, hand off if blocked.",
-    delivered: true,
+    note: "Host-native controls where possible, guarded embed where not.",
+    delivered: false,
   },
   {
     value: "native",
-    label: "Native",
-    note: "Only host-native controls; unsupported screens must be mapped.",
+    label: "Native only",
+    note: "Host-native controls only; screens that can't map need a custom screen.",
     delivered: false,
   },
   {
     value: "embedded",
     label: "Embedded",
-    note: "Salesforce renders the screen inside a guarded boundary.",
+    note: "Salesforce renders the screen inside a guarded boundary in the card.",
     delivered: false,
   },
-  {
-    value: "handoff",
-    label: "Handoff",
-    note: "Always open in Salesforce and resume from chat.",
-    delivered: true,
-  },
 ];
-
-/** What a rep gets TODAY for a chosen mode — the ladder only has one rung. */
-function effectiveToday(mode: FlowRenderMode): { text: string; warn: boolean } {
-  if (mode === "handoff") {
-    return { text: "Reps open the flow in Salesforce and resume in chat.", warn: false };
-  }
-  if (mode === "auto") {
-    return {
-      text: "Today Auto has one rung: reps get the open-in-Salesforce handoff. Native and embedded join the ladder as they ship.",
-      warn: false,
-    };
-  }
-  return {
-    text: `${mode === "native" ? "Native" : "Embedded"} rendering isn't delivered yet — reps get the open-in-Salesforce handoff until it ships. The policy is stored and will take effect then.`,
-    warn: true,
-  };
-}
 
 /** A custom screen, as the Flows page needs to list it. */
 export interface ScreenSummary {
@@ -164,11 +142,19 @@ export function FlowsEditor() {
     }
   };
 
-  const saveMode = async (flowApiName: string, mode: FlowRenderMode) => {
+  const savePolicy = async (
+    flowApiName: string,
+    patch: { mode?: FlowRenderMode; active?: boolean },
+  ) => {
+    const existing = modeByFlow.get(flowApiName);
     const res = await fetch("/api/flows", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ flowApiName, mode }),
+      body: JSON.stringify({
+        flowApiName,
+        mode: patch.mode ?? existing?.mode ?? "auto",
+        active: patch.active ?? existing?.active ?? false,
+      }),
     });
     const json = (await res.json()) as { mode?: FlowRenderModeConfig; error?: string };
     if (!res.ok || !json.mode) {
@@ -203,19 +189,18 @@ export function FlowsEditor() {
         <div>
           <h1 className="text-[16px] font-semibold">Flows</h1>
           <p className="mt-1 text-[12.5px] text-ink-55">
-            Synced from the CRM. Studio chooses how each flow renders in chat; the CRM still
-            owns branching and writes.
+            Synced from the CRM. Switch on the flows reps should be able to run from chat, and
+            choose how each one renders in the card. The CRM still owns branching and writes.
           </p>
         </div>
         <span className="st-chip-mono bg-crmmeta text-crmmeta-ink">{crmLabel}</span>
       </div>
 
-      <div className="mt-5 rounded-[10px] border border-line-soft bg-paper px-4 py-3 text-[12px] leading-snug text-ink-55">
-        <span className="font-semibold text-ink-55">Handoff is live.</span> Reps can start a
-        configured flow from a card, answer its inputs in chat, and open it in Salesforce to
-        finish. <span className="font-semibold text-ink-55">Native</span> and{" "}
-        <span className="font-semibold text-ink-55">Embedded</span> render modes are not delivered
-        yet and fall back to the open-in-Salesforce handoff.
+      <div className="mt-5 rounded-[10px] border-l-[3px] border-warn-dot bg-draft px-4 py-3 text-[12px] leading-snug text-draft-ink">
+        <span className="font-semibold">In-chat rendering isn&apos;t built yet.</span> A flow you
+        switch on today still finishes by opening {crmLabel} in a browser tab — the in-card
+        rendering these modes describe ships with the flow runtime. Switch a flow on only if that
+        hand-off is acceptable for it in the meantime.
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-2.5">
@@ -231,8 +216,12 @@ export function FlowsEditor() {
         {data.flows.map((flow) => {
           const saved = modeByFlow.get(flow.api);
           const current = saved?.mode ?? "auto";
+          const active = saved?.active ?? false;
           return (
-            <div key={flow.api} className="st-card p-4">
+            <div
+              key={flow.api}
+              className={`st-card p-4 ${active ? "" : "bg-paper/60"}`}
+            >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -246,13 +235,39 @@ export function FlowsEditor() {
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
                     <span className="st-chip-mono bg-paper text-ink-45">{flow.api}</span>
                     <span className="text-[11.5px] text-ink-45">
-                      Available to attach from object card actions.
+                      {active
+                        ? "Reps can run this from a card action."
+                        : "Off — reps can't run this from chat."}
                     </span>
                   </div>
                 </div>
-                <span className="st-chip-mono bg-published text-published-ink">
-                  open-in-Salesforce fallback
-                </span>
+                {/* The real gate: crm_flow_start refuses a flow that is off,
+                    so this is a switch and not a label. */}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={active}
+                  aria-label={`${active ? "Switch off" : "Switch on"} ${flow.label} for chat`}
+                  className={`flex shrink-0 items-center gap-2 rounded-[999px] border px-2.5 py-1 text-[11.5px] transition-colors ${
+                    active
+                      ? "border-published-ink/30 bg-published text-published-ink"
+                      : "border-line bg-surface text-ink-45 hover:text-ink"
+                  }`}
+                  onClick={() => void savePolicy(flow.api, { active: !active })}
+                >
+                  <span
+                    className={`inline-block h-3 w-6 rounded-full transition-colors ${
+                      active ? "bg-success-dot" : "bg-line"
+                    }`}
+                  >
+                    <span
+                      className={`mt-[2px] block h-2 w-2 rounded-full bg-white transition-transform ${
+                        active ? "translate-x-[16px]" : "translate-x-[4px]"
+                      }`}
+                    />
+                  </span>
+                  {active ? "Active" : "Off"}
+                </button>
               </div>
 
               <div className="mt-3 grid gap-2 md:grid-cols-[1fr_1fr_1.25fr]">
@@ -284,54 +299,40 @@ export function FlowsEditor() {
                   )}
                 </div>
                 <div className="rounded-[9px] border border-line-soft bg-paper px-3 py-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="st-section-label">Render mode</span>
-                    <div className="inline-flex overflow-hidden rounded-[8px] border border-line bg-surface">
+                  <label className="block text-[11px] text-ink-55">
+                    <span className="st-section-label">Renders as</span>
+                    <select
+                      className="st-input mt-1.5 w-full"
+                      value={current}
+                      disabled={!active}
+                      title={
+                        active
+                          ? undefined
+                          : "Switch the flow on to choose how it renders."
+                      }
+                      onChange={(e) =>
+                        void savePolicy(flow.api, { mode: e.target.value as FlowRenderMode })
+                      }
+                    >
                       {MODES.map((mode) => (
-                        <button
-                          key={mode.value}
-                          type="button"
-                          className={`px-2.5 py-1 text-[11.5px] ${
-                            current === mode.value
-                              ? "bg-accent text-white"
-                              : mode.delivered
-                                ? "text-ink-55"
-                                : "text-ink-45"
-                          }`}
-                          title={
-                            mode.delivered
-                              ? mode.note
-                              : `${mode.note} — not delivered yet; reps get the handoff until it ships.`
-                          }
-                          onClick={() => saveMode(flow.api, mode.value)}
-                        >
+                        <option key={mode.value} value={mode.value}>
                           {mode.label}
-                          {!mode.delivered && (
-                            <span
-                              aria-label="not delivered yet"
-                              className={`ml-1 ${current === mode.value ? "text-white/70" : "text-warn-dot"}`}
-                            >
-                              •
-                            </span>
-                          )}
-                        </button>
+                        </option>
                       ))}
-                    </div>
-                  </div>
-                  <div className="mt-1.5 text-[11px] text-ink-45">
+                    </select>
+                  </label>
+                  <div className="mt-1.5 text-[11px] leading-snug text-ink-45">
                     {MODES.find((mode) => mode.value === current)?.note}
                   </div>
-                  {/* What a rep gets today, for the mode actually selected —
-                      the banner above says the ladder is one rung; this says
-                      it per flow, where the choice is being made. */}
-                  <div
-                    className={`mt-1.5 text-[11px] leading-snug ${
-                      effectiveToday(current).warn ? "text-draft-ink" : "text-ink-45"
-                    }`}
-                  >
-                    <span className="font-semibold">Today: </span>
-                    {effectiveToday(current).text}
-                  </div>
+                  {active && (
+                    // The banner says in-card rendering isn't built; this says
+                    // it where the consequence lands, on a flow that is ON.
+                    <div className="mt-1.5 text-[11px] leading-snug text-draft-ink">
+                      <span className="font-semibold">Today: </span>
+                      reps still finish this flow in a {crmLabel} tab until in-card rendering
+                      ships.
+                    </div>
+                  )}
                 </div>
               </div>
 
