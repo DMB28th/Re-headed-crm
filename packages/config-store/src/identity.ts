@@ -65,9 +65,14 @@ export interface Account {
 }
 
 /**
- * `admin` designs and publishes cards and manages the connection; `member` uses
- * them in chat. The org's first signer-in is admin — someone has to be, and an
- * empty workspace with no admin cannot be configured at all.
+ * A `Membership` is the chat-lane access list, nothing more: it says an
+ * account can reach a workspace from chat, not that it can configure one.
+ * Studio authority comes from `Workspace.ownerAccountId` — the account that
+ * claimed the workspace — checked at Studio's single choke point
+ * (`resolveStudioSession`), not from this role. `admin` is a legacy value:
+ * rows written before the self-serve-accounts model may still carry it, and
+ * reading it stays harmless, but nothing grants it anymore — `resolveSignIn`
+ * always writes `"member"` for a new membership.
  */
 export type MembershipRole = "admin" | "member";
 
@@ -114,7 +119,8 @@ export type OrgClaimResult =
 /** Identity reads/writes. Folded into AdminConfigStore so every backend implements it. */
 export interface IdentityStore {
   getWorkspace(id: string): Promise<Workspace | undefined>;
-  /** Find-or-create keys on this — the whole auto-join model depends on it. */
+  /** Routes a chat-lane rep by their Salesforce-verified org id to the
+   *  workspace that claimed it (`resolveSignIn`'s find-or-refuse). */
   getWorkspaceByOrgId(salesforceOrgId: string): Promise<Workspace | undefined>;
   /** The workspace this account owns, if any — backs "you already have a workspace". */
   getWorkspaceByOwner(ownerAccountId: string): Promise<Workspace | undefined>;

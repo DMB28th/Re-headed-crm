@@ -315,8 +315,10 @@ export abstract class BaseConfigStore implements AdminConfigStore {
     );
   }
 
-  /** Idempotent on the org id — see resolveSignIn's creation-race note. Org-less
-   *  workspaces (the self-serve signup path) have no clash to check. */
+  /** Idempotent on the org id — a workspace created with a `salesforceOrgId`
+   *  that's already claimed is silently dropped; `claimOrg` is where a claim
+   *  race actually gets decided (spec §7/§8), not here. Org-less workspaces
+   *  (the self-serve signup path) have no clash to check. */
   async createWorkspace(workspace: Workspace): Promise<void> {
     const state = await this.load();
     if (workspace.salesforceOrgId) {
