@@ -13,3 +13,6 @@ data/
 
 # Claude Code worktrees (local scratch, never committed)
 .claude/worktrees/
+
+# Brainstorming visual companion (local scratch, never committed)
+.superpowers/
