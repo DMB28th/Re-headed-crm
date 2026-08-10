@@ -18,11 +18,18 @@ export async function GET(req: Request) {
 
     const adapter = await getAdapter(tenantId);
     const flows = await adapter.listFlows().catch(() => []);
-    const modes = await store.getFlowRenderModes(tenantId);
+    // The editor shows the DRAFT policy where one is staged; reps keep getting
+    // the published one until Review & publish.
+    const records = await store.listFlowRenderModeRecords(tenantId);
+    const modes = records.flatMap((record) =>
+      record.draft ? [record.draft] : record.published ? [record.published] : [],
+    );
+    const staged = records.filter((record) => record.draft).map((record) => record.flowApiName);
     const { credentials, ...connectionSafe } = connection;
     return NextResponse.json({
       flows,
       modes,
+      staged,
       connection: {
         ...connectionSafe,
         live: !!credentials && Object.keys(credentials).length > 0,
@@ -46,7 +53,8 @@ export async function PUT(req: Request) {
       updatedAt: new Date().toISOString(),
     });
     await (await getStore()).setFlowRenderMode(config);
-    return NextResponse.json({ mode: config });
+    // Staged, NOT live — a render-policy change goes through Review & publish.
+    return NextResponse.json({ mode: config, staged: true });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 400 });
   }

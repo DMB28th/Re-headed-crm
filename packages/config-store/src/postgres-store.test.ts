@@ -75,10 +75,14 @@ describe("PostgresConfigStore", () => {
 
   it("home card publish bumps revision and logs", async () => {
     const current = (await store.getHomeCard(DEMO_TENANT_ID))!;
-    const published = await store.publishHomeCard({
+    await store.setHomeCard({
       ...current,
       blocks: current.blocks.filter((b) => b.type !== "recent"),
     });
+    // Staged, not live — reps keep the published card until publish.
+    expect((await store.getHomeCard(DEMO_TENANT_ID))!.blocks).toHaveLength(current.blocks.length);
+
+    const published = await store.publishHomeCard(DEMO_TENANT_ID);
     expect(published.revision).toBe(2);
     expect((await store.getHomeCard(DEMO_TENANT_ID))!.blocks).toHaveLength(2);
     expect((await store.listPublishes(DEMO_TENANT_ID))[0]).toMatchObject({
@@ -126,7 +130,49 @@ describe("PostgresConfigStore", () => {
       customLists: [{ id: "cl-pg", name: "PG list", filters: [], visibility: "workspace" }],
       views: [...config.views, { viewId: "cl-pg", exposed: true, aliases: [], isDefault: false }],
     });
+    expect(await store.getCustomLists(DEMO_TENANT_ID, "deals")).toHaveLength(0);
+
+    await store.publishViewExposures(DEMO_TENANT_ID, "deals");
     expect((await store.getCustomLists(DEMO_TENANT_ID, "deals"))[0]?.name).toBe("PG list");
+  });
+
+  it("stages every surface and publishes a batch, matching the file store", async () => {
+    const config = (await store.getViewExposuresConfig(DEMO_TENANT_ID, "deals"))!;
+    await store.setViewExposures({
+      ...config,
+      customLists: [{ id: "cl-batch", name: "Batch list", filters: [], visibility: "workspace" }],
+      views: [...config.views, { viewId: "cl-batch", exposed: true, aliases: [], isDefault: false }],
+    });
+    const home = (await store.getHomeCard(DEMO_TENANT_ID))!;
+    await store.setHomeCard({ ...home, blocks: [home.blocks[0]!] });
+
+    const staged = await store.listStagedChanges(DEMO_TENANT_ID);
+    expect(staged.map((change) => change.surface).sort()).toEqual(["exposures", "homecard"]);
+
+    const results = await store.publishStaged(
+      DEMO_TENANT_ID,
+      staged.map(({ surface, object, audience }) => ({ surface, object, audience })),
+    );
+    expect(results.every((result) => result.ok)).toBe(true);
+    expect(await store.listStagedChanges(DEMO_TENANT_ID)).toEqual([]);
+    expect((await store.getCustomLists(DEMO_TENANT_ID, "deals"))[0]?.name).toBe("Batch list");
+
+    const events = (await store.listPublishes(DEMO_TENANT_ID)).slice(0, 2);
+    expect(new Set(events.map((event) => event.batchId)).size).toBe(1);
+  });
+
+  it("rolls exposures back under a NEW revision", async () => {
+    const v1 = (await store.getViewExposuresConfig(DEMO_TENANT_ID, "deals"))!;
+    await store.setViewExposures({
+      ...v1,
+      customLists: [{ id: "cl-rb", name: "Temp", filters: [], visibility: "workspace" }],
+      views: [...v1.views, { viewId: "cl-rb", exposed: true, aliases: [], isDefault: false }],
+    });
+    await store.publishViewExposures(DEMO_TENANT_ID, "deals");
+
+    const restored = await store.rollbackViewExposures(DEMO_TENANT_ID, "deals", 1);
+    expect(restored.revision).toBe(3);
+    expect(await store.getCustomLists(DEMO_TENANT_ID, "deals")).toHaveLength(0);
   });
 
   it("stores flow modes and custom screen publishes", async () => {
@@ -137,6 +183,9 @@ describe("PostgresConfigStore", () => {
       mode: "native",
       fallback: "open-in-salesforce",
     });
+    expect(await store.getFlowRenderModes(DEMO_TENANT_ID)).toEqual([]);
+
+    await store.publishFlowRenderMode(DEMO_TENANT_ID, "Renewal_Playbook");
     expect(await store.getFlowRenderModes(DEMO_TENANT_ID)).toMatchObject([
       { flowApiName: "Renewal_Playbook", mode: "native" },
     ]);

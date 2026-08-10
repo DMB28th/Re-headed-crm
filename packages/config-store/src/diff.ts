@@ -1,4 +1,10 @@
-import type { LayoutConfig } from "@cardstack/core";
+import type {
+  CustomScreenConfig,
+  FlowRenderModeConfig,
+  HomeCardConfig,
+  LayoutConfig,
+  ViewExposuresConfig,
+} from "@cardstack/core";
 
 export interface LayoutDiff {
   added: string[];
@@ -148,10 +154,8 @@ function fingerprint(config: LayoutConfig): Map<string, Unit> {
   return map;
 }
 
-/** Publish-modal diff (design 2b): + added / − removed / ~ changed vs published. */
-export function diffLayouts(published: LayoutConfig | null, draft: LayoutConfig): LayoutDiff {
-  const before = published ? fingerprint(published) : new Map<string, Unit>();
-  const after = fingerprint(draft);
+/** Compare two fingerprint maps: + added / − removed / ~ changed. */
+function diffUnits(before: Map<string, Unit>, after: Map<string, Unit>): LayoutDiff {
   const diff: LayoutDiff = { added: [], removed: [], changed: [] };
   for (const [key, unit] of after) {
     const prev = before.get(key);
@@ -165,4 +169,170 @@ export function diffLayouts(published: LayoutConfig | null, draft: LayoutConfig)
     if (!after.has(key)) diff.removed.push(key);
   }
   return diff;
+}
+
+export const isEmptyDiff = (diff: LayoutDiff): boolean =>
+  diff.added.length === 0 && diff.removed.length === 0 && diff.changed.length === 0;
+
+/** Publish-modal diff (design 2b): + added / − removed / ~ changed vs published. */
+export function diffLayouts(published: LayoutConfig | null, draft: LayoutConfig): LayoutDiff {
+  return diffUnits(published ? fingerprint(published) : new Map<string, Unit>(), fingerprint(draft));
+}
+
+/**
+ * Resolves view / custom-list / flow ids to the names an admin recognizes.
+ * The store is CRM-agnostic and holds ids only, so Studio passes this in from
+ * the adapter; every lookup falls back to the raw id.
+ */
+export type DiffLabels = Record<string, string>;
+
+/**
+ * View-exposure diff. Only EXPOSED views are fingerprinted: reps can't see an
+ * unexposed one, so toggling exposure reads as "+ list · Pipeline" rather than
+ * "~ …(exposed: false → true)", and rows an admin never touched stay silent.
+ *
+ * Both views and custom lists are keyed by resolved NAME, so renaming a custom
+ * list reads as one removed + one added row. That's deliberate: the name is the
+ * only handle an admin has on a list, and "− Stale deals / + Aging deals" is
+ * clearer than a change row against an opaque "cl-" id.
+ */
+export function diffViewExposures(
+  published: ViewExposuresConfig | null,
+  draft: ViewExposuresConfig,
+  labels: DiffLabels = {},
+): LayoutDiff {
+  const fp = (config: ViewExposuresConfig | null): Map<string, Unit> => {
+    const map = new Map<string, Unit>();
+    if (!config) return map;
+    const customs = new Map(config.customLists.map((list) => [list.id, list]));
+    for (const view of config.views) {
+      if (!view.exposed) continue;
+      const custom = customs.get(view.viewId);
+      const name = labels[view.viewId] ?? custom?.name ?? view.viewId;
+      const key = custom ? `custom list · ${name}` : `list · ${name}`;
+      map.set(key, {
+        fp: JSON.stringify({
+          aliases: [...view.aliases].sort(),
+          isDefault: view.isDefault,
+          ...(custom
+            ? {
+                filters: custom.filters,
+                sort: custom.sort ?? null,
+                visibility: custom.visibility,
+              }
+            : {}),
+        }),
+        describeChange: (b, a) => {
+          const before = JSON.parse(b) as Record<string, unknown>;
+          const after = JSON.parse(a) as Record<string, unknown>;
+          const parts: string[] = [];
+          if (JSON.stringify(before.filters) !== JSON.stringify(after.filters)) {
+            parts.push("filters changed");
+          }
+          if (JSON.stringify(before.sort) !== JSON.stringify(after.sort)) parts.push("sort changed");
+          if (before.visibility !== after.visibility) {
+            parts.push(`visibility ${String(before.visibility)} → ${String(after.visibility)}`);
+          }
+          if (before.isDefault !== after.isDefault) {
+            parts.push(after.isDefault ? "now the default" : "no longer the default");
+          }
+          const beforeAliases = (before.aliases as string[]).join(", ");
+          const afterAliases = (after.aliases as string[]).join(", ");
+          if (beforeAliases !== afterAliases) {
+            parts.push(`aliases ${beforeAliases || "none"} → ${afterAliases || "none"}`);
+          }
+          return parts.length > 0 ? ` (${parts.join(" · ")})` : " (changed)";
+        },
+      });
+    }
+    return map;
+  };
+  return diffUnits(fp(published), fp(draft));
+}
+
+/** Flow render-policy diff: "~ flow · Renewal approval: auto → handoff". */
+export function diffFlowRenderModes(
+  published: FlowRenderModeConfig | null,
+  draft: FlowRenderModeConfig,
+  labels: DiffLabels = {},
+): LayoutDiff {
+  const fp = (config: FlowRenderModeConfig | null): Map<string, Unit> => {
+    const map = new Map<string, Unit>();
+    if (!config) return map;
+    map.set(`flow · ${labels[config.flowApiName] ?? config.flowApiName}`, {
+      fp: JSON.stringify({ mode: config.mode, fallback: config.fallback }),
+      describeChange: (b, a) => {
+        const before = JSON.parse(b) as { mode: string; fallback: string };
+        const after = JSON.parse(a) as { mode: string; fallback: string };
+        const parts: string[] = [];
+        if (before.mode !== after.mode) parts.push(`${before.mode} → ${after.mode}`);
+        if (before.fallback !== after.fallback) {
+          parts.push(`fallback ${before.fallback} → ${after.fallback}`);
+        }
+        return parts.length > 0 ? `: ${parts.join(" · ")}` : " (changed)";
+      },
+    });
+    return map;
+  };
+  return diffUnits(fp(published), fp(draft));
+}
+
+/** Home-card diff, per launcher block: "+ home · follow-ups", "~ home · recents: 3 → 5". */
+export function diffHomeCards(
+  published: HomeCardConfig | null,
+  draft: HomeCardConfig,
+): LayoutDiff {
+  const LABEL: Record<HomeCardConfig["blocks"][number]["type"], string> = {
+    lists: "lists",
+    recent: "recents",
+    followups: "follow-ups",
+  };
+  const fp = (config: HomeCardConfig | null): Map<string, Unit> => {
+    const map = new Map<string, Unit>();
+    if (!config) return map;
+    for (const block of config.blocks) {
+      const { type, ...rest } = block;
+      map.set(`home · ${LABEL[type]}`, {
+        fp: JSON.stringify(rest),
+        describeChange: (b, a) => {
+          const before = JSON.parse(b) as Record<string, unknown>;
+          const after = JSON.parse(a) as Record<string, unknown>;
+          const parts: string[] = [];
+          for (const field of ["limit", "maxTiles"] as const) {
+            if (before[field] !== after[field] && after[field] !== undefined) {
+              parts.push(`${String(before[field])} → ${String(after[field])}`);
+            }
+          }
+          if (before.source !== after.source) {
+            parts.push(`source ${String(before.source)} → ${String(after.source)}`);
+          }
+          if (JSON.stringify(before.viewIds) !== JSON.stringify(after.viewIds)) {
+            const n = (after.viewIds as unknown[] | undefined)?.length ?? 0;
+            parts.push(`${n} list(s) picked`);
+          }
+          return parts.length > 0 ? `: ${parts.join(" · ")}` : " (changed)";
+        },
+      });
+    }
+    return map;
+  };
+  return diffUnits(fp(published), fp(draft));
+}
+
+
+/**
+ * Custom-screen diff. The body is authored SDK source, so there is no useful
+ * structural fingerprint — the row says the label changed, the source changed,
+ * or both, and the editor is where you read the actual code.
+ */
+export function diffCustomScreens(
+  published: CustomScreenConfig | null,
+  draft: CustomScreenConfig,
+): LayoutDiff {
+  if (!published) return { added: [`screen · ${draft.label}`], removed: [], changed: [] };
+  const parts: string[] = [];
+  if (published.label !== draft.label) parts.push(`renamed: ${published.label} → ${draft.label}`);
+  if (published.source !== draft.source) parts.push("source changed");
+  if (parts.length === 0) return { added: [], removed: [], changed: [] };
+  return { added: [], removed: [], changed: [`screen · ${draft.label} (${parts.join(" · ")})`] };
 }

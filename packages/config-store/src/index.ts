@@ -5,5 +5,6 @@ export * from "./postgres-store.js";
 export * from "./seed.js";
 export * from "./crypto.js";
 export * from "./diff.js";
+export * from "./staging.js";
 export * from "./audit-log.js";
 export * from "./list-visibility.js";

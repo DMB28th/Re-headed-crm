@@ -22,6 +22,11 @@
  *   Missing visibility defaults to "workspace" so existing admin-defined lists
  *   stay visible to everyone after the migration; newly created user lists are
  *   stamped server-side as private unless the creator shares them.
+ * - 2026-08-10: gains `revision` (default 1) so exposures can be staged and
+ *   rolled back like layouts (docs/studio-staging-model.md). Additive with a
+ *   default — configs written before this parse unchanged and land on v1. The
+ *   STORE envelope changed at the same time (bare config → draft/published/
+ *   history); see the migration notes in file-store.ts / postgres-store.ts.
  */
 import { z } from "zod";
 
@@ -90,6 +95,8 @@ export const ViewExposuresConfig = z.object({
   version: z.literal(1),
   tenantId: z.string().min(1),
   object: z.string().min(1),
+  /** Publish revision — bumps on publish, indexes rollback history. */
+  revision: z.number().int().positive().default(1),
   views: z.array(ViewExposure).default([]),
   customLists: z.array(CustomList).default([]),
 });

@@ -470,6 +470,8 @@ describe("custom lists (Cardstack-native filters)", () => {
         { viewId: "cl-big", exposed: true, aliases: ["big deals list"], isDefault: false },
       ],
     });
+    // Exposures stage as a draft now — reps only see published ones.
+    await configStore.publishViewExposures(DEMO_TENANT_ID, "deals");
     const server = await createCardstackServer({
       adapter: new MockCrmAdapter(),
       configStore,
@@ -516,6 +518,8 @@ describe("custom lists (Cardstack-native filters)", () => {
         { viewId: "cl-private", exposed: true, aliases: ["dana saves"], isDefault: false },
       ],
     });
+    // Exposures stage as a draft now — reps only see published ones.
+    await configStore.publishViewExposures(DEMO_TENANT_ID, "deals");
     const makeClient = async (userContext: UserContext): Promise<Client> => {
       const server = await createCardstackServer({
         adapter: new MockCrmAdapter(),
