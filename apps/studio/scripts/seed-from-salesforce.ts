@@ -103,7 +103,9 @@ async function main(): Promise<void> {
     changedAt: new Date().toISOString(),
   });
 
-  await store.publishHomeCard(
+  // Under the staging model a config is written as a DRAFT and then promoted,
+  // so a seeded org starts with a published home card and no pending draft.
+  await store.setHomeCard(
     HomeCardConfig.parse({
       version: 1,
       tenantId,
@@ -116,6 +118,7 @@ async function main(): Promise<void> {
       ],
     }),
   );
+  await store.publishHomeCard(tenantId, "default");
 
   console.log(`\nSeeded ${seeded.length} objects: ${seeded.join(", ")}`);
   console.log(`Run Studio against it:  CARDSTACK_DEV_SF_ORG=${org ?? "<alias>"} pnpm dev:sf`);

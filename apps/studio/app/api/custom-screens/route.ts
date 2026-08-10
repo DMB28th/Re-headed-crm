@@ -34,13 +34,23 @@ export async function POST(req: Request) {
       replacesComponent?: string;
       source?: string;
     };
+    // A custom screen replaces a screen INSIDE a flow; the flow ladder is the
+    // only thing that ever renders one. Creating an unattached screen just
+    // makes config that can't run.
+    const flowApiName = body.flowApiName?.trim();
+    if (!flowApiName) {
+      return NextResponse.json(
+        { error: "Pick the flow this screen belongs to." },
+        { status: 400 },
+      );
+    }
     const now = new Date().toISOString();
     const draft = CustomScreenConfig.parse({
       version: 1,
       tenantId,
       id: makeId(),
       label: body.label?.trim() || "New custom screen",
-      ...(body.flowApiName?.trim() ? { flowApiName: body.flowApiName.trim() } : {}),
+      flowApiName,
       ...(body.replacesComponent?.trim()
         ? { replacesComponent: body.replacesComponent.trim() }
         : {}),

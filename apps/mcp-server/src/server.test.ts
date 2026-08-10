@@ -782,6 +782,8 @@ describe("custom lists (Cardstack-native filters)", () => {
         { viewId: "cl-big", exposed: true, aliases: ["big deals list"], isDefault: false },
       ],
     });
+    // Exposures stage as a draft now — reps only see published ones.
+    await configStore.publishViewExposures(DEMO_TENANT_ID, "deals");
     const server = await createCardstackServer({
       adapter: new MockCrmAdapter(),
       configStore,
@@ -828,6 +830,8 @@ describe("custom lists (Cardstack-native filters)", () => {
         { viewId: "cl-private", exposed: true, aliases: ["dana saves"], isDefault: false },
       ],
     });
+    // Exposures stage as a draft now — reps only see published ones.
+    await configStore.publishViewExposures(DEMO_TENANT_ID, "deals");
     const makeClient = async (userContext: UserContext): Promise<Client> => {
       const server = await createCardstackServer({
         adapter: new MockCrmAdapter(),
@@ -873,7 +877,7 @@ describe("custom lists (Cardstack-native filters)", () => {
 });
 
 describe("flow runtime (HANDOFF rung)", () => {
-  async function serverWithFlowLayout() {
+  async function serverWithFlowLayout(active = true) {
     const configStore = new InMemoryConfigStore();
     const layout: LayoutConfig = {
       ...structuredClone(demoDealsLayout),
@@ -901,6 +905,20 @@ describe("flow runtime (HANDOFF rung)", () => {
     };
     await configStore.saveDraft(layout);
     await configStore.publish(DEMO_TENANT_ID, "deals");
+    // A flow synced from the CRM is a candidate, not an offering — reps can't
+    // run it until an admin switches it on in Studio (2026-08-10c).
+    if (active) {
+      await configStore.setFlowRenderMode({
+        version: 1,
+        revision: 1,
+        tenantId: DEMO_TENANT_ID,
+        flowApiName: "Renewal_Playbook",
+        active: true,
+        mode: "auto",
+        fallback: "open-in-salesforce",
+      });
+      await configStore.publishFlowRenderMode(DEMO_TENANT_ID, "Renewal_Playbook");
+    }
     const server = await createCardstackServer({
       adapter: new MockCrmAdapter(),
       configStore,
@@ -913,6 +931,18 @@ describe("flow runtime (HANDOFF rung)", () => {
     await Promise.all([server.connect(s), local.connect(c)]);
     return local;
   }
+
+  it("refuses a flow that isn't switched on for chat", async () => {
+    // The Active toggle in Studio is a real gate, not decoration: a synced flow
+    // an admin never turned on must not be startable from chat.
+    const local = await serverWithFlowLayout(false);
+    const start = await local.callTool({
+      name: "crm_flow_start",
+      arguments: { object: "deals", recordId: "d-001", flowApiName: "Renewal_Playbook" },
+    });
+    expect(start.isError).toBe(true);
+    expect(textOf(start)).toContain("isn't switched on for chat");
+  });
 
   it("crm_flow_start withholds launch until the required ask input is collected", async () => {
     const local = await serverWithFlowLayout();
@@ -1115,6 +1145,19 @@ describe("flow runtime (NATIVE rung): confirmation is server-verified", () => {
     };
     await configStore.saveDraft(layout);
     await configStore.publish(DEMO_TENANT_ID, "deals");
+    // A synced flow is a candidate, not an offering: `active` gates
+    // crm_flow_start (2026-08-10c). These tests exercise the runtime past that
+    // gate, so the fixture is an admin having switched the flow on.
+    await configStore.setFlowRenderMode({
+      version: 1,
+      revision: 1,
+      tenantId: DEMO_TENANT_ID,
+      flowApiName: "Test_Screen_Flow",
+      active: true,
+      mode: "auto",
+      fallback: "open-in-salesforce",
+    });
+    await configStore.publishFlowRenderMode(DEMO_TENANT_ID, "Test_Screen_Flow");
     const server = await createCardstackServer({
       adapter,
       configStore,

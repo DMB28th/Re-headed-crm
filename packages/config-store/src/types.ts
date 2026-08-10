@@ -10,6 +10,7 @@ import type {
   ViewExposuresConfig,
 } from "@cardstack/core";
 import type { IdentityStore } from "./identity.js";
+import type { DiffLabels, LayoutDiff } from "./diff.js";
 
 /**
  * Whether a CRM is wired up for the tenant. Disconnected = empty canvas:
@@ -100,13 +101,32 @@ export interface ConfigStore {
   ): Promise<UserConnectionState | undefined>;
 }
 
-/** One (tenant, object, audience) slot: draft vs published + rollback history. */
-export interface LayoutRecord {
-  draft: LayoutConfig | null;
-  published: LayoutConfig | null;
+/**
+ * One staged config slot: what admins are editing, what reps see, and the
+ * published revisions kept for rollback. Every governed surface uses this —
+ * layouts, view exposures, flow render modes, the home card, custom screens —
+ * so "is this live?" has exactly one answer shape across Studio
+ * (docs/studio-staging-model.md).
+ */
+export interface StagedRecord<T> {
+  draft: T | null;
+  published: T | null;
   /** Previous published revisions, oldest first — "previous versions are kept". */
-  history: LayoutConfig[];
+  history: T[];
 }
+
+/** One (tenant, object, audience) slot: draft vs published + rollback history. */
+export type LayoutRecord = StagedRecord<LayoutConfig>;
+export type ViewExposuresRecord = StagedRecord<ViewExposuresConfig>;
+export type FlowRenderModeRecord = StagedRecord<FlowRenderModeConfig>;
+export type HomeCardRecord = StagedRecord<HomeCardConfig>;
+
+/**
+ * Which governed surface a publish event / staged change belongs to. Studio's
+ * pending-changes tray groups by this; the home page's "Recent publishes" uses
+ * it to label rows that aren't object layouts.
+ */
+export type PublishSurface = "layout" | "exposures" | "flows" | "homecard" | "screen";
 
 export interface PublishEvent {
   tenantId: string;
@@ -115,11 +135,67 @@ export interface PublishEvent {
   revision: number;
   kind: "publish" | "rollback";
   timestamp: string;
+  /**
+   * Which surface published. Optional: events written before the staging model
+   * (docs/studio-staging-model.md) have no surface and render as layouts, which
+   * is what they were.
+   */
+  surface?: PublishSurface;
+  /**
+   * Groups the events of one "Review & publish" run. Publishing is sequential,
+   * not atomic (the file store cannot transact across keys), so a batch is a
+   * display grouping and a partial-failure boundary — never a rollback unit.
+   */
+  batchId?: string;
+}
+
+/**
+ * Identifies one staged surface for the pending-changes tray and for
+ * `publishStaged`. `object` is the object api for layouts/exposures, the flow
+ * api name for flows, the screen id for screens, and the audience for the home
+ * card — i.e. whatever the surface's publish verb keys on.
+ */
+export interface StagedKey {
+  surface: PublishSurface;
+  object: string;
+  audience?: string;
+}
+
+/** One row in the pending-changes tray: what is staged, and what would change. */
+export interface StagedChange extends StagedKey {
+  /** Human label for the row ("Deals", "Renewal approval", "Home card"). */
+  label: string;
+  /** Revision reps see today; null when this surface has never published. */
+  publishedRevision: number | null;
+  diff: LayoutDiff;
+}
+
+/**
+ * A surface's published revision plus what can be restored. Drives the
+ * rollback list in Review & publish — rollback is about published history, so
+ * a surface appears here whether or not anything is staged.
+ */
+export interface SurfaceHistory extends StagedKey {
+  label: string;
+  publishedRevision: number | null;
+  /** Restorable revisions, newest first. */
+  revisions: { revision: number; name?: string }[];
+}
+
+/** Outcome of one surface inside a `publishStaged` batch. */
+export interface PublishResult extends StagedKey {
+  ok: boolean;
+  revision?: number;
+  error?: string;
 }
 
 /** Write side — what Studio needs on top of the read side. */
 export interface AdminConfigStore extends ConfigStore, IdentityStore {
   getLayoutRecord(tenantId: string, object: string, audience?: string): Promise<LayoutRecord>;
+  /** Every layout slot for the tenant, INCLUDING drafts never published. */
+  listLayoutRecords(
+    tenantId: string,
+  ): Promise<(LayoutRecord & { object: string; audience: string })[]>;
   saveDraft(config: LayoutConfig): Promise<void>;
   discardDraft(tenantId: string, object: string, audience?: string): Promise<void>;
   /** Draft → published; revision bumps from the published one; history keeps the old. */
@@ -130,15 +206,89 @@ export interface AdminConfigStore extends ConfigStore, IdentityStore {
     toRevision: number,
     audience?: string,
   ): Promise<LayoutConfig>;
-  /** Full exposure config including unexposed views (Studio's 5a table). */
+  /**
+   * Full exposure config including unexposed views (Studio's 5a table), as a
+   * staged record. `.published` is what chat resolves; `.draft` is Studio-only.
+   */
+  getViewExposuresRecord(tenantId: string, object: string): Promise<ViewExposuresRecord>;
+  listViewExposuresRecords(
+    tenantId: string,
+  ): Promise<(ViewExposuresRecord & { object: string })[]>;
+  /**
+   * Stage exposure changes. NOT live to reps — exposing a list changes what
+   * every rep can see in chat, so it goes through Review & publish like a
+   * layout (docs/studio-staging-model.md).
+   */
   setViewExposures(config: ViewExposuresConfig): Promise<void>;
+  discardViewExposuresDraft(tenantId: string, object: string): Promise<void>;
+  publishViewExposures(tenantId: string, object: string): Promise<ViewExposuresConfig>;
+  rollbackViewExposures(
+    tenantId: string,
+    object: string,
+    toRevision: number,
+  ): Promise<ViewExposuresConfig>;
+
+  getHomeCardRecord(tenantId: string, audience?: string): Promise<HomeCardRecord>;
+  listHomeCardRecords(tenantId: string): Promise<(HomeCardRecord & { audience: string })[]>;
+  /** Stage home-card changes (durable — closing the tab no longer loses them). */
   setHomeCard(config: HomeCardConfig): Promise<void>;
-  publishHomeCard(config: HomeCardConfig): Promise<HomeCardConfig>;
+  discardHomeCardDraft(tenantId: string, audience?: string): Promise<void>;
+  publishHomeCard(tenantId: string, audience?: string): Promise<HomeCardConfig>;
+  rollbackHomeCard(
+    tenantId: string,
+    toRevision: number,
+    audience?: string,
+  ): Promise<HomeCardConfig>;
+
+  listFlowRenderModeRecords(
+    tenantId: string,
+  ): Promise<(FlowRenderModeRecord & { flowApiName: string })[]>;
+  getFlowRenderModeRecord(tenantId: string, flowApiName: string): Promise<FlowRenderModeRecord>;
+  /** Stage a flow's render policy. Live only after publish. */
   setFlowRenderMode(config: FlowRenderModeConfig): Promise<void>;
+  discardFlowRenderModeDraft(tenantId: string, flowApiName: string): Promise<void>;
+  publishFlowRenderMode(tenantId: string, flowApiName: string): Promise<FlowRenderModeConfig>;
+  rollbackFlowRenderMode(
+    tenantId: string,
+    flowApiName: string,
+    toRevision: number,
+  ): Promise<FlowRenderModeConfig>;
+
+  /**
+   * Everything staged for this tenant, across all six surfaces, with diffs.
+   * `labels` resolves CRM view / flow ids to the names an admin recognizes —
+   * the store holds ids only (adapters never leak above the adapter), so Studio
+   * passes them in. Every lookup falls back to the raw id.
+   */
+  listStagedChanges(tenantId: string, labels?: DiffLabels): Promise<StagedChange[]>;
+  /**
+   * Publish the named surfaces in one run. Sequential, NOT atomic: each entry
+   * gets its own PublishEvent tagged with a shared batchId, and a failure on
+   * one surface does not roll back the ones already published — the caller is
+   * handed per-surface results and must report partial failure honestly.
+   */
+  publishStaged(tenantId: string, keys: StagedKey[]): Promise<PublishResult[]>;
+  /** Every surface with publish history, and which revisions can be restored. */
+  listSurfaceHistory(tenantId: string, labels?: DiffLabels): Promise<SurfaceHistory[]>;
+  /**
+   * Restore a previous revision of any surface. Rolling back is itself a
+   * publish: the restored config gets a NEW revision so the chain stays linear.
+   */
+  rollbackStaged(
+    tenantId: string,
+    key: StagedKey,
+    toRevision: number,
+  ): Promise<{ revision: number }>;
   listCustomScreenRecords(tenantId: string): Promise<(CustomScreenRecord & { id: string })[]>;
   getCustomScreenRecord(tenantId: string, id: string): Promise<CustomScreenRecord>;
   saveCustomScreenDraft(config: CustomScreenConfig): Promise<void>;
+  discardCustomScreenDraft(tenantId: string, id: string): Promise<void>;
   publishCustomScreen(tenantId: string, id: string): Promise<CustomScreenConfig>;
+  rollbackCustomScreen(
+    tenantId: string,
+    id: string,
+    toRevision: number,
+  ): Promise<CustomScreenConfig>;
   listPublishes(tenantId: string): Promise<PublishEvent[]>;
   setConnection(state: ConnectionState): Promise<void>;
   setUserConnection(state: UserConnectionState): Promise<void>;

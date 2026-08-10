@@ -11,7 +11,13 @@ RUN corepack enable
 WORKDIR /app
 COPY . .
 RUN pnpm install --frozen-lockfile
-RUN pnpm build
+# Build ONLY this service and its workspace dependencies. `pnpm build` builds
+# every package including the MCP server, which this image never runs — wasted
+# minutes, and enough extra memory that a build can fail outright when both
+# service images build concurrently. The `...` suffix keeps the dependency
+# graph (notably @cardstack/widgets, which the builder imports for its live
+# preview).
+RUN pnpm exec turbo run build --filter=@cardstack/studio...
 
 FROM node:22-alpine
 WORKDIR /app

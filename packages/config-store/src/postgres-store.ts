@@ -24,6 +24,20 @@
  * - 2026-07-24: demo seeding of view_exposures/home_cards now runs on every
  *   boot (ON CONFLICT DO NOTHING) instead of only when layout_configs is
  *   empty — databases seeded before M4 were missing their home_cards row.
+ * - 2026-08-10: staging model (docs/studio-staging-model.md). view_exposures,
+ *   home_cards and flow_render_modes gain `status` (draft|published|history) +
+ *   `revision`, matching layout_configs, so every governed surface can be
+ *   staged and rolled back. Their single-row primary keys are replaced by
+ *   partial unique indexes on (key…) WHERE status='draft' / 'published'.
+ *   MIGRATION IS LAZY AND SAFE: `status` defaults to 'published', so every row
+ *   written before this becomes the published revision — nothing a rep can see
+ *   today disappears. home_cards backfills `revision` from the config's own
+ *   revision so rollback lookups line up. publish_events gains `surface` and
+ *   `batch_id` (both nullable — older events render as layout publishes, which
+ *   is what they were).
+ *   The demo seeding above keeps its every-boot placement from 2026-07-24; its
+ *   INSERTs now name the partial-index predicate as the conflict target,
+ *   because this migration drops the plain primary keys they used to infer.
  */
 import {
   CustomScreenConfig as CustomScreenSchema,
@@ -42,11 +56,27 @@ import {
 import type {
   AdminConfigStore,
   ConnectionState,
+  FlowRenderModeRecord,
+  HomeCardRecord,
   LayoutRecord,
   PublishEvent,
+  PublishResult,
+  PublishSurface,
+  StagedChange,
+  StagedKey,
+  StagedRecord,
+  SurfaceHistory,
   UserConnectionState,
+  ViewExposuresRecord,
 } from "./types.js";
 import type { Account, Membership, Workspace } from "./identity.js";
+import type { DiffLabels } from "./diff.js";
+import {
+  collectStagedChanges,
+  collectSurfaceHistory,
+  runStagedPublish,
+  runStagedRollback,
+} from "./staging.js";
 import { defaultConnection, demoDealsLayout, demoHomeCard, demoViewExposures } from "./seed.js";
 import { openConnection, openKvValue, sealConnection, sealKvValue } from "./crypto.js";
 
@@ -179,6 +209,37 @@ CREATE TABLE IF NOT EXISTS memberships (
   PRIMARY KEY (account_id, workspace_id)
 );
 CREATE INDEX IF NOT EXISTS memberships_workspace_idx ON memberships (workspace_id);
+
+-- Staging model migration (2026-08-10). Idempotent: safe on live databases and
+-- a no-op on freshly created tables above.
+ALTER TABLE view_exposures ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'published';
+ALTER TABLE view_exposures ADD COLUMN IF NOT EXISTS revision int NOT NULL DEFAULT 1;
+ALTER TABLE view_exposures DROP CONSTRAINT IF EXISTS view_exposures_pkey;
+CREATE UNIQUE INDEX IF NOT EXISTS view_exposures_draft_uq
+  ON view_exposures (tenant_id, object) WHERE status = 'draft';
+CREATE UNIQUE INDEX IF NOT EXISTS view_exposures_published_uq
+  ON view_exposures (tenant_id, object) WHERE status = 'published';
+
+ALTER TABLE home_cards ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'published';
+ALTER TABLE home_cards ADD COLUMN IF NOT EXISTS revision int NOT NULL DEFAULT 1;
+ALTER TABLE home_cards DROP CONSTRAINT IF EXISTS home_cards_pkey;
+CREATE UNIQUE INDEX IF NOT EXISTS home_cards_draft_uq
+  ON home_cards (tenant_id, audience) WHERE status = 'draft';
+CREATE UNIQUE INDEX IF NOT EXISTS home_cards_published_uq
+  ON home_cards (tenant_id, audience) WHERE status = 'published';
+UPDATE home_cards SET revision = COALESCE((config->>'revision')::int, 1)
+  WHERE status = 'published' AND revision <> COALESCE((config->>'revision')::int, 1);
+
+ALTER TABLE flow_render_modes ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'published';
+ALTER TABLE flow_render_modes ADD COLUMN IF NOT EXISTS revision int NOT NULL DEFAULT 1;
+ALTER TABLE flow_render_modes DROP CONSTRAINT IF EXISTS flow_render_modes_pkey;
+CREATE UNIQUE INDEX IF NOT EXISTS flow_render_modes_draft_uq
+  ON flow_render_modes (tenant_id, flow_api) WHERE status = 'draft';
+CREATE UNIQUE INDEX IF NOT EXISTS flow_render_modes_published_uq
+  ON flow_render_modes (tenant_id, flow_api) WHERE status = 'published';
+
+ALTER TABLE publish_events ADD COLUMN IF NOT EXISTS surface text;
+ALTER TABLE publish_events ADD COLUMN IF NOT EXISTS batch_id text;
 `;
 
 /** Salesforce returns 15- or 18-char ids for the same entity; key on the 15. */
@@ -202,13 +263,25 @@ export class PostgresConfigStore implements AdminConfigStore {
     // These two are ON CONFLICT DO NOTHING, so they run every boot: a database
     // seeded before one of these tables existed (e.g. pre-M4, no home_cards)
     // still gets its demo row backfilled without clobbering admin edits.
+    // The staging migration drops these tables' primary keys in favour of
+    // partial unique indexes, so the conflict target must name the same
+    // predicate (WHERE status='published') for inference to match.
     await this.sql.query(
-      "INSERT INTO view_exposures (tenant_id, object, config) VALUES ($1,$2,$3) ON CONFLICT (tenant_id, object) DO NOTHING",
+      `INSERT INTO view_exposures (tenant_id, object, status, revision, config)
+       VALUES ($1,$2,'published',1,$3)
+       ON CONFLICT (tenant_id, object) WHERE status='published' DO NOTHING`,
       [demoViewExposures.tenantId, demoViewExposures.object, JSON.stringify(demoViewExposures)],
     );
     await this.sql.query(
-      "INSERT INTO home_cards (tenant_id, audience, config) VALUES ($1,$2,$3) ON CONFLICT (tenant_id, audience) DO NOTHING",
-      [demoHomeCard.tenantId, demoHomeCard.audience, JSON.stringify(demoHomeCard)],
+      `INSERT INTO home_cards (tenant_id, audience, status, revision, config)
+       VALUES ($1,$2,'published',$3,$4)
+       ON CONFLICT (tenant_id, audience) WHERE status='published' DO NOTHING`,
+      [
+        demoHomeCard.tenantId,
+        demoHomeCard.audience,
+        demoHomeCard.revision,
+        JSON.stringify(demoHomeCard),
+      ],
     );
     // layout_configs has no uniqueness across revisions, so this one stays
     // guarded by "has this tenant ever been seeded".
@@ -231,6 +304,181 @@ export class PostgresConfigStore implements AdminConfigStore {
 
   private parse<T>(value: unknown): T {
     return (typeof value === "string" ? JSON.parse(value) : value) as T;
+  }
+
+  /**
+   * The three single-config surfaces share one storage shape: a table keyed by
+   * (tenant_id, <key>) with the same status/revision columns layout_configs
+   * uses. Table and column names come from this fixed literal map — never from
+   * caller input — so interpolating them into SQL is safe.
+   */
+  private static readonly STAGED_TABLES = {
+    exposures: { table: "view_exposures", keyColumn: "object" },
+    flows: { table: "flow_render_modes", keyColumn: "flow_api" },
+    homecard: { table: "home_cards", keyColumn: "audience" },
+  } as const;
+
+  private async readStaged<T>(
+    surface: keyof typeof PostgresConfigStore.STAGED_TABLES,
+    tenantId: string,
+    key: string,
+    normalize: (config: unknown) => T,
+  ): Promise<StagedRecord<T>> {
+    await this.ready;
+    const { table, keyColumn } = PostgresConfigStore.STAGED_TABLES[surface];
+    const { rows } = await this.sql.query(
+      `SELECT status, config FROM ${table} WHERE tenant_id=$1 AND ${keyColumn}=$2 ORDER BY revision ASC`,
+      [tenantId, key],
+    );
+    const record: StagedRecord<T> = { draft: null, published: null, history: [] };
+    for (const row of rows) {
+      const config = normalize(this.parse(row.config));
+      if (row.status === "draft") record.draft = config;
+      else if (row.status === "published") record.published = config;
+      else record.history.push(config);
+    }
+    return record;
+  }
+
+  private async writeStagedDraft(
+    surface: keyof typeof PostgresConfigStore.STAGED_TABLES,
+    tenantId: string,
+    key: string,
+    revision: number,
+    config: unknown,
+  ): Promise<void> {
+    await this.ready;
+    const { table, keyColumn } = PostgresConfigStore.STAGED_TABLES[surface];
+    await this.sql.query(
+      `INSERT INTO ${table} (tenant_id, ${keyColumn}, status, revision, config)
+       VALUES ($1,$2,'draft',$3,$4)
+       ON CONFLICT (tenant_id, ${keyColumn}) WHERE status='draft'
+       DO UPDATE SET config = EXCLUDED.config, revision = EXCLUDED.revision`,
+      [tenantId, key, revision, JSON.stringify(config)],
+    );
+  }
+
+  private async discardStagedDraft(
+    surface: keyof typeof PostgresConfigStore.STAGED_TABLES,
+    tenantId: string,
+    key: string,
+  ): Promise<void> {
+    await this.ready;
+    const { table, keyColumn } = PostgresConfigStore.STAGED_TABLES[surface];
+    await this.sql.query(
+      `DELETE FROM ${table} WHERE tenant_id=$1 AND ${keyColumn}=$2 AND status='draft'`,
+      [tenantId, key],
+    );
+  }
+
+  /** Draft → published for a staged single-config table, inside a transaction. */
+  private async promoteStaged<T extends { revision: number }>(
+    surface: keyof typeof PostgresConfigStore.STAGED_TABLES,
+    tenantId: string,
+    key: string,
+    what: string,
+    normalize: (config: unknown) => T,
+  ): Promise<T> {
+    await this.ready;
+    const { table, keyColumn } = PostgresConfigStore.STAGED_TABLES[surface];
+    const run = async (sql: Pick<SqlSession, "query">): Promise<T> => {
+      const { rows } = await sql.query(
+        `SELECT status, config FROM ${table} WHERE tenant_id=$1 AND ${keyColumn}=$2 AND status IN ('draft','published')`,
+        [tenantId, key],
+      );
+      const draftRow = rows.find((row) => row.status === "draft");
+      if (!draftRow) throw new Error(`No draft to publish for ${what}.`);
+      const currentRow = rows.find((row) => row.status === "published");
+      const current = currentRow ? normalize(this.parse(currentRow.config)) : null;
+      const published = normalize({
+        ...(this.parse(draftRow.config) as object),
+        revision: (current?.revision ?? 0) + 1,
+      });
+      await sql.query(
+        `UPDATE ${table} SET status='history' WHERE tenant_id=$1 AND ${keyColumn}=$2 AND status='published'`,
+        [tenantId, key],
+      );
+      await sql.query(
+        `DELETE FROM ${table} WHERE tenant_id=$1 AND ${keyColumn}=$2 AND status='draft'`,
+        [tenantId, key],
+      );
+      await sql.query(
+        `INSERT INTO ${table} (tenant_id, ${keyColumn}, status, revision, config) VALUES ($1,$2,'published',$3,$4)`,
+        [tenantId, key, published.revision, JSON.stringify(published)],
+      );
+      return published;
+    };
+    return this.inTransaction(run);
+  }
+
+  /** Restore a historical revision as a NEW published revision (linear chain). */
+  private async restoreStaged<T extends { revision: number }>(
+    surface: keyof typeof PostgresConfigStore.STAGED_TABLES,
+    tenantId: string,
+    key: string,
+    toRevision: number,
+    what: string,
+    normalize: (config: unknown) => T,
+  ): Promise<T> {
+    await this.ready;
+    const { table, keyColumn } = PostgresConfigStore.STAGED_TABLES[surface];
+    return this.inTransaction(async (sql) => {
+      const { rows } = await sql.query(
+        `SELECT config FROM ${table} WHERE tenant_id=$1 AND ${keyColumn}=$2 AND status='history' AND revision=$3`,
+        [tenantId, key, toRevision],
+      );
+      if (!rows[0]) throw new Error(`No revision v${toRevision} in history for ${what}.`);
+      const currentRows = await sql.query(
+        `SELECT config FROM ${table} WHERE tenant_id=$1 AND ${keyColumn}=$2 AND status='published'`,
+        [tenantId, key],
+      );
+      const current = currentRows.rows[0] ? normalize(this.parse(currentRows.rows[0].config)) : null;
+      const published = normalize({
+        ...(this.parse(rows[0].config) as object),
+        revision: (current?.revision ?? 0) + 1,
+      });
+      await sql.query(
+        `UPDATE ${table} SET status='history' WHERE tenant_id=$1 AND ${keyColumn}=$2 AND status='published'`,
+        [tenantId, key],
+      );
+      await sql.query(
+        `INSERT INTO ${table} (tenant_id, ${keyColumn}, status, revision, config) VALUES ($1,$2,'published',$3,$4)`,
+        [tenantId, key, published.revision, JSON.stringify(published)],
+      );
+      return published;
+    });
+  }
+
+  /**
+   * Prefer a dedicated transaction-scoped connection so concurrent queries
+   * can't be swept into this BEGIN/COMMIT. Falls back to the shared session
+   * (in-memory mock / single-session) when no pooled transaction is available.
+   */
+  private async inTransaction<T>(run: (sql: Pick<SqlSession, "query">) => Promise<T>): Promise<T> {
+    if (this.sql.transaction) return this.sql.transaction(run);
+    await this.sql.query("BEGIN");
+    try {
+      const result = await run(this.sql);
+      await this.sql.query("COMMIT");
+      return result;
+    } catch (error) {
+      await this.sql.query("ROLLBACK");
+      throw error;
+    }
+  }
+
+  /** Distinct keys present for a staged table, in stable order. */
+  private async stagedKeys(
+    surface: keyof typeof PostgresConfigStore.STAGED_TABLES,
+    tenantId: string,
+  ): Promise<string[]> {
+    await this.ready;
+    const { table, keyColumn } = PostgresConfigStore.STAGED_TABLES[surface];
+    const { rows } = await this.sql.query(
+      `SELECT DISTINCT ${keyColumn} AS key FROM ${table} WHERE tenant_id=$1 ORDER BY key ASC`,
+      [tenantId],
+    );
+    return rows.map((row) => String(row.key));
   }
 
   private async selectLayout(
@@ -262,6 +510,105 @@ export class PostgresConfigStore implements AdminConfigStore {
       [tenantId],
     );
     return rows.map((r) => String(r.object));
+  }
+
+  async listLayoutRecords(
+    tenantId: string,
+  ): Promise<(LayoutRecord & { object: string; audience: string })[]> {
+    await this.ready;
+    const { rows } = await this.sql.query(
+      "SELECT DISTINCT object, audience FROM layout_configs WHERE tenant_id=$1 ORDER BY object ASC, audience ASC",
+      [tenantId],
+    );
+    return Promise.all(
+      rows.map(async (row) => {
+        const object = String(row.object);
+        const audience = String(row.audience);
+        return { object, audience, ...(await this.getLayoutRecord(tenantId, object, audience)) };
+      }),
+    );
+  }
+
+  async listStagedChanges(tenantId: string, labels: DiffLabels = {}): Promise<StagedChange[]> {
+    return collectStagedChanges(this, tenantId, labels);
+  }
+
+  async listSurfaceHistory(tenantId: string, labels: DiffLabels = {}): Promise<SurfaceHistory[]> {
+    return collectSurfaceHistory(this, tenantId, labels);
+  }
+
+  async rollbackStaged(
+    tenantId: string,
+    key: StagedKey,
+    toRevision: number,
+  ): Promise<{ revision: number }> {
+    return runStagedRollback(this, tenantId, key, toRevision);
+  }
+
+  async publishStaged(tenantId: string, keys: StagedKey[]): Promise<PublishResult[]> {
+    return runStagedPublish(keys, (key, batchId) =>
+      this.publishOne<{ revision: number }>(tenantId, key, batchId),
+    );
+  }
+
+  /**
+   * The one place a draft becomes what reps see. Every publish verb routes
+   * through here so the revision bump, the history append and the PublishEvent
+   * can't drift apart per surface.
+   */
+  private async publishOne<T>(tenantId: string, key: StagedKey, batchId?: string): Promise<T> {
+    const audience = key.audience ?? "default";
+    switch (key.surface) {
+      case "layout":
+        return (await this.publishLayout(tenantId, key.object, audience, batchId)) as T;
+      case "exposures": {
+        const published = await this.promoteStaged(
+          "exposures",
+          tenantId,
+          key.object,
+          `${key.object} lists`,
+          (c) => ViewExposuresSchema.parse(c),
+        );
+        await this.logEvent(
+          tenantId, key.object, audience, published.revision, "publish", "exposures", batchId,
+        );
+        return published as T;
+      }
+      case "flows": {
+        const published = await this.promoteStaged(
+          "flows",
+          tenantId,
+          key.object,
+          `flow ${key.object}`,
+          (c) => FlowRenderModeSchema.parse(c),
+        );
+        await this.logEvent(
+          tenantId, key.object, audience, published.revision, "publish", "flows", batchId,
+        );
+        return published as T;
+      }
+      case "homecard": {
+        const published = await this.promoteStaged(
+          "homecard",
+          tenantId,
+          audience,
+          "home card",
+          (c) => c as HomeCardConfig,
+        );
+        // Labelled "home card" (not the audience) so the home page reads right.
+        await this.logEvent(
+          tenantId, "home card", audience, published.revision, "publish", "homecard", batchId,
+        );
+        return published as T;
+      }
+      case "screen": {
+        const published = await this.publishScreen(tenantId, key.object);
+        await this.logEvent(
+          tenantId, published.label, audience, published.revision, "publish", "screen", batchId,
+        );
+        return published as T;
+      }
+    }
   }
 
   async getViewExposures(tenantId: string, object: string): Promise<ViewExposure[]> {
@@ -578,6 +925,15 @@ export class PostgresConfigStore implements AdminConfigStore {
   }
 
   async publish(tenantId: string, object: string, audience = "default"): Promise<LayoutConfig> {
+    return this.publishOne(tenantId, { surface: "layout", object, audience });
+  }
+
+  private async publishLayout(
+    tenantId: string,
+    object: string,
+    audience: string,
+    batchId?: string,
+  ): Promise<LayoutConfig> {
     await this.ready;
     await this.sql.query("BEGIN");
     try {
@@ -597,7 +953,7 @@ export class PostgresConfigStore implements AdminConfigStore {
         "INSERT INTO layout_configs (tenant_id, object, audience, status, revision, config) VALUES ($1,$2,$3,'published',$4,$5)",
         [tenantId, object, audience, published.revision, JSON.stringify(published)],
       );
-      await this.logEvent(tenantId, object, audience, published.revision, "publish");
+      await this.logEvent(tenantId, object, audience, published.revision, "publish", "layout", batchId);
       await this.sql.query("COMMIT");
       return published;
     } catch (error) {
@@ -627,7 +983,7 @@ export class PostgresConfigStore implements AdminConfigStore {
         "INSERT INTO layout_configs (tenant_id, object, audience, status, revision, config) VALUES ($1,$2,$3,'published',$4,$5)",
         [tenantId, object, audience, published.revision, JSON.stringify(published)],
       );
-      await this.logEvent(tenantId, object, audience, published.revision, "rollback");
+      await this.logEvent(tenantId, object, audience, published.revision, "rollback", "layout");
       await this.sql.query("COMMIT");
       return published;
     } catch (error) {
@@ -636,52 +992,148 @@ export class PostgresConfigStore implements AdminConfigStore {
     }
   }
 
-  async getViewExposuresConfig(tenantId: string, object: string): Promise<ViewExposuresConfig | undefined> {
-    await this.ready;
-    const { rows } = await this.sql.query(
-      "SELECT config FROM view_exposures WHERE tenant_id=$1 AND object=$2",
-      [tenantId, object],
-    );
-    // Normalize through the schema: rows written before customLists existed
-    // (v2 note) otherwise reach clients without the field and crash them.
-    return rows[0] ? ViewExposuresSchema.parse(this.parse(rows[0].config)) : undefined;
+  async getViewExposuresConfig(
+    tenantId: string,
+    object: string,
+  ): Promise<ViewExposuresConfig | undefined> {
+    // PUBLISHED only — this is the read side the MCP server renders from.
+    return (await this.getViewExposuresRecord(tenantId, object)).published ?? undefined;
   }
 
-  async setViewExposures(config: ViewExposuresConfig): Promise<void> {
-    await this.ready;
-    await this.sql.query(
-      `INSERT INTO view_exposures (tenant_id, object, config) VALUES ($1,$2,$3)
-       ON CONFLICT (tenant_id, object) DO UPDATE SET config = EXCLUDED.config`,
-      [config.tenantId, config.object, JSON.stringify(config)],
+  async getViewExposuresRecord(tenantId: string, object: string): Promise<ViewExposuresRecord> {
+    // Normalize through the schema: rows written before customLists existed
+    // (v2 note) otherwise reach clients without the field and crash them.
+    return this.readStaged("exposures", tenantId, object, (c) => ViewExposuresSchema.parse(c));
+  }
+
+  async listViewExposuresRecords(
+    tenantId: string,
+  ): Promise<(ViewExposuresRecord & { object: string })[]> {
+    const objects = await this.stagedKeys("exposures", tenantId);
+    return Promise.all(
+      objects.map(async (object) => ({
+        object,
+        ...(await this.getViewExposuresRecord(tenantId, object)),
+      })),
     );
+  }
+
+  /** Stages exposure changes as a DRAFT — publish makes them visible to reps. */
+  async setViewExposures(config: ViewExposuresConfig): Promise<void> {
+    const parsed = ViewExposuresSchema.parse(config);
+    await this.writeStagedDraft(
+      "exposures",
+      parsed.tenantId,
+      parsed.object,
+      parsed.revision,
+      parsed,
+    );
+  }
+
+  async discardViewExposuresDraft(tenantId: string, object: string): Promise<void> {
+    await this.discardStagedDraft("exposures", tenantId, object);
+  }
+
+  async publishViewExposures(tenantId: string, object: string): Promise<ViewExposuresConfig> {
+    return this.publishOne(tenantId, { surface: "exposures", object });
+  }
+
+  async rollbackViewExposures(
+    tenantId: string,
+    object: string,
+    toRevision: number,
+  ): Promise<ViewExposuresConfig> {
+    const published = await this.restoreStaged("exposures", tenantId, object, toRevision, `${object} lists`, (c) =>
+      ViewExposuresSchema.parse(c),
+    );
+    await this.logEvent(tenantId, object, "default", published.revision, "rollback", "exposures");
+    return published;
   }
 
   async getHomeCard(tenantId: string, audience = "default"): Promise<HomeCardConfig | undefined> {
-    await this.ready;
-    const { rows } = await this.sql.query(
-      "SELECT config FROM home_cards WHERE tenant_id=$1 AND audience=$2",
-      [tenantId, audience],
+    // PUBLISHED only — a staged home card is invisible to chat until published.
+    return (await this.getHomeCardRecord(tenantId, audience)).published ?? undefined;
+  }
+
+  async getHomeCardRecord(tenantId: string, audience = "default"): Promise<HomeCardRecord> {
+    return this.readStaged("homecard", tenantId, audience, (c) => c as HomeCardConfig);
+  }
+
+  async listHomeCardRecords(
+    tenantId: string,
+  ): Promise<(HomeCardRecord & { audience: string })[]> {
+    const audiences = await this.stagedKeys("homecard", tenantId);
+    return Promise.all(
+      audiences.map(async (audience) => ({
+        audience,
+        ...(await this.getHomeCardRecord(tenantId, audience)),
+      })),
     );
-    return rows[0] ? this.parse<HomeCardConfig>(rows[0].config) : undefined;
   }
 
   async getFlowRenderModes(tenantId: string): Promise<FlowRenderModeConfig[]> {
-    await this.ready;
-    const { rows } = await this.sql.query(
-      "SELECT config FROM flow_render_modes WHERE tenant_id=$1 ORDER BY flow_api ASC",
-      [tenantId],
-    );
-    return rows.map((row) => FlowRenderModeSchema.parse(this.parse(row.config)));
+    // PUBLISHED only — a staged render policy does not change chat behavior.
+    const records = await this.listFlowRenderModeRecords(tenantId);
+    return records.flatMap((record) => (record.published ? [record.published] : []));
   }
 
-  async setFlowRenderMode(config: FlowRenderModeConfig): Promise<void> {
-    await this.ready;
-    const parsed = FlowRenderModeSchema.parse(config);
-    await this.sql.query(
-      `INSERT INTO flow_render_modes (tenant_id, flow_api, config) VALUES ($1,$2,$3)
-       ON CONFLICT (tenant_id, flow_api) DO UPDATE SET config = EXCLUDED.config`,
-      [parsed.tenantId, parsed.flowApiName, JSON.stringify(parsed)],
+  async listFlowRenderModeRecords(
+    tenantId: string,
+  ): Promise<(FlowRenderModeRecord & { flowApiName: string })[]> {
+    const flows = await this.stagedKeys("flows", tenantId);
+    return Promise.all(
+      flows.map(async (flowApiName) => ({
+        flowApiName,
+        ...(await this.getFlowRenderModeRecord(tenantId, flowApiName)),
+      })),
     );
+  }
+
+  async getFlowRenderModeRecord(
+    tenantId: string,
+    flowApiName: string,
+  ): Promise<FlowRenderModeRecord> {
+    return this.readStaged("flows", tenantId, flowApiName, (c) => FlowRenderModeSchema.parse(c));
+  }
+
+  /** Stages a flow's render policy as a DRAFT — live only after publish. */
+  async setFlowRenderMode(config: FlowRenderModeConfig): Promise<void> {
+    const parsed = FlowRenderModeSchema.parse(config);
+    await this.writeStagedDraft(
+      "flows",
+      parsed.tenantId,
+      parsed.flowApiName,
+      parsed.revision,
+      parsed,
+    );
+  }
+
+  async discardFlowRenderModeDraft(tenantId: string, flowApiName: string): Promise<void> {
+    await this.discardStagedDraft("flows", tenantId, flowApiName);
+  }
+
+  async publishFlowRenderMode(
+    tenantId: string,
+    flowApiName: string,
+  ): Promise<FlowRenderModeConfig> {
+    return this.publishOne(tenantId, { surface: "flows", object: flowApiName });
+  }
+
+  async rollbackFlowRenderMode(
+    tenantId: string,
+    flowApiName: string,
+    toRevision: number,
+  ): Promise<FlowRenderModeConfig> {
+    const published = await this.restoreStaged(
+      "flows",
+      tenantId,
+      flowApiName,
+      toRevision,
+      `flow ${flowApiName}`,
+      (c) => FlowRenderModeSchema.parse(c),
+    );
+    await this.logEvent(tenantId, flowApiName, "default", published.revision, "rollback", "flows");
+    return published;
   }
 
   async getCustomScreens(tenantId: string): Promise<CustomScreenConfig[]> {
@@ -746,7 +1198,63 @@ export class PostgresConfigStore implements AdminConfigStore {
     );
   }
 
+  async discardCustomScreenDraft(tenantId: string, id: string): Promise<void> {
+    await this.ready;
+    await this.sql.query(
+      "DELETE FROM custom_screens WHERE tenant_id=$1 AND screen_id=$2 AND status='draft'",
+      [tenantId, id],
+    );
+  }
+
   async publishCustomScreen(tenantId: string, id: string): Promise<CustomScreenConfig> {
+    return this.publishOne(tenantId, { surface: "screen", object: id });
+  }
+
+  async rollbackCustomScreen(
+    tenantId: string,
+    id: string,
+    toRevision: number,
+  ): Promise<CustomScreenConfig> {
+    await this.ready;
+    const published = await this.inTransaction(async (sql) => {
+      const { rows } = await sql.query(
+        "SELECT config FROM custom_screens WHERE tenant_id=$1 AND screen_id=$2 AND status='history' AND revision=$3",
+        [tenantId, id, toRevision],
+      );
+      if (!rows[0]) {
+        throw new Error(`No revision v${toRevision} in history for custom screen ${id}.`);
+      }
+      const currentRows = await sql.query(
+        "SELECT config FROM custom_screens WHERE tenant_id=$1 AND screen_id=$2 AND status='published'",
+        [tenantId, id],
+      );
+      const current = currentRows.rows[0]
+        ? CustomScreenSchema.parse(this.parse(currentRows.rows[0].config))
+        : null;
+      // Rolling back is itself a publish: NEW revision, linear version chain.
+      const restored = CustomScreenSchema.parse({
+        ...(this.parse(rows[0].config) as object),
+        status: "published",
+        revision: (current?.revision ?? 0) + 1,
+        updatedAt: new Date().toISOString(),
+      });
+      await sql.query(
+        "UPDATE custom_screens SET status='history' WHERE tenant_id=$1 AND screen_id=$2 AND status='published'",
+        [tenantId, id],
+      );
+      await sql.query(
+        "INSERT INTO custom_screens (tenant_id, screen_id, status, revision, config) VALUES ($1,$2,'published',$3,$4)",
+        [tenantId, id, restored.revision, JSON.stringify(restored)],
+      );
+      return restored;
+    });
+    await this.logEvent(
+      tenantId, published.label, "default", published.revision, "rollback", "screen",
+    );
+    return published;
+  }
+
+  private async publishScreen(tenantId: string, id: string): Promise<CustomScreenConfig> {
     await this.ready;
     const current = (await this.getCustomScreenRecord(tenantId, id)).published;
     const run = async (sql: Pick<SqlSession, "query">): Promise<CustomScreenConfig> => {
@@ -756,6 +1264,11 @@ export class PostgresConfigStore implements AdminConfigStore {
       );
       if (!rows[0]) throw new Error(`No draft to publish for custom screen ${id}.`);
       const draft = CustomScreenSchema.parse(this.parse(rows[0].config));
+      if (!draft.flowApiName) {
+        throw new Error(
+          "Attach this screen to a flow before publishing — the flow render ladder is the only thing that runs a custom screen.",
+        );
+      }
       const published = CustomScreenSchema.parse({
         ...draft,
         status: "published",
@@ -776,43 +1289,53 @@ export class PostgresConfigStore implements AdminConfigStore {
       );
       return published;
     };
-    // Prefer a dedicated transaction-scoped connection so concurrent queries
-    // can't be swept into this BEGIN/COMMIT. Fall back to the shared session
-    // (in-memory mock / single-session) when no pooled transaction is available.
-    if (this.sql.transaction) return this.sql.transaction(run);
-    await this.sql.query("BEGIN");
-    try {
-      const published = await run(this.sql);
-      await this.sql.query("COMMIT");
-      return published;
-    } catch (error) {
-      await this.sql.query("ROLLBACK");
-      throw error;
-    }
+    return this.inTransaction(run);
   }
 
+  /**
+   * Stages home-card changes as a DRAFT. Before the staging model these edits
+   * lived in React state only and were lost on tab close — they are durable now.
+   */
   async setHomeCard(config: HomeCardConfig): Promise<void> {
-    await this.ready;
-    await this.sql.query(
-      `INSERT INTO home_cards (tenant_id, audience, config) VALUES ($1,$2,$3)
-       ON CONFLICT (tenant_id, audience) DO UPDATE SET config = EXCLUDED.config`,
-      [config.tenantId, config.audience, JSON.stringify(config)],
+    await this.writeStagedDraft(
+      "homecard",
+      config.tenantId,
+      config.audience,
+      config.revision,
+      config,
     );
   }
 
-  async publishHomeCard(config: HomeCardConfig): Promise<HomeCardConfig> {
-    await this.ready;
-    const current = await this.getHomeCard(config.tenantId, config.audience);
-    const published: HomeCardConfig = { ...config, revision: (current?.revision ?? 0) + 1 };
-    await this.setHomeCard(published);
-    await this.logEvent(config.tenantId, "home card", config.audience, published.revision, "publish");
+  async discardHomeCardDraft(tenantId: string, audience = "default"): Promise<void> {
+    await this.discardStagedDraft("homecard", tenantId, audience);
+  }
+
+  async publishHomeCard(tenantId: string, audience = "default"): Promise<HomeCardConfig> {
+    return this.publishOne(tenantId, { surface: "homecard", object: audience, audience });
+  }
+
+  async rollbackHomeCard(
+    tenantId: string,
+    toRevision: number,
+    audience = "default",
+  ): Promise<HomeCardConfig> {
+    const published = await this.restoreStaged(
+      "homecard",
+      tenantId,
+      audience,
+      toRevision,
+      "home card",
+      (c) => c as HomeCardConfig,
+    );
+    await this.logEvent(tenantId, "home card", audience, published.revision, "rollback", "homecard");
     return published;
   }
 
   async listPublishes(tenantId: string): Promise<PublishEvent[]> {
     await this.ready;
     const { rows } = await this.sql.query(
-      "SELECT object, audience, revision, kind, created_at FROM publish_events WHERE tenant_id=$1 ORDER BY id DESC",
+      `SELECT object, audience, revision, kind, surface, batch_id, created_at
+       FROM publish_events WHERE tenant_id=$1 ORDER BY id DESC`,
       [tenantId],
     );
     return rows.map((row) => ({
@@ -822,6 +1345,10 @@ export class PostgresConfigStore implements AdminConfigStore {
       revision: Number(row.revision),
       kind: row.kind as PublishEvent["kind"],
       timestamp: new Date(row.created_at as string).toISOString(),
+      // Events written before the staging model have neither column; they were
+      // all layout publishes, which is how they render.
+      ...(row.surface ? { surface: row.surface as PublishSurface } : {}),
+      ...(row.batch_id ? { batchId: String(row.batch_id) } : {}),
     }));
   }
 
@@ -831,10 +1358,13 @@ export class PostgresConfigStore implements AdminConfigStore {
     audience: string,
     revision: number,
     kind: PublishEvent["kind"],
+    surface: PublishSurface,
+    batchId?: string,
   ): Promise<void> {
     await this.sql.query(
-      "INSERT INTO publish_events (tenant_id, object, audience, revision, kind) VALUES ($1,$2,$3,$4,$5)",
-      [tenantId, object, audience, revision, kind],
+      `INSERT INTO publish_events (tenant_id, object, audience, revision, kind, surface, batch_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [tenantId, object, audience, revision, kind, surface, batchId ?? null],
     );
   }
 }

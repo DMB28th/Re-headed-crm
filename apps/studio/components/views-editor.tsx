@@ -4,8 +4,14 @@
  * - CRM saved views sync read-only — filters are managed in the CRM.
  * - Cardstack lists are admin-defined HERE (name + filters) and run through
  *   the adapter's search. Both expose/alias/default the same way.
+ *
+ * Edits STAGE as a draft (docs/studio-staging-model.md). Exposing a list is a
+ * governance change every rep sees in chat, so it goes through Review & publish
+ * like a layout instead of going live the instant a toggle is touched.
  */
+import Link from "next/link";
 import { useEffect, useState } from "react";
+import { StatusChip, STATUS_FLASH_MS } from "./ui/status-chip";
 import {
   summarizeCustomFilters,
   VALUELESS_LIST_OPS,
@@ -158,7 +164,7 @@ export function ViewsEditor({ object }: { object: string }) {
       body: JSON.stringify(next),
     });
     setSaved(true);
-    setTimeout(() => setSaved(false), 1600);
+    setTimeout(() => setSaved(false), STATUS_FLASH_MS);
   };
 
   if (loadError) {
@@ -323,14 +329,17 @@ export function ViewsEditor({ object }: { object: string }) {
   return (
     <div className="max-w-[980px]">
       <div className="flex items-center justify-between">
-        <h1 className="text-[22px] font-semibold tracking-[-0.025em] capitalize">
-          {object} lists &amp; views
-        </h1>
-        <span className="text-[11.5px] text-ink-45">{saved ? "Saved" : " "}</span>
+        <h1 className="text-[16px] font-semibold capitalize">{object} · Lists</h1>
+        <StatusChip status={saved ? "staged" : "clean"} />
       </div>
-      <p className="mt-1 max-w-[760px] text-[14px] text-ink-55">
-        Choose which CRM views chat can use, set the phrases that find them, or create a
-        Cardstack-managed list. Changes are live on the next ask.
+      <p className="mt-1 text-[12.5px] text-ink-55">
+        Two sources: saved views sync from the CRM (filters managed there), and Cardstack lists
+        you define right here. Both decide what chat can see and what phrases reach them.
+        Exposing a list changes what every rep sees, so edits stage as a draft and go live from{" "}
+        <Link href="/publish" className="underline">
+          Review &amp; publish
+        </Link>
+        .
       </p>
 
       <h2 className="mt-7 text-[16px] font-semibold">Synced CRM views</h2>

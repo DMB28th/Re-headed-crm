@@ -33,7 +33,10 @@ export function Preview({ config }: { config: LayoutConfig }) {
   const [live, setLive] = useState(false);
   const [width, setWidth] = useState<680 | 380>(680);
   const [dark, setDark] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  // Collapsed by default: the canvas is card-shaped now, so the builder reads
+  // as the card on its own. This pane is the FIDELITY check — the real widget
+  // against a server-assembled payload — so it's one click away, not gone.
+  const [collapsed, setCollapsed] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [modelContext, setModelContext] = useState<string | null>(null);
   const [followup, setFollowup] = useState<string | null>(null);
@@ -147,13 +150,13 @@ export function Preview({ config }: { config: LayoutConfig }) {
         <button
           type="button"
           className="st-btn w-full !px-1 py-2"
-          title="Expand the live preview"
+          title="Expand the live preview — the real widget, against real data"
           onClick={() => setCollapsed(false)}
         >
           ◂
         </button>
         <div className="mt-2 rotate-180 text-center text-[10.5px] tracking-[0.06em] text-ink-45 [writing-mode:vertical-rl]">
-          PREVIEW
+          LIVE PREVIEW
         </div>
       </aside>
     );

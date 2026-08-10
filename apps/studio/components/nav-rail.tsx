@@ -53,6 +53,7 @@ export function NavRail() {
   const pathname = usePathname();
   const router = useRouter();
   const [data, setData] = useState<ObjectsData | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState("");
   const [adding, setAdding] = useState<string | null>(null);
@@ -79,10 +80,24 @@ export function NavRail() {
     setData((await res.json()) as ObjectsData);
   }, []);
 
+  // The tray is the source of truth for "what's staged" across every surface;
+  // the per-object dot below is a secondary hint for layouts only.
+  const loadPending = useCallback(async () => {
+    try {
+      const res = await fetch("/api/pending");
+      if (!res.ok) return;
+      const { changes } = (await res.json()) as { changes?: unknown[] };
+      setPendingCount(changes?.length ?? 0);
+    } catch {
+      // A pending-count hiccup must never take the whole nav down.
+    }
+  }, []);
+
   // Refetch on navigation: connect/disconnect and publishes change the rail.
   useEffect(() => {
     void load();
-  }, [load, pathname]);
+    void loadPending();
+  }, [load, loadPending, pathname]);
 
   useEffect(() => setMobileOpen(false), [pathname]);
 
@@ -167,6 +182,31 @@ export function NavRail() {
       <RailLink href="/" active={pathname === "/"}>
         Overview
       </RailLink>
+
+      {connected && (
+        <Link
+          href="/publish"
+          className={`-mt-3 block rounded-[8px] px-2.5 py-1.5 text-[12.5px] transition-colors ${
+            pathname === "/publish"
+              ? "bg-[rgba(47,53,80,0.08)] font-medium text-ink"
+              : pendingCount > 0
+                ? "bg-draft text-draft-ink hover:bg-[rgba(138,90,16,0.12)]"
+                : "text-ink-45 hover:bg-[rgba(47,53,80,0.05)] hover:text-ink"
+          }`}
+          title={
+            pendingCount > 0
+              ? "Staged changes reps can't see yet — review and publish them"
+              : "Nothing staged"
+          }
+        >
+          <span className="flex items-center justify-between gap-2">
+            <span>Pending changes</span>
+            {pendingCount > 0 && (
+              <span className="st-chip-mono bg-draft text-draft-ink">{pendingCount}</span>
+            )}
+          </span>
+        </Link>
+      )}
 
       <div>
         <div className="st-section-label px-2.5 pb-1.5">Cards</div>
@@ -288,21 +328,20 @@ export function NavRail() {
 
       {connected && (
         <div>
-          <div className="st-section-label px-2.5 pb-1.5">Workspace</div>
+          <div className="st-section-label px-2.5 pb-1.5">Shared</div>
           <RailLink href="/home-card" active={pathname === "/home-card"}>
             Home card
           </RailLink>
-          <RailLink href="/flows" active={pathname === "/flows"}>
-            Automations
+          {/* Custom screens are reached from a flow (design 10c), not a rail
+              entry of their own — see custom-screen-editor.tsx's design note. */}
+          <RailLink
+            href="/flows"
+            active={pathname.startsWith("/flows") || pathname.startsWith("/custom-screens")}
+          >
+            Flows
           </RailLink>
           <RailLink href="/audit" active={pathname === "/audit"}>
-            Activity
-          </RailLink>
-          <RailLink href="/custom-screens" active={pathname === "/custom-screens"}>
-            <span className="flex items-center justify-between">
-              <span>Labs</span>
-              <span className="st-chip-mono bg-draft text-draft-ink">preview</span>
-            </span>
+            Audit log
           </RailLink>
         </div>
       )}

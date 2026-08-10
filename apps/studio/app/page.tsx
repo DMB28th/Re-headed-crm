@@ -4,6 +4,8 @@ import { getAdapter, getStore } from "../lib/backend";
 import { getUserContext } from "../lib/auth";
 import { AddObjectCard } from "../components/add-object-card";
 import { NoConnection } from "../components/no-connection";
+import { ErrorNotice } from "../components/ui/error-notice";
+import { classifyCrmError } from "../lib/crm-error";
 
 export const dynamic = "force-dynamic";
 
@@ -91,32 +93,7 @@ export default async function HomePage() {
         Design what they see, control what they can change, and publish when it is ready.
       </p>
 
-      <div className="mt-5 flex flex-wrap gap-2">
-        {drafted[0] && (
-          <Link
-            href={`/objects/${drafted[0].api}/layouts`}
-            className="st-btn st-btn--primary"
-          >
-            Review & publish {drafted[0].labelPlural}
-          </Link>
-        )}
-        <Link href="/home-card" className="st-btn">
-          Preview the rep home card
-        </Link>
-        <Link href="/flows" className="st-btn">
-          Configure automations
-        </Link>
-        <Link href="/audit" className="st-btn">
-          View write activity
-        </Link>
-      </div>
-
-      {crmError && (
-        <div className="mt-5 rounded-[10px] border-l-[3px] border-drift-ink bg-drift px-4 py-3 text-[12.5px] text-drift-ink">
-          Couldn't reach the CRM: {crmError} — if this mentions 403/scopes, fix the
-          connection's app permissions and reconnect.
-        </div>
-      )}
+      {crmError && <ErrorNotice error={classifyCrmError(crmError)} className="mt-5" />}
 
       {drafted.map((object) => (
         <div

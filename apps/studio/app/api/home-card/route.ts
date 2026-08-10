@@ -19,7 +19,9 @@ export async function GET(req: Request) {
     const { tenantId } = user;
     const store = await getStore();
     const adapter = await getAdapter(tenantId);
-    const homeCard = await store.getHomeCard(tenantId);
+    // The builder edits the DRAFT; reps keep the published card until publish.
+    const record = await store.getHomeCardRecord(tenantId);
+    const homeCard = record.draft ?? record.published;
     const connection = await store.getConnection(tenantId);
     const connectedUser =
       connection.status === "connected" ? await adapter.getConnectedUser().catch(() => null) : null;
@@ -64,6 +66,8 @@ export async function GET(req: Request) {
     const { credentials, ...connectionSafe } = connection;
     return NextResponse.json({
       homeCard,
+      staged: record.draft !== null,
+      publishedRevision: record.published?.revision ?? null,
       exposedViews,
       connection: { ...connectionSafe, live: !!credentials && Object.keys(credentials).length > 0 },
       connectedUser,
@@ -74,6 +78,12 @@ export async function GET(req: Request) {
   }
 }
 
+/**
+ * Stages a home-card draft. Before the staging model this endpoint PUBLISHED,
+ * and the builder held edits in React state until then — closing the tab lost
+ * the work. Now every edit autosaves here and publishing is a separate,
+ * confirmed step (docs/studio-staging-model.md).
+ */
 export async function POST(req: Request) {
   try {
     const { tenantId } = await getUserContextFromRequest(req);
@@ -81,8 +91,19 @@ export async function POST(req: Request) {
     if (config.tenantId !== tenantId) {
       return NextResponse.json({ error: "tenant mismatch" }, { status: 400 });
     }
-    const published = await (await getStore()).publishHomeCard(config);
-    return NextResponse.json({ published });
+    await (await getStore()).setHomeCard(config);
+    return NextResponse.json({ ok: true, staged: true });
+  } catch (error) {
+    return NextResponse.json({ error: String(error) }, { status: 400 });
+  }
+}
+
+/** Discards the staged draft, restoring what reps already see. */
+export async function DELETE(req: Request) {
+  try {
+    const { tenantId } = await getUserContextFromRequest(req);
+    await (await getStore()).discardHomeCardDraft(tenantId);
+    return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 400 });
   }
