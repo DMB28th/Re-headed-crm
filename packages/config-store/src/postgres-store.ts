@@ -959,6 +959,11 @@ export class PostgresConfigStore implements AdminConfigStore {
       );
       if (!rows[0]) throw new Error(`No draft to publish for custom screen ${id}.`);
       const draft = CustomScreenSchema.parse(this.parse(rows[0].config));
+      if (!draft.flowApiName) {
+        throw new Error(
+          "Attach this screen to a flow before publishing — the flow render ladder is the only thing that runs a custom screen.",
+        );
+      }
       const published = CustomScreenSchema.parse({
         ...draft,
         status: "published",

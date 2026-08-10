@@ -25,11 +25,26 @@ export async function GET(req: Request) {
       record.draft ? [record.draft] : record.published ? [record.published] : [],
     );
     const staged = records.filter((record) => record.draft).map((record) => record.flowApiName);
+    // Custom screens live HERE now — a screen only means something as a screen
+    // of a flow, so the flow is where you find and build one.
+    const screenRecords = await store.listCustomScreenRecords(tenantId);
+    const screens = screenRecords.map((record) => {
+      const config = record.draft ?? record.published;
+      return {
+        id: record.id,
+        label: config?.label ?? record.id,
+        flowApiName: config?.flowApiName ?? null,
+        replacesComponent: config?.replacesComponent ?? null,
+        hasDraft: record.draft !== null,
+        publishedRevision: record.published?.revision ?? null,
+      };
+    });
     const { credentials, ...connectionSafe } = connection;
     return NextResponse.json({
       flows,
       modes,
       staged,
+      screens,
       connection: {
         ...connectionSafe,
         live: !!credentials && Object.keys(credentials).length > 0,

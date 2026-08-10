@@ -202,3 +202,43 @@ heavier gesture.
 View-as / audience preview, a record picker in the preview pane, command
 palette, keyboard dnd, audit-log filtering, dark mode. All real, none load-
 bearing for the two problems above.
+
+
+---
+
+## Addendum (2026-08-10b): custom screens fold into flows
+
+Studio had two rail entries covering one workflow. **Flows** held per-flow
+render policy; **Custom screens** held the SDK editor for replacement screens.
+Design 12b does list both under SHARED — but the connective tissue 10c
+specifies (a "Map inputs" / "Build screen" fork on a flow with an unsupported
+screen) was never built, so `flows-editor.tsx` had zero references to screens
+and the two read as unrelated areas.
+
+Worse, `CustomScreenConfig.flowApiName` was optional and the editor offered an
+explicit "Unassigned" option. Since the flow render ladder is the only thing
+that executes a screen, an unattached screen is config that can never run.
+
+**Change.** Custom screens are no longer a top-level area:
+
+- The rail entry is gone. Each flow on `/flows` lists its screens with a
+  "+ Build screen" action — 10c's fork, finally built.
+- `/custom-screens/[id]` is where the code pane lives (it needs the room).
+  `/custom-screens` redirects to `/flows` so old links land somewhere useful.
+- Creating a screen requires a flow (`POST /api/custom-screens` 400s without
+  one), and the editor's flow picker has no "Unassigned" option.
+- Publishing requires a flow, enforced in BOTH stores.
+
+`flowApiName` stays **optional in the zod schema** deliberately. Making it
+required would throw on parse for any row written earlier, and one bad row
+sinking a whole list is a regression this codebase has already fixed once (see
+commit f8852a7 for exposures). Instead the rule is enforced at the publish
+boundary, and pre-existing unattached screens surface in a "Screens with no
+flow" card on `/flows` so they can be reassigned rather than silently orphaned.
+
+**Design deviation (hard rule 6):** this departs from 12b's SHARED group of
+Home card / Custom screens / Flows. Noted in `custom-screen-editor.tsx`'s
+header and here. The milestone map is also relevant: PLAN.md scopes the custom
+screen SDK to **M6** ("do not start before M5 lands"), and the page still
+carries a `RuntimePendingBanner` for the M6 runtime — so this is tidying a
+surface that shipped ahead of its milestone, not building M6 early.

@@ -4,6 +4,13 @@
  * Migration notes:
  * - v1: initial flow render-mode config and custom-screen config. Both are
  *   tenant-scoped shared resources, not object-scoped layout blocks.
+ * - 2026-08-10b: a custom screen is a SCREEN-FLOW screen and nothing else.
+ *   `flowApiName` stays OPTIONAL in storage so rows written before this still
+ *   parse (one unattached row must not sink the whole list, cf. the exposures
+ *   regression), but it is now required to PUBLISH: the flow render ladder is
+ *   the only thing that ever executes a screen, so an unattached one is dead
+ *   config. Studio can no longer create one without a flow, and existing
+ *   unattached screens surface on the Flows page to be reassigned.
  * - 2026-08-10: FlowRenderModeConfig gains `revision` (default 1) so a flow's
  *   render policy can be staged and rolled back like a layout
  *   (docs/studio-staging-model.md). Additive with a default — configs written
@@ -49,6 +56,11 @@ export const CustomScreenConfig = z.object({
   tenantId: z.string().min(1),
   id: z.string().regex(/^cs-[a-z0-9-]+$/),
   label: z.string().min(1),
+  /**
+   * The screen flow this screen belongs to. Optional only for storage
+   * tolerance of pre-2026-08-10b rows — required to publish (see the store's
+   * publish verb) because nothing but the flow ladder can render a screen.
+   */
   flowApiName: z.string().optional(),
   replacesComponent: z.string().optional(),
   /**

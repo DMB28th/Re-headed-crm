@@ -195,6 +195,8 @@ describe("PostgresConfigStore", () => {
       tenantId: DEMO_TENANT_ID,
       id: "cs-onsite",
       label: "Onsite scheduling",
+      // A custom screen only means anything as a screen-flow screen.
+      flowApiName: "Renewal_Playbook",
       source: DEFAULT_CUSTOM_SCREEN_SOURCE,
       status: "draft",
       revision: 1,

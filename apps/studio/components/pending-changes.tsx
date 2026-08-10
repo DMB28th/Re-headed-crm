@@ -36,7 +36,7 @@ function editorHref(change: StagedChange): string {
     case "homecard":
       return "/home-card";
     case "screen":
-      return "/custom-screens";
+      return `/custom-screens/${change.object}`;
   }
 }
 

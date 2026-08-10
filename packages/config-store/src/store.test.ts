@@ -651,3 +651,42 @@ describe("staging model (docs/studio-staging-model.md)", () => {
     });
   });
 });
+
+describe("custom screens belong to a screen flow", () => {
+  const base = {
+    version: 1 as const,
+    tenantId: DEMO_TENANT_ID,
+    label: "Onsite scheduling",
+    source: DEFAULT_CUSTOM_SCREEN_SOURCE,
+    status: "draft" as const,
+    revision: 1,
+  };
+
+  it("refuses to publish a screen with no flow — nothing would ever render it", async () => {
+    const store = new InMemoryConfigStore();
+    await store.saveCustomScreenDraft({ ...base, id: "cs-orphan" });
+    await expect(store.publishCustomScreen(DEMO_TENANT_ID, "cs-orphan")).rejects.toThrow(
+      /Attach this screen to a flow/,
+    );
+  });
+
+  it("publishes once the screen is attached to a flow", async () => {
+    const store = new InMemoryConfigStore();
+    await store.saveCustomScreenDraft({
+      ...base,
+      id: "cs-attached",
+      flowApiName: "Renewal_Approval",
+    });
+    const published = await store.publishCustomScreen(DEMO_TENANT_ID, "cs-attached");
+    expect(published).toMatchObject({ status: "published", flowApiName: "Renewal_Approval" });
+  });
+
+  it("still READS an unattached screen written before the rule, so it can be reassigned", async () => {
+    const store = new InMemoryConfigStore();
+    await store.saveCustomScreenDraft({ ...base, id: "cs-legacy" });
+    const records = await store.listCustomScreenRecords(DEMO_TENANT_ID);
+    expect(records.find((record) => record.id === "cs-legacy")?.draft?.label).toBe(
+      "Onsite scheduling",
+    );
+  });
+});

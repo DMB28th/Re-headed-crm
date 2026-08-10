@@ -374,6 +374,11 @@ export abstract class BaseConfigStore implements AdminConfigStore {
         const storeKey = customScreenKey(tenantId, key.object);
         const record = state.customScreens?.[storeKey];
         if (!record?.draft) throw new Error(`No draft to publish for custom screen ${key.object}.`);
+        if (!record.draft.flowApiName) {
+          throw new Error(
+            "Attach this screen to a flow before publishing — the flow render ladder is the only thing that runs a custom screen.",
+          );
+        }
         const published = CustomScreenSchema.parse({
           ...record.draft,
           status: "published",

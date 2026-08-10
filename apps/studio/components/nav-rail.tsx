@@ -224,10 +224,9 @@ export function NavRail() {
         <RailLink href="/home-card" active={pathname === "/home-card"}>
           Home card
         </RailLink>
-        <RailLink href="/custom-screens" active={pathname === "/custom-screens"}>
-          Custom screens
-        </RailLink>
-        <RailLink href="/flows" active={pathname === "/flows"}>
+        {/* Custom screens are reached from a flow (design 10c), not a rail
+            entry of their own — see custom-screen-editor.tsx's design note. */}
+        <RailLink href="/flows" active={pathname.startsWith("/flows") || pathname.startsWith("/custom-screens")}>
           Flows
         </RailLink>
         <RailLink href="/audit" active={pathname === "/audit"}>
