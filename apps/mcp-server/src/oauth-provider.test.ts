@@ -3,7 +3,7 @@
  * with a stubbed Salesforce: register → authorize (SF redirect) → SF callback
  * (identity + per-user connection + our code) → token exchange → verify.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Response } from "express";
 import { InMemoryConfigStore, workspaceIdForOrg } from "@cardstack/config-store";
 import { normalizeUserId } from "@cardstack/core";
@@ -46,26 +46,48 @@ const sfFetchStub: typeof fetch = async (input) => {
  * work against a brand-new org, because signing in is what creates the
  * workspace. This is the case the old single-tenant provider could not serve.
  */
-function newProvider() {
+function newProvider(trustedClientOrigins: string[] = ["https://claude.ai"]) {
   const store = new InMemoryConfigStore();
   const provider = new CardstackOAuthProvider({
     store,
     mcpOrigin: MCP_ORIGIN,
     fetchImpl: sfFetchStub,
     loginApp: LOGIN_APP,
+    trustedClientOrigins,
   });
   return { store, provider };
 }
 
+/** Drive /authorize far enough to hold the Salesforce `state` it minted. */
+async function authorizeTo(
+  provider: CardstackOAuthProvider,
+  client: { client_id: string },
+  redirectUri: string,
+): Promise<string> {
+  const { res, captured } = fakeRes();
+  await provider.authorize(
+    client as never,
+    { redirectUri, codeChallenge: "client-challenge", state: "claude-state" },
+    res,
+  );
+  return new URL(captured.url!).searchParams.get("state")!;
+}
+
 const fakeRes = () => {
-  const captured: { url?: string } = {};
+  const captured: { url?: string; html?: string } = {};
   return {
-    res: { redirect: (url: string) => void (captured.url = url) } as unknown as Response,
+    res: {
+      redirect: (url: string) => void (captured.url = url),
+      send: (html: string) => void (captured.html = html),
+    } as unknown as Response,
     captured,
   };
 };
 
 describe("CardstackOAuthProvider", () => {
+  // Most tests exercise a deployment that has pinned its Salesforce login host,
+  // which is the zero-friction posture. The picker gets its own block below.
+  beforeEach(() => vi.stubEnv("CARDSTACK_SF_LOGIN_URL", "https://login.salesforce.com"));
   afterEach(() => vi.unstubAllEnvs());
 
   it("runs the full flow: register → authorize → SF callback → token → verify", async () => {
@@ -155,6 +177,7 @@ describe("CardstackOAuthProvider", () => {
       store,
       mcpOrigin: MCP_ORIGIN,
       fetchImpl: sfFetchStub,
+      trustedClientOrigins: ["https://claude.ai"],
     });
     const client = await provider.clientsStore.registerClient!({
       redirect_uris: ["https://claude.ai/cb"],
@@ -194,6 +217,7 @@ describe("CardstackOAuthProvider", () => {
       legacyTenantId: TENANT,
       mcpOrigin: MCP_ORIGIN,
       fetchImpl: sfFetchStub,
+      trustedClientOrigins: ["https://claude.ai"],
     });
     const client = await provider.clientsStore.registerClient!({
       redirect_uris: ["https://claude.ai/cb"],
@@ -221,7 +245,7 @@ describe("CardstackOAuthProvider", () => {
   });
 
   it("rejects tokens and codes presented by a different client", async () => {
-    const { provider } = newProvider();
+    const { provider } = newProvider(["https://a", "https://b"]);
     const clientA = await provider.clientsStore.registerClient!({ redirect_uris: ["https://a/cb"] });
     const clientB = await provider.clientsStore.registerClient!({ redirect_uris: ["https://b/cb"] });
     const { res, captured } = fakeRes();
@@ -236,4 +260,366 @@ describe("CardstackOAuthProvider", () => {
     await expect(provider.challengeForAuthorizationCode(clientB, code)).rejects.toThrow();
     await expect(provider.exchangeAuthorizationCode(clientB, code)).rejects.toThrow();
   });
+
+  /**
+   * A1 — the finding this whole interstitial exists for.
+   *
+   * The attack needed no credential theft: register a client pointing anywhere,
+   * send a rep a link on the genuine Cardstack origin, and collect an
+   * authorization code the moment they click, because Salesforce silently
+   * re-approves an app they already authorized. These tests are the regression
+   * guard; if any of them starts passing without the consent step, A1 is back.
+   */
+  describe("consent for unrecognized clients (A1)", () => {
+    const EVIL = "https://evil.example/cb";
+
+    async function throughSalesforce(trusted: string[] = ["https://claude.ai"]) {
+      const { store, provider } = newProvider(trusted);
+      const client = await provider.clientsStore.registerClient!({
+        redirect_uris: [EVIL],
+        client_name: "Notes Helper",
+      });
+      const sfState = await authorizeTo(provider, client, EVIL);
+      const { redirect } = await provider.completeSalesforceCallback(sfState, "sf-code");
+      return { store, provider, client, redirect };
+    }
+
+    it("does not mint an authorization code for an unknown client", async () => {
+      const { redirect } = await throughSalesforce();
+      expect(redirect).toContain("/oauth/consent");
+      expect(redirect).not.toContain("code=");
+      expect(new URL(redirect).origin).toBe(MCP_ORIGIN);
+    });
+
+    it("names the client and the redirect target on the prompt", async () => {
+      const { provider, redirect } = await throughSalesforce();
+      const token = new URL(redirect).searchParams.get("t")!;
+      expect(await provider.describeConsent(token)).toMatchObject({
+        clientName: "Notes Helper",
+        redirectOrigin: "https://evil.example",
+        signerName: "Dana K.",
+        workspaceName: "Acme Corp",
+      });
+    });
+
+    it("mints the code only after the rep allows it", async () => {
+      const { provider, redirect } = await throughSalesforce();
+      const token = new URL(redirect).searchParams.get("t")!;
+      const done = await provider.completeConsent(token, "allow");
+      const back = new URL(done!.redirect);
+      expect(back.origin + back.pathname).toBe(EVIL);
+      expect(back.searchParams.get("code")).toMatch(/^csc_/);
+      expect(back.searchParams.get("state")).toBe("claude-state");
+    });
+
+    it("returns access_denied and no code when the rep cancels", async () => {
+      const { provider, redirect } = await throughSalesforce();
+      const token = new URL(redirect).searchParams.get("t")!;
+      const done = await provider.completeConsent(token, "deny");
+      const back = new URL(done!.redirect);
+      expect(back.searchParams.get("error")).toBe("access_denied");
+      expect(back.searchParams.get("code")).toBeNull();
+      expect(back.searchParams.get("state")).toBe("claude-state");
+    });
+
+    it("refuses a tampered or forged continuation token", async () => {
+      const { provider, redirect } = await throughSalesforce();
+      const token = new URL(redirect).searchParams.get("t")!;
+      expect(await provider.describeConsent(`${token}x`)).toBeUndefined();
+      expect(await provider.completeConsent("csn_made-up.deadbeef", "allow")).toBeUndefined();
+    });
+
+    it("is single-use, so a captured token cannot be replayed into a second code", async () => {
+      const { provider, redirect } = await throughSalesforce();
+      const token = new URL(redirect).searchParams.get("t")!;
+      expect(await provider.completeConsent(token, "allow")).toBeDefined();
+      expect(await provider.completeConsent(token, "allow")).toBeUndefined();
+    });
+
+    it("does not prompt again for a client the rep already allowed", async () => {
+      const { provider, client, redirect } = await throughSalesforce();
+      await provider.completeConsent(new URL(redirect).searchParams.get("t")!, "allow");
+
+      const sfState = await authorizeTo(provider, client, EVIL);
+      const second = await provider.completeSalesforceCallback(sfState, "sf-code");
+      expect(new URL(second.redirect).searchParams.get("code")).toMatch(/^csc_/);
+    });
+
+    it("still prompts for a DIFFERENT client after one was allowed", async () => {
+      const { provider, redirect } = await throughSalesforce();
+      await provider.completeConsent(new URL(redirect).searchParams.get("t")!, "allow");
+
+      const other = await provider.clientsStore.registerClient!({
+        redirect_uris: ["https://other.example/cb"],
+        client_name: "Another App",
+      });
+      const sfState = await authorizeTo(provider, other, "https://other.example/cb");
+      const second = await provider.completeSalesforceCallback(sfState, "sf-code");
+      expect(second.redirect).toContain("/oauth/consent");
+    });
+
+    it("skips the prompt entirely for a first-party client", async () => {
+      const { provider } = newProvider(["https://claude.ai"]);
+      const client = await provider.clientsStore.registerClient!({
+        redirect_uris: ["https://claude.ai/cb"],
+        client_name: "Claude",
+      });
+      const sfState = await authorizeTo(provider, client, "https://claude.ai/cb");
+      const { redirect } = await provider.completeSalesforceCallback(sfState, "sf-code");
+      expect(new URL(redirect).searchParams.get("code")).toMatch(/^csc_/);
+    });
+
+    it("prompts when NOTHING is configured as first party", async () => {
+      const { provider } = newProvider([]);
+      const client = await provider.clientsStore.registerClient!({
+        redirect_uris: ["https://claude.ai/cb"],
+      });
+      const sfState = await authorizeTo(provider, client, "https://claude.ai/cb");
+      const { redirect } = await provider.completeSalesforceCallback(sfState, "sf-code");
+      expect(redirect).toContain("/oauth/consent");
+    });
+
+    it("still persists the rep's own CRM connection while consent is pending", async () => {
+      // Identity resolution happens before the decision; only ACCESS waits.
+      const { store } = await throughSalesforce();
+      const connection = await store.getUserConnection(
+        WORKSPACE,
+        normalizeUserId("Dana@Example.com"),
+        "salesforce",
+      );
+      expect(connection?.status).toBe("connected");
+    });
+  });
+
+  /**
+   * C2 — a rep whose org is a sandbox could not sign in at all through a chat
+   * host, and had no control that would have fixed it.
+   */
+  describe("production vs sandbox (C2)", () => {
+    it("asks which Salesforce when the deployment has not pinned one", async () => {
+      vi.stubEnv("CARDSTACK_SF_LOGIN_URL", "");
+      const { provider } = newProvider();
+      const client = await provider.clientsStore.registerClient!({
+        redirect_uris: ["https://claude.ai/cb"],
+      });
+      const { res, captured } = fakeRes();
+      await provider.authorize(
+        client,
+        { redirectUri: "https://claude.ai/cb", codeChallenge: "c", state: "s" },
+        res,
+      );
+      expect(captured.url).toBeUndefined();
+      expect(captured.html).toContain("Sandbox");
+      expect(captured.html).toContain("Production");
+    });
+
+    it("sends a sandbox choice to test.salesforce.com", async () => {
+      vi.stubEnv("CARDSTACK_SF_LOGIN_URL", "");
+      const { provider } = newProvider();
+      const client = await provider.clientsStore.registerClient!({
+        redirect_uris: ["https://claude.ai/cb"],
+      });
+      const { res, captured } = fakeRes();
+      await provider.authorize(
+        client,
+        { redirectUri: "https://claude.ai/cb", codeChallenge: "c", state: "s" },
+        res,
+      );
+      const token = /t=([^&"]+)/.exec(captured.html!)![1];
+      const redirect = await provider.chooseLoginHost(decodeURIComponent(token), "sandbox");
+      expect(new URL(redirect!).origin).toBe("https://test.salesforce.com");
+      expect(new URL(redirect!).searchParams.get("code_challenge")).toBeTruthy();
+    });
+
+    it("sends a production choice to login.salesforce.com", async () => {
+      vi.stubEnv("CARDSTACK_SF_LOGIN_URL", "");
+      const { provider } = newProvider();
+      const client = await provider.clientsStore.registerClient!({
+        redirect_uris: ["https://claude.ai/cb"],
+      });
+      const { res, captured } = fakeRes();
+      await provider.authorize(
+        client,
+        { redirectUri: "https://claude.ai/cb", codeChallenge: "c", state: "s" },
+        res,
+      );
+      const token = /t=([^&"]+)/.exec(captured.html!)![1];
+      const redirect = await provider.chooseLoginHost(decodeURIComponent(token), "production");
+      expect(new URL(redirect!).origin).toBe("https://login.salesforce.com");
+    });
+
+    it("refuses a forged host-choice token", async () => {
+      expect(await provider0().chooseLoginHost("sfs_nope.deadbeef", "sandbox")).toBeUndefined();
+    });
+
+    it("skips the question entirely when the deployment pinned a login host", async () => {
+      const { provider } = newProvider();
+      const client = await provider.clientsStore.registerClient!({
+        redirect_uris: ["https://claude.ai/cb"],
+      });
+      const { res, captured } = fakeRes();
+      await provider.authorize(
+        client,
+        { redirectUri: "https://claude.ai/cb", codeChallenge: "c", state: "s" },
+        res,
+      );
+      expect(captured.html).toBeUndefined();
+      expect(new URL(captured.url!).origin).toBe("https://login.salesforce.com");
+    });
+  });
+  /**
+   * A4 — the MCP lane never re-checked membership, so removing someone was
+   * instant in Studio and a no-op here for up to thirty days. Both documents
+   * claimed the opposite, without distinguishing the lanes.
+   */
+  describe("revocation takes effect on the next call (A4)", () => {
+    async function connected() {
+      const { store, provider } = newProvider();
+      const client = await provider.clientsStore.registerClient!({
+        redirect_uris: ["https://claude.ai/cb"],
+        client_name: "Claude",
+      });
+      const sfState = await authorizeTo(provider, client, "https://claude.ai/cb");
+      const { redirect } = await provider.completeSalesforceCallback(sfState, "sf-code");
+      const code = new URL(redirect).searchParams.get("code")!;
+      const tokens = await provider.exchangeAuthorizationCode(client, code);
+      return { store, provider, client, tokens, userId: normalizeUserId("Dana@Example.com") };
+    }
+
+    /** The store has no delete for a membership; drop it at the state level. */
+    async function removeMembership(store: InMemoryConfigStore, userId: string) {
+      const state = await (store as unknown as { load(): Promise<Record<string, unknown>> }).load();
+      delete (state.memberships as Record<string, unknown>)[`${userId}::${WORKSPACE}`];
+    }
+
+    it("accepts the token while the membership stands", async () => {
+      const { provider, tokens } = await connected();
+      await expect(provider.verifyAccessToken(tokens.access_token)).resolves.toBeTruthy();
+    });
+
+    it("rejects the access token once the membership is gone", async () => {
+      const { store, provider, tokens, userId } = await connected();
+      await removeMembership(store, userId);
+      await expect(provider.verifyAccessToken(tokens.access_token)).rejects.toThrow(
+        /access to this workspace was removed/i,
+      );
+    });
+
+    it("refuses to refresh a token whose membership is gone", async () => {
+      const { store, provider, client, tokens, userId } = await connected();
+      await removeMembership(store, userId);
+      await expect(
+        provider.exchangeRefreshToken(client, tokens.refresh_token!),
+      ).rejects.toThrow(/removed/i);
+    });
+
+    it("rejects a token that carries no identity rather than defaulting (B1)", async () => {
+      const { store, provider, tokens } = await connected();
+      const record = (await store.kvGet("oauth-access", tokens.access_token)) as Record<string, unknown>;
+      await store.kvSet("oauth-access", tokens.access_token, { ...record, user: {} });
+      await expect(provider.verifyAccessToken(tokens.access_token)).rejects.toThrow(
+        /carries no identity/i,
+      );
+    });
+  });
+  /**
+   * B5 — refresh tokens were returned unchanged forever, so a stolen one worked
+   * silently alongside the legitimate one and nothing would ever reveal it. We
+   * depend on Salesforce having reuse detection and did not have it ourselves.
+   *
+   * This concerns Cardstack's OWN bearer tokens. Nothing here touches the
+   * Salesforce grant.
+   */
+  describe("refresh-token rotation (B5)", () => {
+    async function connected() {
+      const { store, provider } = newProvider();
+      const client = await provider.clientsStore.registerClient!({
+        redirect_uris: ["https://claude.ai/cb"],
+        client_name: "Claude",
+      });
+      const sfState = await authorizeTo(provider, client, "https://claude.ai/cb");
+      const { redirect } = await provider.completeSalesforceCallback(sfState, "sf-code");
+      const code = new URL(redirect).searchParams.get("code")!;
+      const tokens = await provider.exchangeAuthorizationCode(client, code);
+      return { store, provider, client, tokens };
+    }
+
+    it("issues a NEW refresh token on every refresh", async () => {
+      const { provider, client, tokens } = await connected();
+      const first = await provider.exchangeRefreshToken(client, tokens.refresh_token!);
+      expect(first.refresh_token).not.toBe(tokens.refresh_token);
+      const second = await provider.exchangeRefreshToken(client, first.refresh_token!);
+      expect(second.refresh_token).not.toBe(first.refresh_token);
+    });
+
+    it("invalidates the old refresh token once rotated", async () => {
+      const { provider, client, tokens } = await connected();
+      await provider.exchangeRefreshToken(client, tokens.refresh_token!);
+      await expect(provider.exchangeRefreshToken(client, tokens.refresh_token!)).rejects.toThrow();
+    });
+
+    it("revokes the whole family when a rotated token is replayed", async () => {
+      const { provider, client, tokens } = await connected();
+      const rotated = await provider.exchangeRefreshToken(client, tokens.refresh_token!);
+
+      // The thief replays the token they captured.
+      await expect(provider.exchangeRefreshToken(client, tokens.refresh_token!)).rejects.toThrow(
+        /already used/i,
+      );
+      // The legitimate holder's current token is dead too — we cannot tell which
+      // party is which, so neither keeps the grant.
+      await expect(provider.exchangeRefreshToken(client, rotated.refresh_token!)).rejects.toThrow();
+    });
+
+    it("rotates a pre-rotation token normally on its first use", async () => {
+      // The migration case. A refresh token minted before families existed has
+      // no family record; treating that as reuse would revoke every live rep on
+      // deploy day.
+      const { store, provider, client, tokens } = await connected();
+      await store.kvDelete("oauth-token-family", `${normalizeUserId("Dana@Example.com")}::${client.client_id}`);
+
+      const refreshed = await provider.exchangeRefreshToken(client, tokens.refresh_token!);
+      expect(refreshed.access_token).toMatch(/^csa_/);
+      expect(refreshed.refresh_token).not.toBe(tokens.refresh_token);
+    });
+
+    it("keeps the grant's original creation time across refreshes", async () => {
+      const { store, provider, client, tokens } = await connected();
+      const key = `${normalizeUserId("Dana@Example.com")}::${client.client_id}`;
+      const before = (await store.kvGet("oauth-token-family", key)) as { createdAt: string };
+      await provider.exchangeRefreshToken(client, tokens.refresh_token!);
+      const after = (await store.kvGet("oauth-token-family", key)) as { createdAt: string };
+      // Otherwise the 90-day ceiling would reset on every refresh and never bite.
+      expect(after.createdAt).toBe(before.createdAt);
+    });
+
+    it("revoking an access token kills the refresh grant behind it", async () => {
+      const { provider, client, tokens } = await connected();
+      await provider.revokeToken(client, { token: tokens.access_token });
+      await expect(provider.exchangeRefreshToken(client, tokens.refresh_token!)).rejects.toThrow();
+    });
+
+    it("keeps two clients' grants independent", async () => {
+      const { provider, client, tokens } = await connected();
+      const other = await provider.clientsStore.registerClient!({
+        redirect_uris: ["https://claude.ai/other"],
+        client_name: "Claude Desktop",
+      });
+      const sfState = await authorizeTo(provider, other, "https://claude.ai/other");
+      const { redirect } = await provider.completeSalesforceCallback(sfState, "sf-code");
+      const otherTokens = await provider.exchangeAuthorizationCode(
+        other,
+        new URL(redirect).searchParams.get("code")!,
+      );
+
+      await provider.revokeToken(client, { token: tokens.refresh_token! });
+      await expect(
+        provider.exchangeRefreshToken(other, otherTokens.refresh_token!),
+      ).resolves.toBeTruthy();
+    });
+  });
 });
+
+function provider0() {
+  return newProvider().provider;
+}

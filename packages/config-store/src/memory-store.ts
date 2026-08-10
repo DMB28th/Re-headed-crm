@@ -325,6 +325,11 @@ export abstract class BaseConfigStore implements AdminConfigStore {
     await this.save(state);
   }
 
+  /** Operational enumeration — never call from a request path. */
+  async listWorkspaces(): Promise<Workspace[]> {
+    return Object.values((await this.load()).workspaces ?? {});
+  }
+
   async getAccount(id: string): Promise<Account | undefined> {
     return (await this.load()).accounts?.[id];
   }

@@ -20,6 +20,15 @@ import {
 import { getStore } from "../../../../../lib/backend";
 import { createPkcePair, studioOrigin } from "../../../../../lib/oauth";
 import { LOGIN_PENDING_NS, LOGIN_PENDING_TTL_MS, safeNext } from "../../../../../lib/login-flow";
+import { clientKey, rateLimited } from "../../../../../lib/request-guard";
+
+/**
+ * This route is public and writes a KV row per request, so an unthrottled
+ * caller can fill `kv_entries` — the same table sessions and OAuth state live
+ * in. The MCP server's equivalent gets this for free from the SDK's limiter;
+ * Studio has none, hence this.
+ */
+const MAX_SIGN_IN_STARTS_PER_MINUTE = 20;
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -29,6 +38,10 @@ export async function GET(req: Request) {
     back.searchParams.set("error", error);
     return NextResponse.redirect(back);
   };
+
+  if (rateLimited(`sign-in-start:${clientKey(req)}`, { max: MAX_SIGN_IN_STARTS_PER_MINUTE })) {
+    return fail("Too many sign-in attempts from this address. Wait a minute and try again.");
+  }
 
   const app = cardstackSalesforceLoginApp();
   if (!app) {

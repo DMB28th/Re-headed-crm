@@ -1,11 +1,34 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
   readStudioSession,
-  sessionSigningSecret,
+  sessionSigningSecrets,
   STUDIO_SESSION_COOKIE,
 } from "./lib/studio-session";
+import { sameOriginRequest } from "./lib/request-guard";
 
 const PUBLIC_PATHS = new Set(["/login", "/api/session", "/healthz"]);
+
+/**
+ * CRM OAuth callbacks. These resolve identity themselves (and fail closed in
+ * production when there is none) — the exemption is from the EDGE gate, not
+ * from auth.
+ *
+ * Listed exactly rather than matched with `includes("/oauth/callback")`, which
+ * exempted any path containing that substring anywhere. No route could be
+ * coerced into matching today, but that was a property of the route table, not
+ * of this gate, and the route table changes every milestone.
+ */
+/**
+ * Reachable by any signed-in member, not just admins. The edge gate still
+ * requires a valid session cookie; the page itself resolves identity through
+ * `getSelfServiceIdentity` and touches only the reader's own connection.
+ */
+export const MEMBER_PATHS = new Set(["/me/connection"]);
+
+const PUBLIC_CALLBACKS = new Set([
+  "/api/connections/salesforce/oauth/callback",
+  "/api/user-connections/salesforce/oauth/callback",
+]);
 
 /**
  * The sign-in lane itself must be reachable while signed OUT — gating it would
@@ -13,14 +36,23 @@ const PUBLIC_PATHS = new Set(["/login", "/api/session", "/healthz"]);
  * that route again.
  */
 const isPublic = (path: string): boolean =>
-  PUBLIC_PATHS.has(path) || path.startsWith("/api/auth/") || path.includes("/oauth/callback");
+  PUBLIC_PATHS.has(path) || path.startsWith("/api/auth/") || PUBLIC_CALLBACKS.has(path);
 
 export async function middleware(req: NextRequest) {
-  const secret = sessionSigningSecret(process.env);
+  const secrets = sessionSigningSecrets(process.env);
   const path = req.nextUrl.pathname;
+
+  // Defense in depth behind SameSite=Lax, applied here so there is one place
+  // to read rather than a check every route must remember. Runs BEFORE the
+  // public-path exemption: /api/session is a login endpoint, and login CSRF is
+  // the one thing a public mutating route is exposed to.
+  if (!sameOriginRequest(req)) {
+    return NextResponse.json({ error: "Cross-origin request refused." }, { status: 403 });
+  }
+
   if (isPublic(path)) return NextResponse.next();
 
-  if (!secret) {
+  if (secrets.length === 0) {
     if (process.env.NODE_ENV !== "production") return NextResponse.next();
     return NextResponse.json(
       { error: "Studio is locked because its session signing secret is not configured." },
@@ -30,7 +62,7 @@ export async function middleware(req: NextRequest) {
 
   const sessionId = await readStudioSession(
     req.cookies.get(STUDIO_SESSION_COOKIE)?.value,
-    secret,
+    secrets,
   );
   if (sessionId) return NextResponse.next();
   if (path.startsWith("/api/")) {
