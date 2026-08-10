@@ -284,3 +284,40 @@ in HANDOFF, and a per-flow mode set of Auto / Native only / Embedded
 end-to-end. The ladder is unchanged in the runtime; what changed is that
 Studio no longer offers the third rung as a destination, and flows are
 off-by-default rather than implicitly on.
+
+
+---
+
+## Addendum (2026-08-10d): the builder edits a card, not a list of rows
+
+The layout builder had three columns — palette, an abstract list of field rows,
+and a live preview — and the middle column looked nothing like what a rep
+sees. Every field also carried two toggles plus a popover of switches, so
+"is this required?" was answered in three places.
+
+**Change.**
+
+- The canvas is a **card-shaped surface**: one frame, a header region, sections
+  rendered in their real 1/2/3-column grid, then related lists and actions.
+  Fields render the way the card renders them — label on top, and the api name
+  in the value slot. It shows the api rather than a fabricated value, because
+  inventing data in a builder is how you ship a layout that looks fine and
+  reads wrong.
+- Field sorting moved from `verticalListSortingStrategy` to
+  `rectSortingStrategy`, so dragging works across a grid rather than down a
+  single column. Keyboard reorder (Space, arrows, Space) works in the grid too.
+- Everything configurable about a field is behind **one menu**: Access
+  (Read-only / Editable / Editable & required) and Input control (Auto, or one
+  of the eleven `FieldControl` values — which were in the schema with no UI at
+  all until now), plus the CRM description, the denylist link, and Remove.
+- The preview pane now starts **collapsed**. It is still the only real fidelity
+  check — the actual widget against a server-assembled payload, the same
+  codepath the MCP server uses — so it is one click away, not gone. Collapsing
+  it by default buys the canvas the width the three-column layout was starving
+  it of.
+
+**Why not edit the preview directly.** It was considered and rejected: the
+widget package is deliberately CRM-agnostic and knows nothing about Studio
+(hard rules 3–5). Layering builder affordances onto it would mean either
+leaking Studio concerns into the widget or forking it, and the preview's whole
+value is that it is the untouched thing reps get.
