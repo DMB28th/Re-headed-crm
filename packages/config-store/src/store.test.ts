@@ -102,16 +102,46 @@ describe("home card publish", () => {
     const store = new InMemoryConfigStore();
     const current = (await store.getHomeCard(DEMO_TENANT_ID))!;
     expect(current.revision).toBe(1);
-    const published = await store.publishHomeCard({
+    await store.setHomeCard({
       ...current,
       blocks: current.blocks.filter((b) => b.type !== "recent"),
     });
+    const published = await store.publishHomeCard(DEMO_TENANT_ID);
     expect(published.revision).toBe(2);
     expect((await store.getHomeCard(DEMO_TENANT_ID))!.blocks).toHaveLength(2);
     expect((await store.listPublishes(DEMO_TENANT_ID))[0]).toMatchObject({
       object: "home card",
       revision: 2,
+      surface: "homecard",
     });
+  });
+
+  it("stages edits durably — a draft survives, but reps keep the published card", async () => {
+    const file = path.join(mkdtempSync(path.join(tmpdir(), "cardstack-")), "config.json");
+    const studio = new FileConfigStore(file);
+    const server = new FileConfigStore(file);
+    const current = (await studio.getHomeCard(DEMO_TENANT_ID))!;
+    await studio.setHomeCard({ ...current, blocks: [current.blocks[0]!] });
+
+    // Reps still see the published card (this is the whole point).
+    expect((await server.getHomeCard(DEMO_TENANT_ID))!.blocks).toHaveLength(current.blocks.length);
+    // …and the draft is durable, not React state that dies with the tab.
+    expect((await server.getHomeCardRecord(DEMO_TENANT_ID)).draft!.blocks).toHaveLength(1);
+
+    await studio.publishHomeCard(DEMO_TENANT_ID);
+    expect((await server.getHomeCard(DEMO_TENANT_ID))!.blocks).toHaveLength(1);
+    expect((await server.getHomeCardRecord(DEMO_TENANT_ID)).draft).toBeNull();
+  });
+
+  it("rolls back to a previous revision under a NEW revision", async () => {
+    const store = new InMemoryConfigStore();
+    const v1 = (await store.getHomeCard(DEMO_TENANT_ID))!;
+    await store.setHomeCard({ ...v1, blocks: [v1.blocks[0]!] });
+    await store.publishHomeCard(DEMO_TENANT_ID);
+
+    const restored = await store.rollbackHomeCard(DEMO_TENANT_ID, 1);
+    expect(restored.revision).toBe(3);
+    expect(restored.blocks).toHaveLength(v1.blocks.length);
   });
 });
 
@@ -186,6 +216,11 @@ describe("custom lists (view-exposures v2)", () => {
       ],
       views: [...config.views, { viewId: "cl-1", exposed: true, aliases: ["big renewals"], isDefault: false }],
     });
+    // Staged, not live: exposing a list is a governance change, so chat sees
+    // nothing until it is published.
+    expect(await store.getCustomLists(DEMO_TENANT_ID, "deals")).toHaveLength(0);
+    await store.publishViewExposures(DEMO_TENANT_ID, "deals");
+
     const lists = await store.getCustomLists(DEMO_TENANT_ID, "deals");
     expect(lists).toHaveLength(1);
     expect(lists[0]!.name).toBe("Big renewals");
@@ -268,6 +303,10 @@ describe("shared capabilities", () => {
       mode: "embedded",
       fallback: "open-in-salesforce",
     });
+    // Staged, not live — a render policy change goes through publish too.
+    expect(await store.getFlowRenderModes(DEMO_TENANT_ID)).toEqual([]);
+
+    await store.publishFlowRenderMode(DEMO_TENANT_ID, "Renewal_Playbook");
     expect(await store.getFlowRenderModes(DEMO_TENANT_ID)).toMatchObject([
       { flowApiName: "Renewal_Playbook", mode: "embedded" },
     ]);
@@ -433,5 +472,338 @@ describe("credentials encryption at rest", () => {
       delete process.env.CARDSTACK_ENCRYPTION_KEY;
       resetEncryptionKeyCache();
     }
+  });
+});
+
+describe("staging model (docs/studio-staging-model.md)", () => {
+  it("reads a legacy BARE config as published, with no draft", async () => {
+    // Config files written before the staging model stored exposures / home
+    // cards / flow modes as bare configs. They must migrate to "published" —
+    // the safe direction, since nothing a rep can see today disappears.
+    const dir = mkdtempSync(path.join(tmpdir(), "cardstack-"));
+    const file = path.join(dir, "config.json");
+    writeFileSync(
+      file,
+      JSON.stringify({
+        layouts: {},
+        viewExposures: {
+          [`${DEMO_TENANT_ID}::deals`]: {
+            version: 1,
+            tenantId: DEMO_TENANT_ID,
+            object: "deals",
+            views: [{ viewId: "v-legacy", exposed: true, aliases: [], isDefault: true }],
+            customLists: [],
+          },
+        },
+        homeCards: {
+          [`${DEMO_TENANT_ID}::default`]: {
+            version: 1,
+            tenantId: DEMO_TENANT_ID,
+            audience: "default",
+            revision: 4,
+            blocks: [{ type: "recent", limit: 3 }],
+          },
+        },
+        flowRenderModes: {
+          [`${DEMO_TENANT_ID}::Legacy_Flow`]: {
+            version: 1,
+            tenantId: DEMO_TENANT_ID,
+            flowApiName: "Legacy_Flow",
+            mode: "handoff",
+            fallback: "open-in-salesforce",
+          },
+        },
+        publishes: [],
+      }),
+    );
+    const store = new FileConfigStore(file);
+
+    // Still live for reps, exactly as before the migration.
+    expect((await store.getViewExposures(DEMO_TENANT_ID, "deals")).map((v) => v.viewId)).toEqual([
+      "v-legacy",
+    ]);
+    expect((await store.getHomeCard(DEMO_TENANT_ID))!.revision).toBe(4);
+    expect(await store.getFlowRenderModes(DEMO_TENANT_ID)).toMatchObject([{ mode: "handoff" }]);
+
+    // …and read back through the staged envelope with nothing pending.
+    expect((await store.getViewExposuresRecord(DEMO_TENANT_ID, "deals")).draft).toBeNull();
+    expect((await store.getHomeCardRecord(DEMO_TENANT_ID)).draft).toBeNull();
+    expect(await store.listStagedChanges(DEMO_TENANT_ID)).toEqual([]);
+  });
+
+  it("lists staged changes across surfaces, with diffs", async () => {
+    const store = new InMemoryConfigStore();
+    const exposures = (await store.getViewExposuresConfig(DEMO_TENANT_ID, "deals"))!;
+    await store.setViewExposures({
+      ...exposures,
+      customLists: [
+        { id: "cl-9", name: "Big renewals", filters: [], visibility: "workspace" },
+      ],
+      views: [...exposures.views, { viewId: "cl-9", exposed: true, aliases: [], isDefault: false }],
+    });
+    const home = (await store.getHomeCard(DEMO_TENANT_ID))!;
+    await store.setHomeCard({ ...home, blocks: [home.blocks[0]!] });
+
+    const staged = await store.listStagedChanges(DEMO_TENANT_ID);
+    expect(staged.map((change) => change.surface).sort()).toEqual(["exposures", "homecard"]);
+    const lists = staged.find((change) => change.surface === "exposures")!;
+    expect(lists.diff.added).toContain("custom list · Big renewals");
+    expect(lists.publishedRevision).toBe(1);
+  });
+
+  it("does not list a draft that matches what is published", async () => {
+    const store = new InMemoryConfigStore();
+    const exposures = (await store.getViewExposuresConfig(DEMO_TENANT_ID, "deals"))!;
+    // An admin who toggles something on and back off has no pending change.
+    await store.setViewExposures({ ...exposures });
+    expect(await store.listStagedChanges(DEMO_TENANT_ID)).toEqual([]);
+  });
+
+  it("publishes a batch sequentially and reports per-surface results", async () => {
+    const store = new InMemoryConfigStore();
+    const exposures = (await store.getViewExposuresConfig(DEMO_TENANT_ID, "deals"))!;
+    await store.setViewExposures({
+      ...exposures,
+      views: exposures.views.map((view) => ({ ...view, exposed: true })),
+    });
+    const home = (await store.getHomeCard(DEMO_TENANT_ID))!;
+    await store.setHomeCard({ ...home, blocks: [home.blocks[0]!] });
+
+    const results = await store.publishStaged(DEMO_TENANT_ID, [
+      { surface: "exposures", object: "deals" },
+      { surface: "homecard", object: "default", audience: "default" },
+    ]);
+    expect(results.every((result) => result.ok)).toBe(true);
+    expect(await store.listStagedChanges(DEMO_TENANT_ID)).toEqual([]);
+
+    // One batch, one batchId — the home page groups the run into a single row.
+    const events = (await store.listPublishes(DEMO_TENANT_ID)).slice(0, 2);
+    expect(new Set(events.map((event) => event.batchId)).size).toBe(1);
+    expect(events[0]!.batchId).toBeDefined();
+  });
+
+  it("reports partial failure honestly instead of pretending the batch was atomic", async () => {
+    const store = new InMemoryConfigStore();
+    const exposures = (await store.getViewExposuresConfig(DEMO_TENANT_ID, "deals"))!;
+    await store.setViewExposures({
+      ...exposures,
+      views: exposures.views.map((view) => ({ ...view, exposed: true })),
+    });
+
+    const results = await store.publishStaged(DEMO_TENANT_ID, [
+      { surface: "exposures", object: "deals" },
+      // No draft staged for this one — it must fail without unwinding the first.
+      { surface: "flows", object: "Missing_Flow" },
+    ]);
+    expect(results[0]).toMatchObject({ ok: true, surface: "exposures" });
+    expect(results[1]!.ok).toBe(false);
+    expect(results[1]!.error).toMatch(/No draft to publish/);
+    // The successful one STAYED published — that is what "not atomic" means.
+    expect(await store.getViewExposures(DEMO_TENANT_ID, "deals")).not.toHaveLength(0);
+  });
+
+  it("never leaks a draft to the read side the MCP server renders from", async () => {
+    const store = new InMemoryConfigStore();
+    const exposures = (await store.getViewExposuresConfig(DEMO_TENANT_ID, "deals"))!;
+    await store.setViewExposures({
+      ...exposures,
+      customLists: [{ id: "cl-x", name: "Secret", filters: [], visibility: "workspace" }],
+      views: [...exposures.views, { viewId: "cl-x", exposed: true, aliases: [], isDefault: false }],
+    });
+    await store.setFlowRenderMode({
+      version: 1,
+      revision: 1,
+      tenantId: DEMO_TENANT_ID,
+      flowApiName: "Draft_Flow",
+      mode: "handoff",
+      fallback: "open-in-salesforce",
+    });
+    const home = (await store.getHomeCard(DEMO_TENANT_ID))!;
+    await store.setHomeCard({ ...home, blocks: [home.blocks[0]!] });
+
+    // Everything the ConfigStore read side exposes must still be the PUBLISHED
+    // revision — drafts are Studio-only (hard rule 2's spirit for config).
+    expect(await store.getCustomLists(DEMO_TENANT_ID, "deals")).toHaveLength(0);
+    expect(
+      (await store.getViewExposures(DEMO_TENANT_ID, "deals")).map((v) => v.viewId),
+    ).not.toContain("cl-x");
+    expect(await store.getFlowRenderModes(DEMO_TENANT_ID)).toEqual([]);
+    expect((await store.getHomeCard(DEMO_TENANT_ID))!.blocks).toHaveLength(home.blocks.length);
+  });
+
+  it("rolls exposures back to a previous revision under a NEW revision", async () => {
+    const store = new InMemoryConfigStore();
+    const v1 = (await store.getViewExposuresConfig(DEMO_TENANT_ID, "deals"))!;
+    await store.setViewExposures({
+      ...v1,
+      customLists: [{ id: "cl-2", name: "Temp", filters: [], visibility: "workspace" }],
+      views: [...v1.views, { viewId: "cl-2", exposed: true, aliases: [], isDefault: false }],
+    });
+    await store.publishViewExposures(DEMO_TENANT_ID, "deals");
+    expect(await store.getCustomLists(DEMO_TENANT_ID, "deals")).toHaveLength(1);
+
+    const restored = await store.rollbackViewExposures(DEMO_TENANT_ID, "deals", 1);
+    expect(restored.revision).toBe(3);
+    expect(await store.getCustomLists(DEMO_TENANT_ID, "deals")).toHaveLength(0);
+    expect((await store.listPublishes(DEMO_TENANT_ID))[0]).toMatchObject({
+      kind: "rollback",
+      surface: "exposures",
+    });
+  });
+});
+
+describe("custom screens belong to a screen flow", () => {
+  const base = {
+    version: 1 as const,
+    tenantId: DEMO_TENANT_ID,
+    label: "Onsite scheduling",
+    source: DEFAULT_CUSTOM_SCREEN_SOURCE,
+    status: "draft" as const,
+    revision: 1,
+  };
+
+  it("refuses to publish a screen with no flow — nothing would ever render it", async () => {
+    const store = new InMemoryConfigStore();
+    await store.saveCustomScreenDraft({ ...base, id: "cs-orphan" });
+    await expect(store.publishCustomScreen(DEMO_TENANT_ID, "cs-orphan")).rejects.toThrow(
+      /Attach this screen to a flow/,
+    );
+  });
+
+  it("publishes once the screen is attached to a flow", async () => {
+    const store = new InMemoryConfigStore();
+    await store.saveCustomScreenDraft({
+      ...base,
+      id: "cs-attached",
+      flowApiName: "Renewal_Approval",
+    });
+    const published = await store.publishCustomScreen(DEMO_TENANT_ID, "cs-attached");
+    expect(published).toMatchObject({ status: "published", flowApiName: "Renewal_Approval" });
+  });
+
+  it("still READS an unattached screen written before the rule, so it can be reassigned", async () => {
+    const store = new InMemoryConfigStore();
+    await store.saveCustomScreenDraft({ ...base, id: "cs-legacy" });
+    const records = await store.listCustomScreenRecords(DEMO_TENANT_ID);
+    expect(records.find((record) => record.id === "cs-legacy")?.draft?.label).toBe(
+      "Onsite scheduling",
+    );
+  });
+});
+
+describe("rollback across every governed surface", () => {
+  /** Publish twice so there is a v1 in history to restore. */
+  async function twoRevisions(store: InMemoryConfigStore) {
+    const exposures = (await store.getViewExposuresConfig(DEMO_TENANT_ID, "deals"))!;
+    await store.setViewExposures({
+      ...exposures,
+      customLists: [{ id: "cl-v2", name: "v2 list", filters: [], visibility: "workspace" }],
+      views: [...exposures.views, { viewId: "cl-v2", exposed: true, aliases: [], isDefault: false }],
+    });
+    await store.publishViewExposures(DEMO_TENANT_ID, "deals");
+
+    const home = (await store.getHomeCard(DEMO_TENANT_ID))!;
+    await store.setHomeCard({ ...home, blocks: [home.blocks[0]!] });
+    await store.publishHomeCard(DEMO_TENANT_ID);
+
+    const flow = {
+      version: 1 as const,
+      revision: 1,
+      tenantId: DEMO_TENANT_ID,
+      flowApiName: "Renewal",
+      active: true,
+      mode: "auto" as const,
+      fallback: "open-in-salesforce" as const,
+    };
+    await store.setFlowRenderMode(flow);
+    await store.publishFlowRenderMode(DEMO_TENANT_ID, "Renewal");
+    await store.setFlowRenderMode({ ...flow, mode: "embedded" });
+    await store.publishFlowRenderMode(DEMO_TENANT_ID, "Renewal");
+  }
+
+  it("lists only surfaces that have something to restore", async () => {
+    const store = new InMemoryConfigStore();
+    // Seeded state is published-with-no-history — nothing to roll back to yet.
+    expect(await store.listSurfaceHistory(DEMO_TENANT_ID)).toEqual([]);
+
+    await twoRevisions(store);
+    const history = await store.listSurfaceHistory(DEMO_TENANT_ID);
+    expect(history.map((h) => h.surface).sort()).toEqual(["exposures", "flows", "homecard"]);
+    const flows = history.find((h) => h.surface === "flows")!;
+    expect(flows.publishedRevision).toBe(2);
+    expect(flows.revisions.map((r) => r.revision)).toEqual([1]);
+  });
+
+  it("restores each surface under a NEW revision via the dispatcher", async () => {
+    const store = new InMemoryConfigStore();
+    await twoRevisions(store);
+
+    const lists = await store.rollbackStaged(
+      DEMO_TENANT_ID,
+      { surface: "exposures", object: "deals" },
+      1,
+    );
+    expect(lists.revision).toBe(3);
+    expect(await store.getCustomLists(DEMO_TENANT_ID, "deals")).toHaveLength(0);
+
+    const home = await store.rollbackStaged(
+      DEMO_TENANT_ID,
+      { surface: "homecard", object: "default", audience: "default" },
+      1,
+    );
+    expect(home.revision).toBe(3);
+    expect((await store.getHomeCard(DEMO_TENANT_ID))!.blocks.length).toBeGreaterThan(1);
+
+    const flow = await store.rollbackStaged(
+      DEMO_TENANT_ID,
+      { surface: "flows", object: "Renewal" },
+      1,
+    );
+    expect(flow.revision).toBe(3);
+    expect((await store.getFlowRenderModes(DEMO_TENANT_ID))[0]!.mode).toBe("auto");
+
+    // Every restore is logged as a rollback against its own surface.
+    const events = await store.listPublishes(DEMO_TENANT_ID);
+    expect(events.filter((e) => e.kind === "rollback").map((e) => e.surface).sort()).toEqual([
+      "exposures",
+      "flows",
+      "homecard",
+    ]);
+  });
+
+  it("rolls a custom screen back to a previous source", async () => {
+    const store = new InMemoryConfigStore();
+    const base = {
+      version: 1 as const,
+      tenantId: DEMO_TENANT_ID,
+      id: "cs-roll",
+      label: "Onsite",
+      flowApiName: "Renewal",
+      source: DEFAULT_CUSTOM_SCREEN_SOURCE,
+      status: "draft" as const,
+      revision: 1,
+    };
+    await store.saveCustomScreenDraft(base);
+    await store.publishCustomScreen(DEMO_TENANT_ID, "cs-roll");
+    await store.saveCustomScreenDraft({ ...base, source: "screen({ id: 'v2' })" });
+    await store.publishCustomScreen(DEMO_TENANT_ID, "cs-roll");
+
+    const restored = await store.rollbackStaged(
+      DEMO_TENANT_ID,
+      { surface: "screen", object: "cs-roll" },
+      1,
+    );
+    expect(restored.revision).toBe(3);
+    expect((await store.getCustomScreens(DEMO_TENANT_ID))[0]!.source).toBe(
+      DEFAULT_CUSTOM_SCREEN_SOURCE,
+    );
+  });
+
+  it("refuses a revision that isn't in history", async () => {
+    const store = new InMemoryConfigStore();
+    await twoRevisions(store);
+    await expect(
+      store.rollbackStaged(DEMO_TENANT_ID, { surface: "exposures", object: "deals" }, 99),
+    ).rejects.toThrow(/No revision v99/);
   });
 });

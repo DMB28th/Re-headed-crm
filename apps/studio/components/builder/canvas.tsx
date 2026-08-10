@@ -7,6 +7,7 @@
  */
 import {
   DndContext,
+  KeyboardSensor,
   DragOverlay,
   closestCenter,
   PointerSensor,
@@ -17,8 +18,10 @@ import {
 } from "@dnd-kit/core";
 import {
   SortableContext,
+  rectSortingStrategy,
   arrayMove,
   useSortable,
+  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -39,6 +42,7 @@ import type {
   ObjectDescribe,
 } from "@cardstack/core";
 import { crmDisplayLabel } from "../../lib/crm-label";
+import { Popover } from "../ui/confirm";
 
 type SetConfig = (updater: (prev: LayoutConfig | null) => LayoutConfig | null) => void;
 
@@ -171,6 +175,30 @@ function nextInputName(inputs: ActionInputMappings): string {
   return `input${i}`;
 }
 
+/** The three meaningful states of a field on the card, as one choice. */
+type FieldAccess = "readonly" | "editable" | "required";
+
+const FIELD_ACCESS: { value: FieldAccess; label: string }[] = [
+  { value: "readonly", label: "Read-only" },
+  { value: "editable", label: "Editable" },
+  { value: "required", label: "Editable & required" },
+];
+
+/** Mirrors FieldControl in packages/core — Auto is the absent value. */
+const FIELD_CONTROLS = [
+  "text",
+  "textarea",
+  "picklist",
+  "checkbox",
+  "date",
+  "datetime",
+  "currency",
+  "number",
+  "email",
+  "phone",
+  "url",
+] as const;
+
 function parseLiteralValue(value: string, valueType: ActionInputValueType | undefined) {
   if (valueType === "number") {
     const number = Number(value);
@@ -208,7 +236,13 @@ export function Canvas({
   relatedDescribes: Record<string, ObjectDescribe>;
   onChange: SetConfig;
 }) {
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  // KeyboardSensor makes the grips real controls: Tab to one, Space to pick
+  // up, arrows to move, Space to drop, Escape to cancel. Without it the canvas
+  // was mouse-only and a layout couldn't be reordered without a pointer.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   const labelOf = (api: string) => describe.fields.find((f) => f.api === api)?.label ?? api;
   const crmLabel = crmDisplayLabel(config.crm);
   // Ghost chip / ghost section for the DragOverlay (2a mid-drag feedback).
@@ -350,8 +384,9 @@ export function Canvas({
   const unconfiguredRelationships = describe.relationships.filter(
     (rel) => !config.recordCard.relatedLists.some((r) => r.relationship === rel.api),
   );
-  const modeForFlow = (flowApiName: string) =>
-    flowModes.find((mode) => mode.flowApiName === flowApiName)?.mode ?? "auto";
+  const policyForFlow = (flowApiName: string) =>
+    flowModes.find((mode) => mode.flowApiName === flowApiName);
+  const modeForFlow = (flowApiName: string) => policyForFlow(flowApiName)?.mode ?? "auto";
   const flowLabel = (flowApiName: string) => flows.find((flow) => flow.api === flowApiName)?.label ?? flowApiName;
   const configuredFlowActions = new Set(
     config.recordCard.actions
@@ -362,16 +397,23 @@ export function Canvas({
 
   return (
     <section className="min-w-[340px] flex-1 overflow-y-auto">
-      <div className="st-card p-3">
-        <div className="flex items-center justify-between">
+      {/* One card-shaped surface, laid out the way the rep's card is laid out:
+          header, then sections in their real column grid, then related lists
+          and actions. The preview pane stays the fidelity check (it renders the
+          REAL widget from a server payload); this is the thing you edit.
+          Design feedback 2026-08-10. */}
+      <div className="mx-auto max-w-[640px] rounded-[14px] border border-line bg-surface p-4 shadow-sm">
+        <div
+          className="border-b border-line-soft pb-3"
+          title="Identity is always first on the card and can't be moved or removed."
+        >
           <span className="st-section-label">Header · always first</span>
+          <div className="mt-2 flex flex-wrap gap-3">
+            {headerSlot("title")}
+            {headerSlot("subtitle")}
+            {headerSlot("badge")}
+          </div>
         </div>
-        <div className="mt-2 flex flex-wrap gap-3">
-          {headerSlot("title")}
-          {headerSlot("subtitle")}
-          {headerSlot("badge")}
-        </div>
-      </div>
 
       <DndContext
         sensors={sensors}
@@ -389,10 +431,11 @@ export function Canvas({
               {(grip) => (
                 <>
               <div className="flex items-center justify-between gap-2">
-                <span className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="flex min-w-0 flex-1 items-center gap-1.5">
                   {grip}
                   <input
-                    className="st-input min-w-0 flex-1 py-1 text-[12.5px] font-medium"
+                    className="min-w-0 flex-1 rounded-[6px] border border-transparent bg-transparent px-1 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-ink-55 hover:border-line-soft focus-visible:border-accent focus-visible:outline-none"
+                    aria-label="Section name"
                     value={section.label}
                     onChange={(e) =>
                       mutateSections((sections) => {
@@ -407,10 +450,11 @@ export function Canvas({
                     <button
                       key={cols}
                       type="button"
-                      className={`rounded-[7px] border px-2 py-0.5 text-[11px] ${
+                      title={`${cols}-column section`}
+                      className={`rounded-[6px] border px-1.5 py-0.5 text-[10.5px] ${
                         section.columns === cols
                           ? "border-accent bg-accent text-white"
-                          : "border-line text-ink-55"
+                          : "border-line text-ink-45"
                       }`}
                       onClick={() =>
                         mutateSections((sections) => {
@@ -427,9 +471,19 @@ export function Canvas({
 
               <SortableContext
                 items={section.fields.map((f) => f.api)}
-                strategy={verticalListSortingStrategy}
+                strategy={rectSortingStrategy}
               >
-                <div className="mt-2 space-y-1.5">
+                {/* The section's real column count, so the builder lays out the
+                    way the card will (design feedback 2026-08-10). */}
+                <div
+                  className={`mt-1 grid gap-x-3 gap-y-0.5 ${
+                    section.columns === 1
+                      ? "grid-cols-1"
+                      : section.columns === 3
+                        ? "grid-cols-3"
+                        : "grid-cols-2"
+                  }`}
+                >
                   {section.fields.map((field) => (
                     <FieldChip
                       key={field.api}
@@ -439,17 +493,17 @@ export function Canvas({
                       object={config.object}
                       crmLabel={crmLabel}
                       denied={config.permissions.fieldDenylist.includes(field.api)}
-                      onToggleEditable={() =>
+                      onChange={(patch) =>
                         mutateSections((sections) => {
-                          const target = sections[sectionIdx]!.fields.find((f) => f.api === field.api)!;
-                          target.editable = !target.editable;
-                          return sections;
-                        })
-                      }
-                      onToggleRequired={() =>
-                        mutateSections((sections) => {
-                          const target = sections[sectionIdx]!.fields.find((f) => f.api === field.api)!;
-                          target.required = !target.required;
+                          const target = sections[sectionIdx]!.fields.find(
+                            (f) => f.api === field.api,
+                          )!;
+                          Object.assign(target, patch);
+                          // `control` and `required` are optional in the schema;
+                          // an explicit undefined must delete rather than persist.
+                          for (const [key, value] of Object.entries(patch)) {
+                            if (value === undefined) delete (target as Record<string, unknown>)[key];
+                          }
                           return sections;
                         })
                       }
@@ -531,7 +585,7 @@ export function Canvas({
         </div>
       )}
 
-      <div className="st-card mt-3 p-3">
+      <div className="mt-4 border-t border-line-soft pt-3">
         <div className="flex items-center justify-between">
           <span className="st-section-label">Related lists</span>
         </div>
@@ -625,7 +679,7 @@ export function Canvas({
         )}
       </div>
 
-      <div className="st-card mt-3 p-3">
+      <div className="mt-4 border-t border-line-soft pt-3">
         <div className="flex items-start justify-between gap-3">
           <div>
             <span className="st-section-label">Action components</span>
@@ -665,14 +719,25 @@ export function Canvas({
                           {modeForFlow(action.flowApiName)}
                         </span>
                       )}
-                      {action.type === "screen_flow" && (
-                        <span
-                          className="st-chip-mono bg-published text-published-ink"
-                          title="Reps can run this flow from chat via the open-in-Salesforce handoff. Native/Embedded modes fall back to handoff."
-                        >
-                          handoff live
-                        </span>
-                      )}
+                      {/* A flow action on the card does nothing unless the flow
+                          itself is switched on under Flows — crm_flow_start
+                          refuses an inactive one, so say so here. */}
+                      {action.type === "screen_flow" &&
+                        (policyForFlow(action.flowApiName)?.active ? (
+                          <span
+                            className="st-chip-mono bg-published text-published-ink"
+                            title="This flow is switched on for chat under Flows."
+                          >
+                            active
+                          </span>
+                        ) : (
+                          <span
+                            className="st-chip-mono bg-draft text-draft-ink"
+                            title="This flow is off — reps can't run it. Switch it on under Flows."
+                          >
+                            flow is off
+                          </span>
+                        ))}
                     </div>
                     <div className="mt-1 text-[11.5px] text-ink-55">
                       Button: {action.label} <span className="text-ink-45">/</span> Chat: "{chatPhrase}"
@@ -783,11 +848,13 @@ export function Canvas({
           </div>
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-ink-45">
             <span>Trust line is not removable.</span>
-            <Link href="/custom-screens" className="underline">
+            {/* Custom screens are built from their flow now, not a rail entry. */}
+            <Link href="/flows" className="underline">
               Map unsupported flow screens
             </Link>
           </div>
         </div>
+      </div>
       </div>
     </section>
   );
@@ -1143,14 +1210,16 @@ function SectionCard({
     id: `sec-${sectionIdx}`,
   });
   const grip = (
-    <span
+    <button
+      type="button"
       {...attributes}
       {...listeners}
-      className="cursor-grab text-ink-45"
-      title="Drag to reorder sections"
+      className="cursor-grab rounded-[5px] px-0.5 text-ink-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+      title="Drag to reorder sections — or focus and press Space, then arrow keys"
+      aria-label={`Reorder section ${sectionIdx + 1}`}
     >
       ⠿
-    </span>
+    </button>
   );
   return (
     // While dragging, the in-list slot becomes the drop indicator: a 2px
@@ -1159,7 +1228,7 @@ function SectionCard({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`st-card mt-3 p-3 ${
+      className={`mt-3 rounded-[9px] border border-transparent px-1 pb-2 pt-1 hover:border-line-soft ${
         isDragging ? "!border-2 !border-dashed !border-accent bg-paper [&>*]:invisible" : ""
       }`}
       id={`section-${sectionIdx}`}
@@ -1169,6 +1238,12 @@ function SectionCard({
   );
 }
 
+/**
+ * One field on the card, rendered the way the card renders it: label on top,
+ * the api underneath in the value slot. Everything configurable about the
+ * field lives behind ONE menu (design feedback 2026-08-10) instead of a
+ * toggle button, an x, and a separate popover of switches.
+ */
 function FieldChip({
   field,
   label,
@@ -1176,8 +1251,7 @@ function FieldChip({
   object,
   crmLabel,
   denied,
-  onToggleEditable,
-  onToggleRequired,
+  onChange,
   onRemove,
 }: {
   field: LayoutField;
@@ -1186,14 +1260,13 @@ function FieldChip({
   object: string;
   crmLabel: string;
   denied: boolean;
-  onToggleEditable: () => void;
-  onToggleRequired: () => void;
+  onChange: (patch: Partial<LayoutField>) => void;
   onRemove: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: field.api,
   });
-  const [popoverOpen, setPopoverOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const crmReadOnly = describeField?.readOnly ?? false;
   // A field the layout references but the portal's schema no longer has — it
   // renders an em dash on the card. Dot-paths (parent fields) and the
@@ -1204,165 +1277,195 @@ function FieldChip({
   // Either CRM-required or admin-marked-required locks the field on the card and
   // blocks clearing it from chat (server-enforced).
   const required = crmRequired || layoutRequired;
-  const requiredTitle = crmRequired
-    ? `Required in ${crmLabel} — records can't be saved without it, so it can't leave the card.`
-    : "Marked required on this card — reps can't clear it from chat.";
+
+  const access: FieldAccess = crmReadOnly
+    ? "readonly"
+    : !field.editable
+      ? "readonly"
+      : required
+        ? "required"
+        : "editable";
+
+  const setAccess = (next: FieldAccess) =>
+    onChange(
+      next === "readonly"
+        ? { editable: false, required: false }
+        : next === "editable"
+          ? { editable: true, required: false }
+          : { editable: true, required: true },
+    );
 
   return (
-    // While dragging, the in-list slot becomes the drop indicator: a 2px
-    // dashed accent outline with invisible contents (ghost is in the overlay).
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`relative flex items-center justify-between rounded-[8px] border border-line-soft bg-surface px-2.5 py-1.5 ${
+      className={`group relative rounded-[8px] border border-transparent px-2 py-1.5 hover:border-line-soft hover:bg-paper ${
         isDragging ? "!border-2 !border-dashed !border-accent bg-paper [&>*]:invisible" : ""
       }`}
     >
-      <span className="flex items-center gap-2 text-[12px]">
-        <span {...attributes} {...listeners} className="cursor-grab text-ink-45" title="Drag to reorder">
+      <div className="flex items-start gap-1.5">
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          className="mt-[3px] cursor-grab rounded-[5px] text-ink-45 opacity-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 group-hover:opacity-100"
+          title="Drag to reorder — or focus and press Space, then arrow keys"
+          aria-label={`Reorder ${label}`}
+        >
           ⠿
+        </button>
+        <span className="min-w-0 flex-1">
+          {/* Label on top, as the rep sees it. */}
+          <span className="flex flex-wrap items-center gap-1 text-[11px] leading-tight text-ink-55">
+            <span className="truncate" title={label}>
+              {label}
+            </span>
+            {required && (
+              <span
+                className="text-draft-ink"
+                title={
+                  crmRequired
+                    ? `Required in ${crmLabel} — records can't be saved without it.`
+                    : "Marked required on this card — reps can't clear it from chat."
+                }
+              >
+                *
+              </span>
+            )}
+          </span>
+          {/* Value slot: the api, not a fabricated value. The preview pane is
+              where real values live. */}
+          <span className="mt-0.5 flex flex-wrap items-center gap-1">
+            <span
+              className="st-chip-mono max-w-[150px] truncate bg-paper text-ink-45"
+              title={field.api}
+            >
+              {field.api}
+            </span>
+            {access === "readonly" && !crmReadOnly && (
+              <span className="text-[10.5px] text-ink-45">read-only</span>
+            )}
+            {crmReadOnly && (
+              <span className="text-[10.5px] text-ink-45">read-only · {crmLabel}</span>
+            )}
+            {access !== "readonly" && (
+              <span className="st-chip-mono bg-published text-published-ink">
+                {access === "required" ? "editable · required" : "editable"}
+              </span>
+            )}
+            {field.control && (
+              <span className="st-chip-mono bg-crmmeta text-crmmeta-ink">{field.control}</span>
+            )}
+            {drift && (
+              <span
+                className="st-chip-mono bg-drift text-drift-ink"
+                title={`Not in ${crmLabel}'s schema — this field renders as an em dash.`}
+              >
+                Not in {crmLabel}
+              </span>
+            )}
+            {denied && <span className="st-chip-mono bg-drift text-drift-ink">denylisted</span>}
+          </span>
         </span>
         <button
           type="button"
-          className="inline-block max-w-[180px] truncate text-left hover:underline"
-          title={label}
-          onClick={() => setPopoverOpen((o) => !o)}
+          className="rounded-[6px] px-1 text-[13px] leading-none text-ink-45 opacity-0 hover:text-ink focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 group-hover:opacity-100"
+          aria-haspopup="dialog"
+          aria-expanded={menuOpen}
+          aria-label={`${label} settings`}
+          onClick={() => setMenuOpen((open) => !open)}
         >
-          {label}
+          ⋯
         </button>
-        {/* Real portals have very long internal names — truncate, full name on hover. */}
-        <span
-          className="st-chip-mono inline-block max-w-[140px] truncate bg-paper text-ink-45"
-          title={field.api}
-        >
-          {field.api}
-        </span>
-        {required && (
-          <span className="st-chip-mono bg-draft text-draft-ink" title={requiredTitle}>
-            {crmRequired ? `Required · ${crmLabel}` : "Required"}
-          </span>
+      </div>
+
+      <Popover open={menuOpen} onClose={() => setMenuOpen(false)} width={286}>
+        <div className="px-2 pb-1 pt-1.5">
+          <div className="text-[12.5px] font-medium">{label}</div>
+          <p className="mt-1 text-[11px] leading-snug text-ink-55">
+            {drift
+              ? `Not in ${crmLabel}'s schema — the card shows an em dash for it.`
+              : describeField?.description ||
+                `No description in ${crmLabel} — the model, rep tooltips and coverage all read this metadata.`}
+          </p>
+        </div>
+
+        <div className="border-t border-line-soft px-2 py-2">
+          <span className="st-section-label">Access</span>
+          {crmReadOnly ? (
+            <p className="mt-1.5 text-[11.5px] text-ink-45">
+              Read-only in {crmLabel} field security — Cardstack only ever narrows, never widens.
+            </p>
+          ) : (
+            <select
+              className="st-input mt-1.5 w-full"
+              value={access}
+              onChange={(e) => setAccess(e.target.value as FieldAccess)}
+            >
+              {FIELD_ACCESS.map((option) => (
+                <option
+                  key={option.value}
+                  value={option.value}
+                  // A CRM-required field can't be made optional here.
+                  disabled={crmRequired && option.value === "editable"}
+                >
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          )}
+          {crmRequired && !crmReadOnly && (
+            <p className="mt-1 text-[11px] text-draft-ink">
+              Required in {crmLabel} — that isn&apos;t ours to turn off.
+            </p>
+          )}
+        </div>
+
+        {access !== "readonly" && (
+          <div className="border-t border-line-soft px-2 py-2">
+            <span className="st-section-label">Input control</span>
+            <select
+              className="st-input mt-1.5 w-full"
+              value={field.control ?? ""}
+              onChange={(e) =>
+                onChange({ control: (e.target.value || undefined) as LayoutField["control"] })
+              }
+            >
+              <option value="">Auto — from {crmLabel} metadata</option>
+              {FIELD_CONTROLS.map((control) => (
+                <option key={control} value={control}>
+                  {control}
+                </option>
+              ))}
+            </select>
+          </div>
         )}
-        {drift && (
-          <span
-            className="st-chip-mono bg-drift text-drift-ink"
-            title={`Not in ${crmLabel}'s schema — this field renders as an em dash. Remove it?`}
+
+        <div className="flex items-center justify-between gap-2 border-t border-line-soft px-2 py-2">
+          <Link
+            href={`/objects/${object}/permissions`}
+            className="text-[11.5px] text-ink-55 underline underline-offset-2 hover:text-ink"
           >
-            Not in {crmLabel}
-          </span>
-        )}
-        {denied && <span className="st-chip-mono bg-drift text-drift-ink">denylisted</span>}
-      </span>
-      <span className="flex items-center gap-2">
-        {crmReadOnly ? (
-          <span className="text-[10.5px] text-ink-45">Read-only · CRM</span>
-        ) : (
+            {denied ? "Denylisted — manage" : "Denylist"}
+          </Link>
           <button
             type="button"
-            onClick={onToggleEditable}
-            className={`st-chip-mono border ${
-              field.editable
-                ? "border-transparent bg-published text-published-ink"
-                : "border-line bg-surface text-ink-55"
-            }`}
-            title="Reps can edit this field from chat"
+            className="st-btn !py-0.5 text-[11px]"
+            disabled={required}
+            title={
+              required
+                ? "Required fields can't be removed from the card."
+                : `Remove ${label} from the card`
+            }
+            onClick={() => {
+              setMenuOpen(false);
+              onRemove();
+            }}
           >
-            {field.editable ? "Editable" : "Read-only"}
+            Remove
           </button>
-        )}
-        <button
-          type="button"
-          onClick={required ? undefined : onRemove}
-          disabled={required}
-          className={required ? "cursor-not-allowed text-ink-45 opacity-40" : "text-ink-45 hover:text-drift-ink"}
-          aria-label={required ? `${label} is required and can't be removed` : `Remove ${label}`}
-          title={required ? requiredTitle : undefined}
-        >
-          ×
-        </button>
-      </span>
-
-      {popoverOpen && (
-        <>
-          <div className="fixed inset-0 z-20" onClick={() => setPopoverOpen(false)} />
-          <div className="absolute left-6 top-full z-30 mt-1 w-[300px] rounded-[10px] border border-line bg-surface p-3 shadow-lg">
-            <div className="text-[12.5px] font-medium">{label}</div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <span className="st-chip-mono bg-paper text-ink-45">{field.api}</span>
-              <span className="st-chip-mono bg-paper text-ink-45">
-                {describeField?.type ?? "unknown"}
-              </span>
-              {required && (
-                <span className="st-chip-mono bg-draft text-draft-ink">
-                  {crmRequired ? `Required · ${crmLabel}` : "Required"}
-                </span>
-              )}
-              {drift && <span className="st-chip-mono bg-drift text-drift-ink">Not in {crmLabel}</span>}
-            </div>
-            {drift ? (
-              <p className="mt-2 text-[11.5px] leading-snug text-drift-ink">
-                This field isn't in {crmLabel}'s schema — the card shows an em dash for it. Remove it
-                with the × on the chip.
-              </p>
-            ) : (
-              <p className="mt-2 text-[11.5px] leading-snug text-ink-55">
-                {describeField?.description ||
-                  `No description in ${crmLabel} — the model, rep tooltips and coverage all read this metadata.`}
-              </p>
-            )}
-            {required && (
-              <p className="mt-1.5 text-[11px] text-draft-ink">Can't be saved empty from chat.</p>
-            )}
-            {crmReadOnly ? (
-              <p className="mt-2 text-[11px] text-ink-45">Read-only · {crmLabel} field security.</p>
-            ) : (
-              <>
-                <div className="mt-2.5 flex items-center justify-between">
-                  <span className="text-[12px]">Reps can edit</span>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={field.editable}
-                    aria-label={`Reps can edit ${label}`}
-                    onClick={onToggleEditable}
-                    className={`h-5 w-9 rounded-full transition-colors ${field.editable ? "bg-accent" : "bg-line"}`}
-                  >
-                    <span
-                      className={`block h-4 w-4 rounded-full bg-white transition-transform ${field.editable ? "translate-x-4" : "translate-x-0.5"}`}
-                    />
-                  </button>
-                </div>
-                {/* Admin-marked required (enforced server-side). Hidden when the
-                    CRM already requires it — that's non-negotiable, not a toggle. */}
-                {field.editable && !crmRequired && (
-                  <div className="mt-2 flex items-center justify-between">
-                    <span className="text-[12px]">
-                      Required — can't be cleared from chat
-                    </span>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={layoutRequired}
-                      aria-label={`Required from chat: ${label}`}
-                      onClick={onToggleRequired}
-                      className={`h-5 w-9 rounded-full transition-colors ${layoutRequired ? "bg-accent" : "bg-line"}`}
-                    >
-                      <span
-                        className={`block h-4 w-4 rounded-full bg-white transition-transform ${layoutRequired ? "translate-x-4" : "translate-x-0.5"}`}
-                      />
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-            <Link
-              href={`/objects/${object}/permissions`}
-              className="mt-2.5 block text-[11.5px] text-ink-55 underline underline-offset-2 hover:text-ink"
-            >
-              {denied ? "Denylisted — manage in Permissions" : "Denylist fields in Permissions"}
-            </Link>
-          </div>
-        </>
-      )}
+        </div>
+      </Popover>
     </div>
   );
 }

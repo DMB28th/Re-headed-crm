@@ -4,6 +4,8 @@ import { getAdapter, getStore } from "../lib/backend";
 import { getUserContext } from "../lib/auth";
 import { AddObjectCard } from "../components/add-object-card";
 import { NoConnection } from "../components/no-connection";
+import { ErrorNotice } from "../components/ui/error-notice";
+import { classifyCrmError } from "../lib/crm-error";
 
 export const dynamic = "force-dynamic";
 
@@ -83,12 +85,7 @@ export default async function HomePage() {
         Everything here is scoped to one object at a time.
       </p>
 
-      {crmError && (
-        <div className="mt-5 rounded-[10px] border-l-[3px] border-drift-ink bg-drift px-4 py-3 text-[12.5px] text-drift-ink">
-          Couldn't reach the CRM: {crmError} — if this mentions 403/scopes, fix the
-          connection's app permissions and reconnect.
-        </div>
-      )}
+      {crmError && <ErrorNotice error={classifyCrmError(crmError)} className="mt-5" />}
 
       {drafted.map((object) => (
         <div

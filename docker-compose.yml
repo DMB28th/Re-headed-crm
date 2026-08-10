@@ -18,7 +18,9 @@ services:
     volumes:
       - ./data:/data
 
-  # For the Postgres-backed AdminConfigStore (planned — not wired up yet).
+  # Postgres-backed AdminConfigStore + audit log. Opt in with
+  # `docker compose --profile db up`, then set DATABASE_URL on both services;
+  # the schema is created and the demo tenant seeded on first boot.
   postgres:
     image: postgres:16-alpine
     profiles: ["db"]

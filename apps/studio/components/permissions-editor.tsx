@@ -4,6 +4,7 @@
  * confirmation row. Edits save to the DRAFT — publish from the builder.
  */
 import { useCallback, useEffect, useState } from "react";
+import { StatusChip, STATUS_FLASH_MS } from "./ui/status-chip";
 import type { LayoutConfig, ObjectDescribe } from "@cardstack/core";
 import type { LayoutRecord } from "@cardstack/config-store";
 
@@ -30,7 +31,7 @@ export function PermissionsEditor({ object }: { object: string }) {
         body: JSON.stringify(next),
       });
       setSaved(true);
-      setTimeout(() => setSaved(false), 1600);
+      setTimeout(() => setSaved(false), STATUS_FLASH_MS);
     },
     [object],
   );
@@ -42,7 +43,7 @@ export function PermissionsEditor({ object }: { object: string }) {
     <div className="max-w-[620px]">
       <div className="flex items-center justify-between">
         <h1 className="text-[16px] font-semibold capitalize">{object} · Permissions</h1>
-        <span className="text-[11.5px] text-ink-45">{saved ? "Saved to draft" : " "}</span>
+        <StatusChip status={saved ? "staged" : "clean"} />
       </div>
       <p className="mt-1 text-[12.5px] text-ink-55">
         Changes here land in the draft and go live with the next publish. The CRM&apos;s own

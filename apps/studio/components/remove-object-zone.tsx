@@ -6,6 +6,7 @@
  */
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { ErrorNotice } from "./ui/error-notice";
 
 export function RemoveObjectZone({ object, label }: { object: string; label: string }) {
   const router = useRouter();
@@ -64,7 +65,7 @@ export function RemoveObjectZone({ object, label }: { object: string; label: str
               onChange={(e) => setTyped(e.target.value)}
             />
           </label>
-          {error && <div className="text-[12px] text-drift-ink">{error}</div>}
+          {error && <ErrorNotice error={error} />}
           <div className="flex items-center gap-2">
             <button
               type="button"

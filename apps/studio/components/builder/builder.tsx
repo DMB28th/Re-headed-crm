@@ -13,6 +13,8 @@ import { Canvas } from "./canvas";
 import { Preview } from "./preview";
 import { PublishModal } from "./publish-modal";
 import { LoadFailed } from "../load-failed";
+import { ConfirmButton, ConfirmPopover, Popover } from "../ui/confirm";
+import { StatusChip } from "../ui/status-chip";
 
 interface LayoutApiResponse {
   record: LayoutRecord;
@@ -34,6 +36,8 @@ export function Builder({ object }: { object: string }) {
   const [history, setHistory] = useState<{ revision: number; name?: string }[]>([]);
   const [rollingBack, setRollingBack] = useState<number | null>(null);
   const [rollbackConfirm, setRollbackConfirm] = useState<number | null>(null);
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const [jsonOpen, setJsonOpen] = useState(false);
   const [saveState, setSaveState] = useState<"clean" | "saving" | "saved" | "error">("clean");
   const [publishOpen, setPublishOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -75,11 +79,11 @@ export function Builder({ object }: { object: string }) {
     } finally {
       setRollingBack(null);
       setRollbackConfirm(null);
+      setVersionsOpen(false);
     }
   };
 
   const [discarding, setDiscarding] = useState(false);
-  const [discardConfirm, setDiscardConfirm] = useState(false);
   const discardDraft = async () => {
     setDiscarding(true);
     try {
@@ -88,20 +92,17 @@ export function Builder({ object }: { object: string }) {
         await load();
         setSaveState("clean");
       }
-      setDiscardConfirm(false);
     } finally {
       setDiscarding(false);
     }
   };
 
   const [regenerating, setRegenerating] = useState(false);
-  const [regenConfirm, setRegenConfirm] = useState(false);
   const regenerate = async () => {
     setRegenerating(true);
     try {
       const res = await fetch(`/api/layout/${object}/regenerate`, { method: "POST" });
       if (res.ok) await load();
-      setRegenConfirm(false);
     } finally {
       setRegenerating(false);
     }
@@ -198,98 +199,106 @@ export function Builder({ object }: { object: string }) {
           <span className="st-chip-mono bg-draft text-draft-ink">
             Draft{publishedRevision ? ` · v${publishedRevision + 1} from v${publishedRevision}` : ""}
           </span>
-          {saveState === "error" ? (
-            <button
-              type="button"
-              className="st-chip-mono bg-drift text-drift-ink"
-              title="The last autosave failed — this draft is not stored. Click to retry."
-              onClick={() => config && void saveDraft(config)}
-            >
-              Couldn't save — retry
-            </button>
-          ) : (
-            <span className="text-[11.5px] text-ink-45">
-              {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved just now" : " "}
-            </span>
-          )}
+          <StatusChip
+            status={
+              saveState === "error"
+                ? "failed"
+                : saveState === "saving"
+                  ? "saving"
+                  : saveState === "saved"
+                    ? "saved"
+                    : "clean"
+            }
+            onRetry={() => config && void saveDraft(config)}
+          />
         </div>
         <div className="flex items-center gap-2">
           {history.length > 0 && (
-            <details className="relative">
-              <summary className="st-btn cursor-pointer list-none">
+            <div className="relative">
+              <button
+                type="button"
+                className="st-btn"
+                aria-haspopup="dialog"
+                aria-expanded={versionsOpen}
+                onClick={() => setVersionsOpen((open) => !open)}
+              >
                 Versions ({history.length})
-              </summary>
-              <div className="absolute right-0 z-20 mt-2 w-[280px] rounded-[10px] border border-line bg-surface p-1.5 shadow-lg">
+              </button>
+              <Popover
+                open={versionsOpen}
+                onClose={() => {
+                  setVersionsOpen(false);
+                  setRollbackConfirm(null);
+                }}
+              >
                 <div className="px-2 py-1 text-[11px] text-ink-45">
                   Previous versions are kept — rolling back republishes under a new revision.
                 </div>
                 {history.map((entry) => (
                   <div
                     key={entry.revision}
-                    className="flex flex-wrap items-center justify-between gap-1.5 rounded-[8px] px-2 py-1.5 hover:bg-paper"
+                    className="relative flex items-center justify-between gap-1.5 rounded-[8px] px-2 py-1.5 hover:bg-paper"
                   >
                     <span className="text-[12px]">
                       <span className="st-chip-mono bg-paper text-ink-55">v{entry.revision}</span>{" "}
                       {entry.name ?? ""}
                     </span>
-                    {rollbackConfirm === entry.revision ? (
-                      <span className="flex flex-wrap items-center justify-end gap-1.5 text-[11px] text-ink-55">
-                        Republishes v{entry.revision} to reps immediately — confirm?
-                        <button
-                          type="button"
-                          className="st-btn !py-0.5 text-[11px]"
-                          onClick={() => setRollbackConfirm(null)}
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          className="st-btn st-btn--primary !py-0.5 text-[11px]"
-                          disabled={rollingBack !== null}
-                          onClick={() => rollback(entry.revision)}
-                        >
-                          {rollingBack === entry.revision ? "Rolling back…" : "Confirm"}
-                        </button>
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        className="cs-link-btn st-btn !py-0.5 text-[11px]"
-                        disabled={rollingBack !== null}
-                        onClick={() => setRollbackConfirm(entry.revision)}
-                      >
-                        Roll back
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="st-btn !py-0.5 text-[11px]"
+                      disabled={rollingBack !== null}
+                      onClick={() => setRollbackConfirm(entry.revision)}
+                    >
+                      Roll back
+                    </button>
+                    <ConfirmPopover
+                      open={rollbackConfirm === entry.revision}
+                      title={`Roll back to v${entry.revision}?`}
+                      detail="Reps see it immediately. The current version is kept in history, republished under a new revision number."
+                      confirmLabel="Roll back"
+                      busyLabel="Rolling back…"
+                      busy={rollingBack === entry.revision}
+                      onConfirm={() => void rollback(entry.revision)}
+                      onCancel={() => setRollbackConfirm(null)}
+                    />
                   </div>
                 ))}
-              </div>
-            </details>
+              </Popover>
+            </div>
           )}
-          {regenConfirm ? (
-            <span className="flex items-center gap-2 text-[11.5px] text-ink-55">
-              Replaces this draft with a fresh high-signal layout from the CRM's fields
-              (published version untouched).
-              <button type="button" className="st-btn" onClick={() => setRegenConfirm(false)}>
-                Cancel
-              </button>
-              <button type="button" className="st-btn st-btn--primary" disabled={regenerating} onClick={regenerate}>
-                {regenerating ? "Regenerating…" : "Regenerate"}
-              </button>
-            </span>
-          ) : (
+          {publishedRevision !== null && (
+            <ConfirmButton
+              label="Discard draft"
+              title="Discard this draft?"
+              detail={`Throws away every unpublished edit and puts the builder back to v${publishedRevision}, the version reps already see. This can't be undone.`}
+              confirmLabel="Discard"
+              busyLabel="Discarding…"
+              busy={discarding}
+              tone="danger"
+              onConfirm={discardDraft}
+            />
+          )}
+          <ConfirmButton
+            label="↻ Regenerate"
+            className="st-btn whitespace-nowrap"
+            title="Regenerate this draft?"
+            detail="Replaces the draft with a fresh high-signal layout built from the CRM's current fields. The published version reps see is untouched."
+            confirmLabel="Regenerate"
+            busyLabel="Regenerating…"
+            busy={regenerating}
+            onConfirm={regenerate}
+          />
+          <div className="relative">
             <button
               type="button"
-              className="st-btn whitespace-nowrap"
-              title="Rebuild this draft from the connected portal's fields (published version untouched)"
-              onClick={() => setRegenConfirm(true)}
+              className="st-btn font-mono text-[11px]"
+              aria-label="Show layout JSON"
+              aria-expanded={jsonOpen}
+              onClick={() => setJsonOpen((open) => !open)}
             >
-              ↻ Regenerate
+              {"{ }"}
             </button>
-          )}
-          <details className="relative">
-            <summary className="st-btn cursor-pointer list-none font-mono text-[11px]">{"{ }"}</summary>
-            <div className="absolute right-0 z-20 mt-2 w-[440px] rounded-[10px] border border-line bg-surface shadow-lg">
+            <Popover open={jsonOpen} onClose={() => setJsonOpen(false)} width={440}>
               <div className="flex items-center justify-end gap-2 border-b border-line-soft p-2">
                 <button
                   type="button"
@@ -323,8 +332,8 @@ export function Builder({ object }: { object: string }) {
               <pre className="max-h-[380px] overflow-auto p-3 text-[10.5px] leading-relaxed">
                 {JSON.stringify(config, null, 2)}
               </pre>
-            </div>
-          </details>
+            </Popover>
+          </div>
           <button type="button" className="st-btn st-btn--primary" onClick={() => setPublishOpen(true)}>
             Publish layout…
           </button>

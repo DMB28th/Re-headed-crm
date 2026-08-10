@@ -16,11 +16,22 @@ export async function GET(_req: Request, { params }: Params) {
     const savedViews = await adapter.listSavedViews(object);
     // describe feeds the custom-list filter builder (field/op/value rows).
     const describe = await adapter.describeObject(object);
+    // The editor works on the DRAFT (what this admin is staging); the published
+    // record is what reps see until Review & publish.
+    const record = await store.getViewExposuresRecord(tenantId, object);
     const fullExposures =
-      (await store.getViewExposuresConfig(tenantId, object)) ??
+      record.draft ??
+      record.published ??
       ViewExposuresConfig.parse({ version: 1, tenantId, object, views: [] });
     const exposures = scopeViewExposuresForUser(fullExposures, user);
-    return NextResponse.json({ savedViews, exposures, describe, currentUser: user });
+    return NextResponse.json({
+      savedViews,
+      exposures,
+      describe,
+      currentUser: user,
+      staged: record.draft !== null,
+      publishedRevision: record.published?.revision ?? null,
+    });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 502 });
   }
@@ -36,10 +47,14 @@ export async function PUT(req: Request, { params }: Params) {
       return NextResponse.json({ error: "tenant/object mismatch" }, { status: 400 });
     }
     const store = await getStore();
-    const existing = await store.getViewExposuresConfig(tenantId, object);
+    // Merge against the working copy (draft first) so two admins editing at
+    // once don't clobber each other's staged rows.
+    const record = await store.getViewExposuresRecord(tenantId, object);
+    const existing = record.draft ?? record.published ?? undefined;
     const exposures = mergeScopedViewExposures(existing, incoming, user);
     await store.setViewExposures(exposures);
-    return NextResponse.json({ ok: true });
+    // Staged, NOT live: exposing a list changes what every rep sees in chat.
+    return NextResponse.json({ ok: true, staged: true });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 400 });
   }

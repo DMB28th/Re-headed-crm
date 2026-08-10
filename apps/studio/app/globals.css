@@ -90,6 +90,15 @@ body {
 .st-btn--primary:hover {
   background: var(--color-accent-hover);
 }
+.st-btn--danger {
+  background: var(--color-drift-ink);
+  border-color: var(--color-drift-ink);
+  color: #fff;
+}
+.st-btn--danger:hover {
+  background: #85332a;
+}
+
 .st-btn:disabled {
   opacity: 0.45;
   cursor: default;

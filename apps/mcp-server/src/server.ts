@@ -1046,10 +1046,20 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
         if (record) recordFields = record.fields;
       }
 
-      const renderMode =
-        (await configStore.getFlowRenderModes(tenantId)).find(
-          (m) => m.flowApiName === args.flowApiName,
-        )?.mode ?? "auto";
+      // A flow must be switched ON in Studio before reps can run it. A flow
+      // synced from the CRM is a candidate, not an offering — and with no
+      // stored policy at all, the answer is no (2026-08-10c). This is the
+      // server-side half of Studio's Active toggle; without it the toggle
+      // would be decoration.
+      const policy = (await configStore.getFlowRenderModes(tenantId)).find(
+        (m) => m.flowApiName === args.flowApiName,
+      );
+      if (!policy?.active) {
+        throw new Error(
+          `Flow "${flow.label}" isn't switched on for chat. An admin turns it on in Studio → Flows.`,
+        );
+      }
+      const renderMode = policy.mode;
 
       const context: ActionInvocationContext = {
         tenantId,
