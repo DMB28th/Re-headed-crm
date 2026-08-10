@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
+  KeyboardSensor,
   DragOverlay,
   closestCenter,
   PointerSensor,
@@ -21,6 +22,7 @@ import {
 import {
   SortableContext,
   arrayMove,
+  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
@@ -99,7 +101,12 @@ export function HomeCardBuilder() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [draggingBlock, setDraggingBlock] = useState<HomeCardBlock["type"] | null>(null);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  // Same keyboard contract as the layout canvas: Space to pick up a block,
+  // arrows to move, Space to drop, Escape to cancel.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   useEffect(() => {
     (async () => {
@@ -474,9 +481,16 @@ function BlockCard({
     id: type,
   });
   const grip = (
-    <span {...attributes} {...listeners} className="cursor-grab text-ink-45" title="Drag to reorder blocks">
+    <button
+      type="button"
+      {...attributes}
+      {...listeners}
+      className="cursor-grab rounded-[5px] px-0.5 text-ink-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+      title="Drag to reorder blocks — or focus and press Space, then arrow keys"
+      aria-label={`Reorder ${type} block`}
+    >
       ⠿
-    </span>
+    </button>
   );
   return (
     // While dragging, the in-list slot becomes the drop indicator: a 2px

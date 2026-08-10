@@ -19,12 +19,64 @@ import type { FlowRenderMode, FlowRenderModeConfig, FlowSummary } from "@cardsta
 import { LoadFailed } from "./load-failed";
 import { StatusChip, STATUS_FLASH_MS } from "./ui/status-chip";
 
-const MODES: { value: FlowRenderMode; label: string; note: string }[] = [
-  { value: "auto", label: "Auto", note: "Native first, embed when needed, hand off if blocked." },
-  { value: "native", label: "Native", note: "Only host-native controls; unsupported screens must be mapped." },
-  { value: "embedded", label: "Embedded", note: "Salesforce renders the screen inside a guarded boundary." },
-  { value: "handoff", label: "Handoff", note: "Always open in Salesforce and resume from chat." },
+/**
+ * `delivered` is whether the CHAT RUNTIME implements the rung, not whether the
+ * policy stores. Studio is the durable admin contract the runtime will read, so
+ * an undelivered rung stays selectable — but the card has to say what a rep
+ * actually gets today rather than presenting four equal options.
+ *
+ * Reality check before changing these: `renderMode` reaches the widget payload
+ * (core/payload.ts) and no widget reads it, so every mode resolves to handoff.
+ * Flip a flag here only when a widget actually branches on it.
+ */
+const MODES: {
+  value: FlowRenderMode;
+  label: string;
+  note: string;
+  delivered: boolean;
+}[] = [
+  {
+    value: "auto",
+    label: "Auto",
+    note: "Native first, embed when needed, hand off if blocked.",
+    delivered: true,
+  },
+  {
+    value: "native",
+    label: "Native",
+    note: "Only host-native controls; unsupported screens must be mapped.",
+    delivered: false,
+  },
+  {
+    value: "embedded",
+    label: "Embedded",
+    note: "Salesforce renders the screen inside a guarded boundary.",
+    delivered: false,
+  },
+  {
+    value: "handoff",
+    label: "Handoff",
+    note: "Always open in Salesforce and resume from chat.",
+    delivered: true,
+  },
 ];
+
+/** What a rep gets TODAY for a chosen mode — the ladder only has one rung. */
+function effectiveToday(mode: FlowRenderMode): { text: string; warn: boolean } {
+  if (mode === "handoff") {
+    return { text: "Reps open the flow in Salesforce and resume in chat.", warn: false };
+  }
+  if (mode === "auto") {
+    return {
+      text: "Today Auto has one rung: reps get the open-in-Salesforce handoff. Native and embedded join the ladder as they ship.",
+      warn: false,
+    };
+  }
+  return {
+    text: `${mode === "native" ? "Native" : "Embedded"} rendering isn't delivered yet — reps get the open-in-Salesforce handoff until it ships. The policy is stored and will take effect then.`,
+    warn: true,
+  };
+}
 
 /** A custom screen, as the Flows page needs to list it. */
 export interface ScreenSummary {
@@ -240,18 +292,45 @@ export function FlowsEditor() {
                           key={mode.value}
                           type="button"
                           className={`px-2.5 py-1 text-[11.5px] ${
-                            current === mode.value ? "bg-accent text-white" : "text-ink-55"
+                            current === mode.value
+                              ? "bg-accent text-white"
+                              : mode.delivered
+                                ? "text-ink-55"
+                                : "text-ink-45"
                           }`}
-                          title={mode.note}
+                          title={
+                            mode.delivered
+                              ? mode.note
+                              : `${mode.note} — not delivered yet; reps get the handoff until it ships.`
+                          }
                           onClick={() => saveMode(flow.api, mode.value)}
                         >
                           {mode.label}
+                          {!mode.delivered && (
+                            <span
+                              aria-label="not delivered yet"
+                              className={`ml-1 ${current === mode.value ? "text-white/70" : "text-warn-dot"}`}
+                            >
+                              •
+                            </span>
+                          )}
                         </button>
                       ))}
                     </div>
                   </div>
                   <div className="mt-1.5 text-[11px] text-ink-45">
                     {MODES.find((mode) => mode.value === current)?.note}
+                  </div>
+                  {/* What a rep gets today, for the mode actually selected —
+                      the banner above says the ladder is one rung; this says
+                      it per flow, where the choice is being made. */}
+                  <div
+                    className={`mt-1.5 text-[11px] leading-snug ${
+                      effectiveToday(current).warn ? "text-draft-ink" : "text-ink-45"
+                    }`}
+                  >
+                    <span className="font-semibold">Today: </span>
+                    {effectiveToday(current).text}
                   </div>
                 </div>
               </div>

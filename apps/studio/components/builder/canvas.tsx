@@ -7,6 +7,7 @@
  */
 import {
   DndContext,
+  KeyboardSensor,
   DragOverlay,
   closestCenter,
   PointerSensor,
@@ -19,6 +20,7 @@ import {
   SortableContext,
   arrayMove,
   useSortable,
+  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -208,7 +210,13 @@ export function Canvas({
   relatedDescribes: Record<string, ObjectDescribe>;
   onChange: SetConfig;
 }) {
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  // KeyboardSensor makes the grips real controls: Tab to one, Space to pick
+  // up, arrows to move, Space to drop, Escape to cancel. Without it the canvas
+  // was mouse-only and a layout couldn't be reordered without a pointer.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   const labelOf = (api: string) => describe.fields.find((f) => f.api === api)?.label ?? api;
   const crmLabel = crmDisplayLabel(config.crm);
   // Ghost chip / ghost section for the DragOverlay (2a mid-drag feedback).
@@ -1143,14 +1151,16 @@ function SectionCard({
     id: `sec-${sectionIdx}`,
   });
   const grip = (
-    <span
+    <button
+      type="button"
       {...attributes}
       {...listeners}
-      className="cursor-grab text-ink-45"
-      title="Drag to reorder sections"
+      className="cursor-grab rounded-[5px] px-0.5 text-ink-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+      title="Drag to reorder sections — or focus and press Space, then arrow keys"
+      aria-label={`Reorder section ${sectionIdx + 1}`}
     >
       ⠿
-    </span>
+    </button>
   );
   return (
     // While dragging, the in-list slot becomes the drop indicator: a 2px
