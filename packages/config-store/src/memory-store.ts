@@ -35,8 +35,10 @@ import {
 } from "./types.js";
 import {
   membershipKey,
+  salesforceIdKey,
   type Account,
   type Membership,
+  type OrgClaimResult,
   type Workspace,
 } from "./identity.js";
 import type { DiffLabels } from "./diff.js";
@@ -307,20 +309,23 @@ export abstract class BaseConfigStore implements AdminConfigStore {
     const state = await this.load();
     // Match on the 15-char prefix: Salesforce APIs disagree about returning 15
     // vs 18 chars for the same org, and both must find the one workspace.
-    const prefix = salesforceOrgId.slice(0, 15).toLowerCase();
+    const key = salesforceIdKey(salesforceOrgId);
     return Object.values(state.workspaces ?? {}).find(
-      (w) => w.salesforceOrgId.slice(0, 15).toLowerCase() === prefix,
+      (w) => w.salesforceOrgId && salesforceIdKey(w.salesforceOrgId) === key,
     );
   }
 
-  /** Idempotent on the org id — see resolveSignIn's creation-race note. */
+  /** Idempotent on the org id — see resolveSignIn's creation-race note. Org-less
+   *  workspaces (the self-serve signup path) have no clash to check. */
   async createWorkspace(workspace: Workspace): Promise<void> {
     const state = await this.load();
-    const prefix = workspace.salesforceOrgId.slice(0, 15).toLowerCase();
-    const clash = Object.values(state.workspaces ?? {}).some(
-      (w) => w.salesforceOrgId.slice(0, 15).toLowerCase() === prefix,
-    );
-    if (clash) return;
+    if (workspace.salesforceOrgId) {
+      const key = salesforceIdKey(workspace.salesforceOrgId);
+      const clash = Object.values(state.workspaces ?? {}).some(
+        (w) => w.salesforceOrgId && salesforceIdKey(w.salesforceOrgId) === key,
+      );
+      if (clash) return;
+    }
     state.workspaces = { ...(state.workspaces ?? {}), [workspace.id]: workspace };
     await this.save(state);
   }
@@ -328,6 +333,55 @@ export abstract class BaseConfigStore implements AdminConfigStore {
   /** Operational enumeration — never call from a request path. */
   async listWorkspaces(): Promise<Workspace[]> {
     return Object.values((await this.load()).workspaces ?? {});
+  }
+
+  async getWorkspaceByOwner(ownerAccountId: string): Promise<Workspace | undefined> {
+    const state = await this.load();
+    return Object.values(state.workspaces ?? {}).find((w) => w.ownerAccountId === ownerAccountId);
+  }
+
+  async claimOrg(
+    workspaceId: string,
+    salesforceOrgId: string,
+    orgName?: string,
+  ): Promise<OrgClaimResult> {
+    const state = await this.load();
+    const key = salesforceIdKey(salesforceOrgId);
+    const holder = Object.values(state.workspaces ?? {}).find(
+      (w) => w.salesforceOrgId && salesforceIdKey(w.salesforceOrgId) === key,
+    );
+    if (holder && holder.id !== workspaceId) return { ok: false, reason: "org-already-claimed" };
+    const workspace = state.workspaces?.[workspaceId];
+    if (!workspace) throw new Error(`Unknown workspace: ${workspaceId}`);
+    const updated: Workspace = {
+      ...workspace,
+      salesforceOrgId,
+      ...(orgName?.trim() ? { name: orgName.trim() } : {}),
+    };
+    state.workspaces = { ...(state.workspaces ?? {}), [workspaceId]: updated };
+    await this.save(state);
+    return { ok: true, workspace: updated };
+  }
+
+  async releaseOrg(workspaceId: string): Promise<void> {
+    const state = await this.load();
+    const workspace = state.workspaces?.[workspaceId];
+    if (!workspace) return;
+    const { salesforceOrgId: _released, ...rest } = workspace;
+    state.workspaces = { ...(state.workspaces ?? {}), [workspaceId]: rest as Workspace };
+    await this.save(state);
+  }
+
+  /** Operational — the attach-workspace script's path. Never request-scoped. */
+  async setWorkspaceOwner(workspaceId: string, ownerAccountId: string): Promise<void> {
+    const state = await this.load();
+    const workspace = state.workspaces?.[workspaceId];
+    if (!workspace) throw new Error(`Unknown workspace: ${workspaceId}`);
+    state.workspaces = {
+      ...(state.workspaces ?? {}),
+      [workspaceId]: { ...workspace, ownerAccountId },
+    };
+    await this.save(state);
   }
 
   async getAccount(id: string): Promise<Account | undefined> {
@@ -338,7 +392,15 @@ export abstract class BaseConfigStore implements AdminConfigStore {
     const state = await this.load();
     const prefix = salesforceUserId.slice(0, 15).toLowerCase();
     return Object.values(state.accounts ?? {}).find(
-      (a) => a.salesforceUserId.slice(0, 15).toLowerCase() === prefix,
+      (a) => a.salesforceUserId && a.salesforceUserId.slice(0, 15).toLowerCase() === prefix,
+    );
+  }
+
+  async getAccountByEmail(email: string): Promise<Account | undefined> {
+    const state = await this.load();
+    const needle = email.trim().toLowerCase();
+    return Object.values(state.accounts ?? {}).find(
+      (a) => a.email?.trim().toLowerCase() === needle,
     );
   }
 

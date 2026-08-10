@@ -5,19 +5,10 @@
  * workspace was a process-wide env var, so one deployment served exactly one
  * customer and anyone could claim to be anyone.
  *
- * The model, per the decisions in docs/salesforce-oauth-support.md:
- *
- * - **Salesforce is the identity provider.** You sign in with Salesforce; there
- *   are no Cardstack passwords to store, leak, or reset (PLAN.md non-goal:
- *   "no password flows").
- * - **A workspace IS a Salesforce org.** `Workspace.salesforceOrgId` is unique,
- *   so the first person from an org creates the workspace and becomes its admin
- *   and everyone else from that org auto-joins as a member. This falls straight
- *   out of the design's "one CRM per workspace" rule — there is no separate
- *   invite system to build or secure for v1.
- * - **`Account.id` is the pre-existing normalized user id** (email → username →
- *   SF user id, via `normalizeUserId`). Keeping that derivation means the
- *   `user_connections` rows written before accounts existed keep resolving.
+ * Accounts are email-first now, not Salesforce-first: a workspace is created
+ * and owned by one account, and connecting a Salesforce org to it is an
+ * exclusive claim made later, not the act that creates the workspace. Full
+ * model and rationale: docs/superpowers/specs/2026-08-10-self-serve-accounts-design.md.
  *
  * Sessions deliberately do NOT live here: they ride the store's existing
  * namespaced KV (TTL'd, sealed at rest, shared across instances), so signing
@@ -27,28 +18,49 @@
  * `accounts`, `memberships`); every pre-existing table stays keyed by the same
  * opaque `tenant_id`, so existing rows are untouched and a database that has
  * never seen a sign-in behaves exactly as before.
+ *
+ * Migration note (2026-08-10): `Workspace.salesforceOrgId` and
+ * `Account.salesforceUserId` become optional, and `Workspace` gains
+ * `ownerAccountId` — see docs/superpowers/specs/2026-08-10-self-serve-accounts-design.md
+ * for the exclusive-org-claim model this enables.
  */
 
-/** A Cardstack workspace, one per Salesforce org. `id` is the `tenantId` every
- *  other table is keyed by. */
+import { randomBytes } from "node:crypto";
+
+/** A Cardstack workspace. `id` is the `tenantId` every other table is keyed by. */
 export interface Workspace {
-  /** The `tenantId` used across layouts, connections, audit — `sf_<15-char org id>`. */
+  /** The `tenantId` used across layouts, connections, audit. New ids are
+   *  `ws_<random>`; legacy `sf_<orgid>` and `t_demo` ids remain valid forever —
+   *  nothing parses a tenant id. */
   id: string;
-  /** 18-char Salesforce org id. Unique: it is what makes auto-join work. */
-  salesforceOrgId: string;
-  /** Org display name, for the workspace switcher. */
+  /** The claimed Salesforce org. ABSENT until the owner connects one; the
+   *  claim is exclusive (spec §1) — uniqueness on the 15-char key is what
+   *  enforces one-org-one-owner. */
+  salesforceOrgId?: string;
+  /** The account that owns this workspace. Absent only on legacy rows the
+   *  attach-workspace script has not stamped yet. */
+  ownerAccountId?: string;
+  /** Display name: "My workspace" until an org claim renames it. */
   name: string;
   createdAt: string;
 }
 
-/** A person, across every workspace they belong to. */
+/** A person. Root identity — created by email signup, by Salesforce signup,
+ *  or as a rep runtime identity on the MCP lane. */
 export interface Account {
   /** `normalizeUserId(email ?? username ?? sfUserId)` — matches `user_connections.user_id`. */
   id: string;
-  /** 18-char Salesforce user id. Unique. */
-  salesforceUserId: string;
+  /** Recorded when this account connects an org or signs in with Salesforce.
+   *  Absent on email-only accounts. Unique when present. */
+  salesforceUserId?: string;
   name: string;
   email?: string;
+  /** argon2id hash. Absent on rep runtime identities and Salesforce-created
+   *  accounts that never set one. NEVER serialized to clients. */
+  passwordHash?: string;
+  emailVerifiedAt?: string;
+  /** Sessions created before this instant are dead (reset invalidation). */
+  passwordChangedAt?: string;
   createdAt: string;
 }
 
@@ -76,20 +88,36 @@ export interface SignedInIdentity {
 export const membershipKey = (accountId: string, workspaceId: string): string =>
   `${accountId}::${workspaceId}`;
 
+/** Salesforce returns 15- or 18-char ids for one entity; key on the lowercased 15. */
+export const salesforceIdKey = (salesforceId: string): string =>
+  salesforceId.slice(0, 15).toLowerCase();
+
 /**
  * Workspace id from a Salesforce org id. Salesforce's 18-char id is the 15-char
  * id plus a case-insensitivity checksum, so we key on the 15-char prefix and
  * lowercase it — the same org reached via different APIs (which disagree about
- * returning 15 vs 18) must never produce two workspaces.
+ * returning 15 vs 18) must never produce two workspaces. Legacy path only: new
+ * workspaces get `newWorkspaceId()` and claim an org afterward; the MCP legacy
+ * bridge still routes pre-accounts tenants through this.
  */
 export const workspaceIdForOrg = (salesforceOrgId: string): string =>
-  `sf_${salesforceOrgId.slice(0, 15).toLowerCase()}`;
+  `sf_${salesforceIdKey(salesforceOrgId)}`;
+
+/** Id for a signup-created workspace. Opaque; the prefix is cosmetic. */
+export const newWorkspaceId = (): string => `ws_${randomBytes(12).toString("base64url")}`;
+
+/** Result of an exclusive org claim — `claimOrg` never throws on conflict. */
+export type OrgClaimResult =
+  | { ok: true; workspace: Workspace }
+  | { ok: false; reason: "org-already-claimed" };
 
 /** Identity reads/writes. Folded into AdminConfigStore so every backend implements it. */
 export interface IdentityStore {
   getWorkspace(id: string): Promise<Workspace | undefined>;
   /** Find-or-create keys on this — the whole auto-join model depends on it. */
   getWorkspaceByOrgId(salesforceOrgId: string): Promise<Workspace | undefined>;
+  /** The workspace this account owns, if any — backs "you already have a workspace". */
+  getWorkspaceByOwner(ownerAccountId: string): Promise<Workspace | undefined>;
   createWorkspace(workspace: Workspace): Promise<void>;
   /**
    * Every workspace on this deployment. Operational only — nothing
@@ -99,9 +127,21 @@ export interface IdentityStore {
    * apps/studio/scripts/backfill-workspace-admins.ts).
    */
   listWorkspaces(): Promise<Workspace[]>;
+  /** Exclusively claim an org for a workspace; conflicts if another workspace
+   *  already holds it. Idempotent for the current holder. */
+  claimOrg(workspaceId: string, salesforceOrgId: string, orgName?: string): Promise<OrgClaimResult>;
+  /** Undo a claim so the org routes to no workspace and can be claimed again. */
+  releaseOrg(workspaceId: string): Promise<void>;
+  /**
+   * Stamp a workspace's owner. Operational — the attach-workspace script's
+   * path for legacy rows with no `ownerAccountId`; never request-scoped.
+   */
+  setWorkspaceOwner(workspaceId: string, ownerAccountId: string): Promise<void>;
 
   getAccount(id: string): Promise<Account | undefined>;
   getAccountBySalesforceUserId(salesforceUserId: string): Promise<Account | undefined>;
+  /** Find an account by its email, case-insensitively — the email sign-in path. */
+  getAccountByEmail(email: string): Promise<Account | undefined>;
   /** Insert, or refresh a returning signer's name/email from Salesforce. */
   upsertAccount(account: Account): Promise<void>;
 

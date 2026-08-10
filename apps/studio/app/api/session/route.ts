@@ -172,7 +172,7 @@ async function hasSalesforceAdmin(
   for (const membership of memberships) {
     if (membership.role !== "admin") continue;
     const account = await store.getAccount(membership.accountId);
-    if (account && !account.salesforceUserId.startsWith("legacy-user-")) return true;
+    if (account?.salesforceUserId && !account.salesforceUserId.startsWith("legacy-user-")) return true;
   }
   return false;
 }
