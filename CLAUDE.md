@@ -28,7 +28,10 @@ before changing any of this).
 - **Flows are opt-in.** `FlowRenderModeConfig.active` defaults to false and
   `crm_flow_start` refuses a flow that isn't switched on. Render mode is a pick
   list of IN-CHAT rungs only (auto / native / embedded); `handoff` stays in the
-  zod enum for storage tolerance but is no longer selectable.
+  zod enum for storage tolerance but is no longer selectable. Deploying this
+  into an org that already has flows on cards needs
+  `pnpm --filter @cardstack/mcp-server migrate:flows-active` or they go dark —
+  see the deploy runbook in docs/studio-staging-model.md.
 - **Custom screens belong to a flow.** No rail entry: they're built from a flow
   on `/flows` (design 10c's "Build screen" fork), and a screen can't be created
   or published without one. `/custom-screens/[id]` is just where the code pane
@@ -67,14 +70,6 @@ URL). **Native and embedded rendering do not exist** — no widget reads
 says so on the Flows page rather than implying otherwise;
 `MODES[].delivered` in `flows-editor.tsx` is the flag to flip when a widget
 actually branches on it.
-
-**The staging model is in** (docs/studio-staging-model.md). Every governed
-surface — layouts, view exposures, home cards, flow render modes, custom
-screens — carries `status` (draft|published|history) + `revision`, stages as a
-draft, and publishes/rolls back from `/publish` (Review & publish).
-`FlowRenderModeConfig.active` gates `crm_flow_start`, so flows are opt-in;
-`pnpm --filter @cardstack/mcp-server migrate:flows-active` backfills existing
-flows so none go dark on deploy.
 
 **The actions editor (3a) is in** — per-object at
 `/objects/[object]/actions`, with screen-flow input mapping. Card actions are
