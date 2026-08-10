@@ -268,6 +268,29 @@ export interface ErrorPayload {
   message: string;
   crmLabel?: string;
   retry?: { tool: string; args: Record<string, unknown> };
+  /**
+   * Which "unauthorized" this is, decided server-side (finding C1).
+   *
+   * The card used to render one message for both: "ask the admin to reconnect
+   * in Studio". For a rep whose OWN per-user grant expired that is wrong twice
+   * over — an admin cannot reconnect someone else's per-user token, and a
+   * member is refused a Studio session, so the link is a dead end after four
+   * redirects. The rep's actual fix is to reconnect Cardstack in their chat
+   * app, which nothing in the product said.
+   *
+   * - `user`  — the signed-in rep's own CRM authorization ended. They fix it.
+   * - `admin` — the workspace's shared connection is broken. `adminName` says
+   *   who can fix it, since Studio is admins-only and the reader may not be one.
+   */
+  reauth?: {
+    kind: "user" | "admin";
+    /**
+     * Where to go. Differs by case, and that difference IS the fix: a `user`
+     * goes to the one Studio page a member may open, an `admin` to Connections.
+     */
+    url?: string;
+    adminName?: string;
+  };
 }
 
 export type WidgetPayload =

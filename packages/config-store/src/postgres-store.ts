@@ -758,6 +758,13 @@ export class PostgresConfigStore implements AdminConfigStore {
     );
   }
 
+  /** Operational enumeration — never call from a request path. */
+  async listWorkspaces(): Promise<Workspace[]> {
+    await this.ready;
+    const { rows } = await this.sql.query("SELECT config FROM workspaces");
+    return rows.map((row) => this.parse<Workspace>(row.config));
+  }
+
   async getAccount(id: string): Promise<Account | undefined> {
     await this.ready;
     const { rows } = await this.sql.query("SELECT config FROM accounts WHERE id=$1", [id]);

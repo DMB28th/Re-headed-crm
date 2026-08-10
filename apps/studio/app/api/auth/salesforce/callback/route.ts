@@ -8,6 +8,7 @@
  */
 import { NextResponse } from "next/server";
 import {
+  describeSalesforceAuthError,
   exchangeSalesforceAuthorizationCode,
   cardstackSalesforceLoginApp,
   fetchSalesforceSignerIdentity,
@@ -16,11 +17,12 @@ import { resolveSignIn } from "@cardstack/config-store";
 import { getStore } from "../../../../../lib/backend";
 import { studioOrigin } from "../../../../../lib/oauth";
 import { LOGIN_PENDING_NS, safeNext, type PendingLogin } from "../../../../../lib/login-flow";
+import { describeAdmins, workspaceAdmins } from "../../../../../lib/admins";
 import {
   createStudioSession,
   newSessionId,
   SESSION_TTL_SECONDS,
-  sessionSigningSecret,
+  sessionSigningSecrets,
   STUDIO_SESSION_COOKIE,
   STUDIO_SESSION_NS,
   studioSessionCookieOptions,
@@ -37,13 +39,23 @@ export async function GET(req: Request) {
   };
 
   const oauthError = url.searchParams.get("error_description") ?? url.searchParams.get("error");
-  if (oauthError) return fail(oauthError);
+  if (oauthError) {
+    // Self-signup's most common blocker is org policy, not anything Cardstack
+    // did. Hand over the exact request to make instead of an error code.
+    return fail(
+      describeSalesforceAuthError(oauthError, {
+        name: "Cardstack",
+        clientId: cardstackSalesforceLoginApp()?.clientId,
+      }).message,
+    );
+  }
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   if (!code || !state) return fail("Salesforce sign-in was missing its code or state.");
 
-  const secret = sessionSigningSecret();
-  if (!secret) {
+  const secrets = sessionSigningSecrets();
+  const signingSecret = secrets[0];
+  if (!signingSecret) {
     return fail("Sign-in is not configured on this deployment: CARDSTACK_SESSION_SECRET is unset.");
   }
   const app = cardstackSalesforceLoginApp();
@@ -72,17 +84,28 @@ export async function GET(req: Request) {
     const identity = await fetchSalesforceSignerIdentity(credentials);
     const { account, workspace, role } = await resolveSignIn(store, identity);
     if (role !== "admin") {
+      // Naming the admin is what turns this from a dead end into a path. Admin
+      // is granted exactly once — to the first person from the org to sign in
+      // through either lane — so the person who needs to act is often not the
+      // person who expected to, and "ask an admin" tells them nothing. The
+      // People page gives whoever is named a button that actually works.
+      const admins = await workspaceAdmins(store, workspace.id).catch(() => []);
+      const who = describeAdmins(admins.filter((a) => a.id !== account.id));
       return fail(
-        `You joined ${workspace.name}, but Studio is limited to workspace admins. Ask an admin to grant access.`,
+        who
+          ? `You've joined ${workspace.name}, but Studio is for workspace admins. Ask ${who} to add you on the People page.`
+          : `You've joined ${workspace.name}, but Studio is for workspace admins, and this workspace has none yet. Contact Cardstack support.`,
       );
     }
 
     const sessionId = newSessionId();
+    const startedAt = new Date().toISOString();
     const record: StudioSessionRecord = {
       accountId: account.id,
       workspaceId: workspace.id,
       role,
-      createdAt: new Date().toISOString(),
+      createdAt: startedAt,
+      lastSeenAt: startedAt,
     };
     await store.kvSet(
       STUDIO_SESSION_NS,
@@ -91,10 +114,16 @@ export async function GET(req: Request) {
       new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString(),
     );
 
-    const response = NextResponse.redirect(new URL(safeNext(pending.next), origin));
+    // Belt and braces on A6: safeNext rejects the authority-introducing
+    // prefixes, and this re-checks the RESOLVED origin so a future encoding
+    // trick that slips past the string check still cannot leave this origin.
+    const target = new URL(safeNext(pending.next), origin);
+    const response = NextResponse.redirect(
+      target.origin === new URL(origin).origin ? target : new URL("/", origin),
+    );
     response.cookies.set(
       STUDIO_SESSION_COOKIE,
-      await createStudioSession(sessionId, secret),
+      await createStudioSession(sessionId, signingSecret),
       studioSessionCookieOptions(),
     );
     return response;

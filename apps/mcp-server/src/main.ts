@@ -16,6 +16,7 @@ import { mcpAuthRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
 import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
 import {
   cardstackSalesforceLoginApp,
+  describeSalesforceAuthError,
   createAdapterForConnection,
   createDevSalesforceAdapter,
   devSalesforceOrg,
@@ -32,6 +33,7 @@ import { defaultConfigPath, FileConfigStore, DEMO_TENANT_ID } from "./config/sto
 import { userContextFromHeaders } from "./auth.js";
 import { resolveMcpAuth } from "./auth-config.js";
 import { CardstackOAuthProvider, userContextFromStoredUser } from "./oauth-provider.js";
+import { escapeHtml, renderConsent, renderConsentExpired } from "./consent.js";
 import {
   InMemoryAuditLog,
   FileAuditLog,
@@ -42,6 +44,23 @@ import {
 import { ConfigPreferenceStore } from "./config/preferences.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
+
+/**
+ * Sign-in failures are shown to a rep in a browser tab, so escape the cause —
+ * and translate Salesforce's policy refusals, which are the ones a rep can
+ * actually do something about (by asking the right person for the right thing).
+ */
+function renderSignInFailure(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  const guidance = describeSalesforceAuthError(raw, {
+    name: "Cardstack",
+    clientId: cardstackSalesforceLoginApp()?.clientId,
+  });
+  const next = guidance.needsSalesforceAdmin
+    ? "Once that is done, connect Cardstack again from your chat app."
+    : "Close this tab and try connecting again from your chat app.";
+  return `<h3>Cardstack sign-in failed</h3><p>${escapeHtml(guidance.message)}</p><p>${escapeHtml(next)}</p>`;
+}
 
 // Durable-ish state shared across stateless requests. Config comes from the
 // store Studio writes to — published layouts are read at render time, so a
@@ -125,6 +144,12 @@ function authorized(req: express.Request): boolean {
 // Connected App to allowlist `<origin>/oauth/salesforce/callback`.
 const USER_AUTH_MODE = process.env.CARDSTACK_USER_AUTH === "oauth";
 const MCP_ORIGIN = (process.env.CARDSTACK_MCP_URL ?? "").trim().replace(/\/$/, "");
+// The legacy connected-app fallback is for deployments that predate the
+// Cardstack-owned app and still keep one on their tenant's admin connection.
+// It used to default to DEMO_TENANT_ID, which armed it on EVERY deployment
+// including ones that never had a legacy tenant. Arm it only when a legacy
+// tenant is named explicitly.
+const LEGACY_TENANT = process.env.CARDSTACK_TENANT_ID?.trim() || undefined;
 const oauthProvider =
   USER_AUTH_MODE && MCP_ORIGIN
     ? new CardstackOAuthProvider({
@@ -132,7 +157,7 @@ const oauthProvider =
         // rep signs in to, so one server serves every workspace.
         store: configStore,
         mcpOrigin: MCP_ORIGIN,
-        legacyTenantId: process.env.CARDSTACK_TENANT_ID ?? DEMO_TENANT_ID,
+        ...(LEGACY_TENANT ? { legacyTenantId: LEGACY_TENANT } : {}),
       })
     : undefined;
 if (USER_AUTH_MODE && !oauthProvider) {
@@ -169,14 +194,45 @@ if (oauthProvider) {
       const { redirect } = await oauthProvider.completeSalesforceCallback(state, code);
       res.redirect(redirect);
     } catch (err) {
-      res
-        .status(400)
-        .send(
-          `<h3>Cardstack sign-in failed</h3><p>${
-            err instanceof Error ? err.message : String(err)
-          }</p><p>Close this tab and try connecting again from your chat app.</p>`,
-        );
+      res.status(400).send(renderSignInFailure(err));
     }
+  });
+
+  // C2: production or sandbox, chosen before the Salesforce leg. Only reachable
+  // with a signed pointer at a pending authorization this browser started.
+  app.get("/oauth/login-host", async (req, res) => {
+    const { t, env } = req.query as Record<string, string | undefined>;
+    const redirect = t ? await oauthProvider.chooseLoginHost(t, env ?? "production") : undefined;
+    if (!redirect) {
+      res.status(400).send(renderConsentExpired());
+      return;
+    }
+    res.redirect(redirect);
+  });
+
+  // A1: the consent interstitial. GET renders it, POST applies the decision.
+  // No cookie is involved, so there is nothing for a cross-site POST to ride —
+  // the signed continuation token is the only thing that authorizes either.
+  app.get("/oauth/consent", async (req, res) => {
+    const token = (req.query as Record<string, string | undefined>).t;
+    const prompt = token ? await oauthProvider.describeConsent(token) : undefined;
+    if (!prompt) {
+      res.status(400).send(renderConsentExpired());
+      return;
+    }
+    res.send(renderConsent(prompt, `${MCP_ORIGIN}/oauth/consent`));
+  });
+
+  app.post("/oauth/consent", express.urlencoded({ extended: false }), async (req, res) => {
+    const { token, decision } = (req.body ?? {}) as { token?: string; decision?: string };
+    const outcome = token
+      ? await oauthProvider.completeConsent(token, decision === "allow" ? "allow" : "deny")
+      : undefined;
+    if (!outcome) {
+      res.status(400).send(renderConsentExpired());
+      return;
+    }
+    res.redirect(outcome.redirect);
   });
   const bearer = requireBearerAuth({ verifier: oauthProvider });
   app.use("/mcp", (req, res, next) => bearer(req, res, next));
@@ -218,6 +274,14 @@ app.all("/mcp", async (req, res) => {
   const tokenUser = oauthProvider
     ? (req.auth?.extra?.user as Parameters<typeof userContextFromStoredUser>[0] | undefined)
     : undefined;
+  // B1: in OAuth mode this must FAIL, not fall through. A token that verifies
+  // but carries no user used to resolve to CARDSTACK_TENANT_ID as the default
+  // user — serving the legacy tenant's records to an unidentified caller. There
+  // is no safe default here; 401 is the only correct answer.
+  if (oauthProvider && !tokenUser) {
+    res.status(401).json({ error: "This token carries no identity. Sign in again." });
+    return;
+  }
   const userContext = tokenUser
     ? userContextFromStoredUser(tokenUser)
     : userContextFromHeaders({ get: (name) => req.header(name) });
@@ -298,13 +362,15 @@ app.all("/mcp", async (req, res) => {
       };
     } else {
       const studioBase = (process.env.CARDSTACK_STUDIO_URL ?? "http://localhost:3002").replace(/\/$/, "");
-      // Point at the Studio connections page (a GET-able page), not the OAuth
-      // start endpoint — that is now POST-only so a rep clicking a link can't
-      // trigger it. The page's "Connect my Salesforce user" button POSTs.
+      // C1: this branch already knows whose problem it is, and the card used to
+      // throw that away. A rep signed in through a chat host owns their own
+      // per-user grant; the Studio link only helps when the WORKSPACE's shared
+      // connection is what broke, and only an admin can follow it anyway.
       runtimeAuth = {
         missingUserAuth: true,
         crmLabel: "Salesforce",
-        connectUrl: `${studioBase}/connections`,
+        reauthKind: "user",
+        connectUrl: `${studioBase}/me/connection`,
       };
     }
   }

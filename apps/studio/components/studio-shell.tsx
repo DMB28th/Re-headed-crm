@@ -3,9 +3,16 @@
 import { usePathname } from "next/navigation";
 import { NavRail } from "./nav-rail";
 
+/**
+ * Pages that render without the admin nav rail. `/login` is signed out;
+ * `/me/connection` is the one page a workspace MEMBER may open, and every link
+ * in the rail would 401 or bounce them back to a lockout message.
+ */
+const BARE_PATHS = new Set(["/login", "/me/connection"]);
+
 export function StudioShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  if (pathname === "/login") return children;
+  if (BARE_PATHS.has(pathname)) return children;
   return (
     <div className="min-h-screen lg:flex">
       <NavRail />

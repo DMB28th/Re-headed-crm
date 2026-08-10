@@ -25,6 +25,10 @@ export {
   type SalesforceSignerIdentity,
 } from "./salesforce/identity.js";
 export {
+  describeSalesforceAuthError,
+  type SalesforceAuthGuidance,
+} from "./salesforce/auth-errors.js";
+export {
   createAdapterForConnection,
   invalidateAdapterCache,
   type ConnectionSettings,

@@ -12,8 +12,8 @@ import { normalizeUserId } from "@cardstack/core";
 import {
   workspaceIdForOrg,
   type Account,
-  type IdentityStore,
   type Membership,
+  type SignInStore,
   type SignedInIdentity,
   type Workspace,
 } from "./identity.js";
@@ -41,7 +41,7 @@ export interface SalesforceIdentity {
  * adopts the winner's workspace instead of erroring or forking a duplicate.
  */
 export async function resolveSignIn(
-  store: IdentityStore,
+  store: SignInStore,
   identity: SalesforceIdentity,
   now: () => string = () => new Date().toISOString(),
 ): Promise<SignedInIdentity> {
@@ -52,7 +52,7 @@ export async function resolveSignIn(
 }
 
 async function findOrCreateWorkspace(
-  store: IdentityStore,
+  store: SignInStore,
   identity: SalesforceIdentity,
   now: () => string,
 ): Promise<Workspace> {
@@ -71,7 +71,7 @@ async function findOrCreateWorkspace(
 }
 
 async function upsertAccount(
-  store: IdentityStore,
+  store: SignInStore,
   identity: SalesforceIdentity,
   now: () => string,
 ): Promise<Account> {
@@ -93,7 +93,7 @@ async function upsertAccount(
 }
 
 async function ensureMembership(
-  store: IdentityStore,
+  store: SignInStore,
   accountId: string,
   workspaceId: string,
   now: () => string,
