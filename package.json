@@ -2,7 +2,7 @@
   "name": "cardstack",
   "private": true,
   "version": "0.0.1",
-  "description": "Configurable MCP Apps for Salesforce and HubSpot — admin-designed record cards that render inside AI chat hosts.",
+  "description": "Configurable MCP Apps for Salesforce and HubSpot \u2014 admin-designed record cards that render inside AI chat hosts.",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -18,10 +18,13 @@
     "demo:m2": "pnpm --filter @cardstack/mcp-server demo:m2",
     "demo:m2.5": "pnpm --filter @cardstack/mcp-server demo:m25",
     "demo:m3": "pnpm --filter @cardstack/mcp-server demo:m3",
-    "demo:m4": "pnpm --filter @cardstack/mcp-server demo:m4"
+    "demo:m4": "pnpm --filter @cardstack/mcp-server demo:m4",
+    "migrate:flows-active": "pnpm --filter @cardstack/mcp-server migrate:flows-active"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

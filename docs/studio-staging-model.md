@@ -352,3 +352,48 @@ uncreatable and unpublishable without one). What it must not do is imply a
 publish did something — so the publish confirmation now says the screen is
 stored as a revision and won't run until the M6 runtime ships, alongside the
 `RuntimePendingBanner` that was already there.
+
+
+---
+
+## Deploy runbook
+
+Two changes in this pass alter behavior on deploy. Both are intentional;
+neither should be a surprise.
+
+### 1. Postgres schema migration (highest risk)
+
+`postgres-store.ts` runs idempotent `ALTER`s on boot: `status` / `revision`
+columns on `view_exposures`, `home_cards` and `flow_render_modes`,
+`DROP CONSTRAINT IF EXISTS` on their primary keys, new partial unique indexes,
+and `surface` / `batch_id` on `publish_events`.
+
+These have only ever run against PGlite in tests. **Before merging, run them
+against a restored copy of the production database** and confirm:
+
+- existing rows read back as `published` with no draft,
+- `home_cards.revision` backfills from the config's own revision,
+- nothing 500s on first boot.
+
+The migration is designed so the failure mode is "config still live, nothing
+staged" rather than data loss — but that is a design intent, not a verified
+fact on real data.
+
+### 2. Flows are off by default → run the backfill
+
+`FlowRenderModeConfig.active` defaults to false and `crm_flow_start` refuses an
+inactive flow, so without intervention every working flow goes dark on deploy.
+
+```
+pnpm migrate:flows-active              # dry run, reports what it would do
+pnpm migrate:flows-active -- --apply   # write
+```
+
+It activates exactly the flows that work today: those attached as a
+`screen_flow` action on a **published** layout. It does **not** activate every
+synced flow — synced is not in use. It never touches a flow that already has a
+stored policy, so an admin's deliberate "off" survives, and a second run
+activates nothing. Covered by `apps/mcp-server/src/backfill-flow-active.test.ts`.
+
+Run it once per tenant after the new code is live (it reads `DATABASE_URL`, or
+the file store otherwise, and `CARDSTACK_TENANT_ID`).
