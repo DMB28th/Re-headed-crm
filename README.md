@@ -9,7 +9,7 @@ standard (SEP-1865).
 - **design/** — high-fidelity design reference (open `design/Cardstack Designs.dc.html` in a browser; ids `1a`–`12b` map to `design/README.md`)
 - **CLAUDE.md** — working rules + current milestone
 
-## Status: M4 (home card) complete
+## Status: M4 complete · M5 (flows) partially shipped
 
 Record card, results table, and home card with the full write path, saved-view
 resolution, and the Studio admin app — running against the **mock adapter for
@@ -17,9 +17,27 @@ demos and live HubSpot / Salesforce** in production. HubSpot connects with a
 private-app token, Salesforce with two OAuth lanes: admin OAuth for setup and
 per-user OAuth for runtime records/list views/writes. The Studio Connections
 page validates tokens, reports scope gaps, and generates a starter layout.
-Every confirmed chat write lands in a durable audit log
-(Postgres/file), and the MCP endpoint takes an optional shared-secret + rate
-limit.
+Every confirmed chat write lands in a durable, queryable audit log
+(Postgres/file).
+
+Also shipped since M4:
+
+- **Cardstack accounts and multi-workspace tenancy.** Sign-in is Salesforce
+  OAuth; a workspace *is* a Salesforce org, so the first signer from an org
+  creates it and later signers auto-join. See
+  `docs/accounts-and-workspaces.md`.
+- **Per-user OAuth 2.1 on `/mcp`.** `MCP_SHARED_SECRET` remains an opt-in
+  second gate, not a boot requirement.
+- **One staging model.** Layouts, permissions, view exposures, flow render
+  modes, the home card and custom screens all stage as a draft and go live from
+  `/publish` (Review & publish), with rollback per surface. The `ConfigStore`
+  read side returns published config only, so a draft is structurally unable to
+  reach chat. See `docs/studio-staging-model.md`.
+- **The actions editor** at `/objects/[object]/actions`, with screen-flow input
+  mapping.
+- **Flows (M5), partially.** The handoff rung works end to end; native and
+  embedded rendering do not exist yet. Flows are opt-in — `crm_flow_start`
+  refuses a flow an admin hasn't switched on.
 
 ```bash
 pnpm install
@@ -76,7 +94,7 @@ Salesforce itself.
 | Path | What |
 |---|---|
 | `apps/mcp-server` | MCP server — streamable HTTP, stateless, per-request tenant→config→adapter resolution; optional shared-secret + rate limit |
-| `apps/studio` | Admin Studio (Next.js) — layout builder, home-card builder, lists, connections, publish/rollback, audit log |
+| `apps/studio` | Admin Studio (Next.js) — layout builder, home-card builder, lists, actions, flows + custom screens, connections, Review & publish (`/publish`) with per-surface rollback, queryable audit log |
 | `packages/core` | Layout config schema (zod), payload contracts, server-side denylist filtering |
 | `packages/config-store` | draft/publish/rollback config, workspace connections, per-user CRM auth + durable audit log (Postgres via `DATABASE_URL`, file-backed otherwise) |
 | `packages/crm-adapters` | `CrmAdapter` interface + `MockCrmAdapter`, `hubspot/` (private-app token), `salesforce/` (OAuth with legacy client-credentials compatibility) |

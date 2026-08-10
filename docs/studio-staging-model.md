@@ -368,16 +368,29 @@ columns on `view_exposures`, `home_cards` and `flow_render_modes`,
 `DROP CONSTRAINT IF EXISTS` on their primary keys, new partial unique indexes,
 and `surface` / `batch_id` on `publish_events`.
 
-These have only ever run against PGlite in tests. **Before merging, run them
-against a restored copy of the production database** and confirm:
+**RAN ON PRODUCTION 2026-08-10 — verified, no longer a design intent.** Studio
+deployed `c34911c` and migrated the live database lazily on its first request.
+Read-only inspection afterwards confirmed all three predictions:
 
-- existing rows read back as `published` with no draft,
-- `home_cards.revision` backfills from the config's own revision,
-- nothing 500s on first boot.
+- `status` / `revision` present on `view_exposures`, `home_cards` and
+  `flow_render_modes`; `surface` / `batch_id` on `publish_events`,
+- every pre-existing row read back as `published` with **zero drafts**
+  (`view_exposures` 3, `home_cards` 1, `flow_render_modes` empty),
+- nothing 500'd; Studio served normally throughout.
 
-The migration is designed so the failure mode is "config still live, nothing
-staged" rather than data loss — but that is a design intent, not a verified
-fact on real data.
+**The window this opened, and why it closed.** The migration is additive and
+safe on its own, but for ~48 minutes Studio ran the new code while
+`@cardstack/mcp-server` was still serving pre-merge code whose reads
+(`SELECT config FROM view_exposures WHERE tenant_id=$1 AND object=$2`) carry no
+status filter. Nothing broke, because a freshly migrated table still holds
+exactly one published row per key — but the FIRST staged draft would have been
+served to reps at random. The operational rule during that window was "don't
+stage drafts in Studio". It no longer applies: since `6aeb6be` both services
+run the same code and read published config only.
+
+The lesson worth keeping: **a lazy migration run by one service is a coupling
+between services.** Whoever migrates first defines the schema the other must
+already understand. Deploy the reader before, or with, the migrator.
 
 ### 2. Flows are off by default → run the backfill
 
@@ -394,6 +407,12 @@ It activates exactly the flows that work today: those attached as a
 synced flow — synced is not in use. It never touches a flow that already has a
 stored policy, so an admin's deliberate "off" survives, and a second run
 activates nothing. Covered by `apps/mcp-server/src/backfill-flow-active.test.ts`.
+
+**On the current production database this is a no-op** (checked 2026-08-10):
+`flow_render_modes` is empty and no published layout carries a `screen_flow`
+action, so no flow can go dark. Run it anyway before the first deploy that
+follows an admin attaching a flow to a card — the dry run costs nothing and
+prints exactly what it would change.
 
 Run it once per tenant after the new code is live (it reads `DATABASE_URL`, or
 the file store otherwise, and `CARDSTACK_TENANT_ID`).
