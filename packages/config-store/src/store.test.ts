@@ -690,3 +690,120 @@ describe("custom screens belong to a screen flow", () => {
     );
   });
 });
+
+describe("rollback across every governed surface", () => {
+  /** Publish twice so there is a v1 in history to restore. */
+  async function twoRevisions(store: InMemoryConfigStore) {
+    const exposures = (await store.getViewExposuresConfig(DEMO_TENANT_ID, "deals"))!;
+    await store.setViewExposures({
+      ...exposures,
+      customLists: [{ id: "cl-v2", name: "v2 list", filters: [], visibility: "workspace" }],
+      views: [...exposures.views, { viewId: "cl-v2", exposed: true, aliases: [], isDefault: false }],
+    });
+    await store.publishViewExposures(DEMO_TENANT_ID, "deals");
+
+    const home = (await store.getHomeCard(DEMO_TENANT_ID))!;
+    await store.setHomeCard({ ...home, blocks: [home.blocks[0]!] });
+    await store.publishHomeCard(DEMO_TENANT_ID);
+
+    const flow = {
+      version: 1 as const,
+      revision: 1,
+      tenantId: DEMO_TENANT_ID,
+      flowApiName: "Renewal",
+      active: true,
+      mode: "auto" as const,
+      fallback: "open-in-salesforce" as const,
+    };
+    await store.setFlowRenderMode(flow);
+    await store.publishFlowRenderMode(DEMO_TENANT_ID, "Renewal");
+    await store.setFlowRenderMode({ ...flow, mode: "embedded" });
+    await store.publishFlowRenderMode(DEMO_TENANT_ID, "Renewal");
+  }
+
+  it("lists only surfaces that have something to restore", async () => {
+    const store = new InMemoryConfigStore();
+    // Seeded state is published-with-no-history — nothing to roll back to yet.
+    expect(await store.listSurfaceHistory(DEMO_TENANT_ID)).toEqual([]);
+
+    await twoRevisions(store);
+    const history = await store.listSurfaceHistory(DEMO_TENANT_ID);
+    expect(history.map((h) => h.surface).sort()).toEqual(["exposures", "flows", "homecard"]);
+    const flows = history.find((h) => h.surface === "flows")!;
+    expect(flows.publishedRevision).toBe(2);
+    expect(flows.revisions.map((r) => r.revision)).toEqual([1]);
+  });
+
+  it("restores each surface under a NEW revision via the dispatcher", async () => {
+    const store = new InMemoryConfigStore();
+    await twoRevisions(store);
+
+    const lists = await store.rollbackStaged(
+      DEMO_TENANT_ID,
+      { surface: "exposures", object: "deals" },
+      1,
+    );
+    expect(lists.revision).toBe(3);
+    expect(await store.getCustomLists(DEMO_TENANT_ID, "deals")).toHaveLength(0);
+
+    const home = await store.rollbackStaged(
+      DEMO_TENANT_ID,
+      { surface: "homecard", object: "default", audience: "default" },
+      1,
+    );
+    expect(home.revision).toBe(3);
+    expect((await store.getHomeCard(DEMO_TENANT_ID))!.blocks.length).toBeGreaterThan(1);
+
+    const flow = await store.rollbackStaged(
+      DEMO_TENANT_ID,
+      { surface: "flows", object: "Renewal" },
+      1,
+    );
+    expect(flow.revision).toBe(3);
+    expect((await store.getFlowRenderModes(DEMO_TENANT_ID))[0]!.mode).toBe("auto");
+
+    // Every restore is logged as a rollback against its own surface.
+    const events = await store.listPublishes(DEMO_TENANT_ID);
+    expect(events.filter((e) => e.kind === "rollback").map((e) => e.surface).sort()).toEqual([
+      "exposures",
+      "flows",
+      "homecard",
+    ]);
+  });
+
+  it("rolls a custom screen back to a previous source", async () => {
+    const store = new InMemoryConfigStore();
+    const base = {
+      version: 1 as const,
+      tenantId: DEMO_TENANT_ID,
+      id: "cs-roll",
+      label: "Onsite",
+      flowApiName: "Renewal",
+      source: DEFAULT_CUSTOM_SCREEN_SOURCE,
+      status: "draft" as const,
+      revision: 1,
+    };
+    await store.saveCustomScreenDraft(base);
+    await store.publishCustomScreen(DEMO_TENANT_ID, "cs-roll");
+    await store.saveCustomScreenDraft({ ...base, source: "screen({ id: 'v2' })" });
+    await store.publishCustomScreen(DEMO_TENANT_ID, "cs-roll");
+
+    const restored = await store.rollbackStaged(
+      DEMO_TENANT_ID,
+      { surface: "screen", object: "cs-roll" },
+      1,
+    );
+    expect(restored.revision).toBe(3);
+    expect((await store.getCustomScreens(DEMO_TENANT_ID))[0]!.source).toBe(
+      DEFAULT_CUSTOM_SCREEN_SOURCE,
+    );
+  });
+
+  it("refuses a revision that isn't in history", async () => {
+    const store = new InMemoryConfigStore();
+    await twoRevisions(store);
+    await expect(
+      store.rollbackStaged(DEMO_TENANT_ID, { surface: "exposures", object: "deals" }, 99),
+    ).rejects.toThrow(/No revision v99/);
+  });
+});

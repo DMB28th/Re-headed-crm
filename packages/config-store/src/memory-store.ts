@@ -28,11 +28,17 @@ import {
   type StagedChange,
   type StagedKey,
   type StagedRecord,
+  type SurfaceHistory,
   type UserConnectionState,
   type ViewExposuresRecord,
 } from "./types.js";
 import type { DiffLabels } from "./diff.js";
-import { collectStagedChanges, runStagedPublish } from "./staging.js";
+import {
+  collectStagedChanges,
+  collectSurfaceHistory,
+  runStagedPublish,
+  runStagedRollback,
+} from "./staging.js";
 import { defaultConnection, demoDealsLayout, demoHomeCard, demoViewExposures } from "./seed.js";
 
 /**
@@ -412,6 +418,18 @@ export abstract class BaseConfigStore implements AdminConfigStore {
     );
   }
 
+  async listSurfaceHistory(tenantId: string, labels: DiffLabels = {}): Promise<SurfaceHistory[]> {
+    return collectSurfaceHistory(this, tenantId, labels);
+  }
+
+  async rollbackStaged(
+    tenantId: string,
+    key: StagedKey,
+    toRevision: number,
+  ): Promise<{ revision: number }> {
+    return runStagedRollback(this, tenantId, key, toRevision);
+  }
+
   async listLayoutRecords(
     tenantId: string,
   ): Promise<(LayoutRecord & { object: string; audience: string })[]> {
@@ -680,6 +698,23 @@ export abstract class BaseConfigStore implements AdminConfigStore {
 
   async publishCustomScreen(tenantId: string, id: string): Promise<CustomScreenConfig> {
     return this.publishOne(tenantId, { surface: "screen", object: id });
+  }
+
+  async rollbackCustomScreen(
+    tenantId: string,
+    id: string,
+    toRevision: number,
+  ): Promise<CustomScreenConfig> {
+    const state = await this.load();
+    const key = customScreenKey(tenantId, id);
+    const record = state.customScreens?.[key] ?? { draft: null, published: null, history: [] };
+    const { published, next } = restore(record, toRevision, `custom screen ${id}`);
+    state.customScreens = { ...(state.customScreens ?? {}), [key]: next };
+    state.publishes.push(
+      publishEvent(tenantId, published.label, "default", published.revision, "rollback", "screen"),
+    );
+    await this.save(state);
+    return published;
   }
 
 

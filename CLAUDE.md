@@ -9,35 +9,74 @@ map to `design/README.md`).
 
 ## Current phase
 
+**Studio governance pass — complete.** Every config surface now stages before
+it goes live, and Studio says what's true about what it can't do yet. Full
+record with rationale: **docs/studio-staging-model.md** (read its four addenda
+before changing any of this).
+
+- **One staging model.** `StagedRecord<T>` (draft / published / history) covers
+  layouts, permissions, view exposures, flow render modes, the home card and
+  custom screens. The `ConfigStore` READ side returns published only, so drafts
+  are structurally unable to reach chat; drafts live on `AdminConfigStore`.
+  A shared engine in `packages/config-store/src/staging.ts` implements
+  "what's staged", "publish these" and "roll this back" once, so the file and
+  Postgres stores can't drift.
+- **Review & publish** at `/publish`: a pending-changes tray with a per-surface
+  diff, a live count in the nav rail, and rollback for every surface. Publishing
+  a batch is SEQUENTIAL, not atomic — each surface gets its own `PublishEvent`
+  under a shared `batchId`, and partial failure is reported, not smoothed over.
+- **Flows are opt-in.** `FlowRenderModeConfig.active` defaults to false and
+  `crm_flow_start` refuses a flow that isn't switched on. Render mode is a pick
+  list of IN-CHAT rungs only (auto / native / embedded); `handoff` stays in the
+  zod enum for storage tolerance but is no longer selectable.
+- **Custom screens belong to a flow.** No rail entry: they're built from a flow
+  on `/flows` (design 10c's "Build screen" fork), and a screen can't be created
+  or published without one. `/custom-screens/[id]` is just where the code pane
+  lives.
+- **The layout builder edits a card.** The canvas is card-shaped — header,
+  sections in their real 1/2/3-column grid, related lists, actions — with drag
+  and keyboard reorder across the grid. Each field has ONE settings menu
+  (Access, Input control). The live preview still renders the REAL widget from
+  a server-assembled payload and is one click away, collapsed by default.
+- **Shared UI primitives** in `apps/studio/components/ui/`: `ConfirmPopover` /
+  `Dialog` / `Popover` (anchored, Escape + outside-click + focus return),
+  `ErrorNotice` + `lib/crm-error.ts` (typed CRM failures, raw text behind
+  Details), `StatusChip` + `useSaveStatus` (one save/publish vocabulary).
+- **Audit log is queryable**: `AuditLog.query()` filters by object, actor,
+  record-or-field and date range, with paging and a pre-paging total; Postgres
+  pushes it down to SQL. CSV export applies the same filters.
+
 **M4 — the home card — is complete.** `pnpm demo:m4` walks "open my CRM"
 → home-card widget (7a: list tiles with live counts, picked-up-recently,
 follow-ups with overdue rows) → inline-confirmed task check-off via
 `crm_complete_task` → audit log → updateModelContext → re-render drops the
 completed task. Home config is the block-based `HomeCardConfig` (launcher
-blocks only — dashboard blocks don't exist, per the anti-goals). Studio's
-home-card builder (8a) at `/home-card` toggles/configures blocks with the
-REAL HomeCard component previewing "as the rep"; publish bumps the revision
-and logs the event. Layout rollback now has UI too (Versions dropdown in the
-layout builder).
+blocks only — dashboard blocks don't exist, per the anti-goals). The 8a builder
+at `/home-card` autosaves a durable draft and publishes separately.
 
 **M3 — Studio core — is complete.** `pnpm demo:m3` walks Golden Path 3
 (publish → live layout change, rollback) at the store level, and the same flow
-works through the real Studio UI: `pnpm --filter @cardstack/studio dev` (:3002)
-→ builder (2a: palette / canvas with dnd / live REAL-widget preview) → publish
-diff modal (2b) → the MCP server serves the new revision on its next render
-via the shared file-backed config store (`data/cardstack-config.json`).
-Also shipped: nav shell (12b), home (6b), permissions (2e, confirmation locked
-ON), lists/exposures (5a), assignment teaching state, connections (2c, mock).
-All golden paths M1/M2/M2.5/M3 pass.
+works through the real Studio UI. Also shipped: nav shell (12b), home (6b),
+permissions (2e, confirmation locked ON), lists/exposures (5a), assignment
+teaching state, connections (2c). All golden paths M1/M2/M2.5/M3 pass.
 
-**Still open from M3's design refs** (next session, before M4): assignment
-matrix + View-as (2f–2i beyond the teaching state), onboarding auto-generation
-(2c), rollback button in the UI (API + store support exist; home lists publish
-history), actions editor (3a), related-list picker (3b), object picker (3c),
-requirements pass-through (3d), audience picker (3e). Stale-card strip and
-re-auth widget states also still open. PostgresConfigStore ships behind
-DATABASE_URL (Railway two-service deploys); audit log + preferences are
-still in-memory — move them to Postgres alongside multi-tenant auth (M7).
+**M5 — flows — partially shipped.** The HANDOFF rung works end to end
+(`crm_flow_start` / `_continue` / `_cancel`, inputs collected in chat, launch
+URL). **Native and embedded rendering do not exist** — no widget reads
+`renderMode`, so an active flow still finishes in a CRM browser tab. Studio
+says so on the Flows page rather than implying otherwise;
+`MODES[].delivered` in `flows-editor.tsx` is the flag to flip when a widget
+actually branches on it.
+
+**Still open.** View-as / audience preview (2f–2i beyond the teaching state) is
+the biggest remaining trust gap — `scopeViewExposuresForUser` exists
+server-side but nothing surfaces it. Custom screens are M6 config with no M6
+runtime (guardrail execution, live preview); the editor carries a
+`RuntimePendingBanner` saying so. Also open: onboarding auto-generation (2c),
+actions editor (3a), related-list picker (3b), object picker (3c), requirements
+pass-through (3d), audience picker (3e), stale-card strip and re-auth widget
+states. Audit log + preferences move to Postgres alongside multi-tenant auth
+(M7).
 
 ## Hard rules
 
@@ -69,16 +108,18 @@ still in-memory — move them to Postgres alongside multi-tenant auth (M7).
 - `pnpm demo:m2.5` — saved views demo (alias routing → picker → remembered choice)
 - `pnpm demo:m3` — Golden Path 3 demo (publish → live layout change → rollback)
 - `pnpm demo:m4` — home card demo (lists/recents/follow-ups → confirmed task check-off)
-- `pnpm --filter @cardstack/studio dev` — Studio on :3002 (shares data/cardstack-config.json with the server)
+- `pnpm --filter @cardstack/studio dev` — Studio on :3002 (shares data/cardstack-config.json with the server); `/publish` is Review & publish + rollback
 - `pnpm --filter @cardstack/mcp-server dev` — run the MCP server locally (streamable HTTP on :3001)
 - MCP Inspector: `npx @modelcontextprotocol/inspector` → connect to `http://localhost:3001/mcp`
 
 ## Layout
 
 - `apps/mcp-server` — MCP server, streamable HTTP, stateless JSON
-- `apps/studio` — Next.js admin UI (builder imports the REAL widget for preview)
+- `apps/studio` — Next.js admin UI (builder imports the REAL widget for preview);
+  nav rail is Home · Pending changes · objects · Home card / Flows / Audit log
 - `packages/core` — layout config zod schema, payload contract, payload assembly, shared types
-- `packages/config-store` — draft/publish/rollback config storage (Postgres via DATABASE_URL, file-backed otherwise)
+- `packages/config-store` — draft/publish/rollback for every governed surface
+  (`staging.ts` is the shared engine; Postgres via DATABASE_URL, file-backed otherwise)
 - `packages/crm-adapters` — `CrmAdapter` interface, `mock/` (M1), `hubspot/` (M1.5), `salesforce/` (M2)
 - `packages/widgets` — widget source → Vite single-file HTML bundles
 - `design/` — design canvas + README (source of truth for UI)

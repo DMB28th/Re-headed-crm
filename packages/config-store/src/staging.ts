@@ -26,6 +26,7 @@ import type {
   PublishResult,
   StagedChange,
   StagedKey,
+  SurfaceHistory,
   ViewExposuresRecord,
 } from "./types.js";
 
@@ -136,4 +137,130 @@ export async function runStagedPublish(
     }
   }
   return results;
+}
+
+
+/**
+ * Every surface that has something to roll back to, newest revision first.
+ *
+ * Unlike `collectStagedChanges` this is about PUBLISHED history, so a surface
+ * shows up whether or not it has a draft: rolling back is exactly what you
+ * reach for when nothing is staged and the last publish was wrong.
+ */
+export async function collectSurfaceHistory(
+  source: StagedSource,
+  tenantId: string,
+  labels: DiffLabels = {},
+): Promise<SurfaceHistory[]> {
+  const out: SurfaceHistory[] = [];
+  const push = (
+    key: StagedKey,
+    label: string,
+    published: { revision: number } | null,
+    history: { revision: number; name?: string }[],
+  ) => {
+    if (history.length === 0) return; // nothing to restore
+    out.push({
+      ...key,
+      label,
+      publishedRevision: published?.revision ?? null,
+      revisions: [...history].sort((a, b) => b.revision - a.revision),
+    });
+  };
+
+  for (const record of await source.listLayoutRecords(tenantId)) {
+    push(
+      { surface: "layout", object: record.object, audience: record.audience },
+      record.object,
+      record.published,
+      record.history.map((c) => ({ revision: c.revision, ...(c.name ? { name: c.name } : {}) })),
+    );
+  }
+  for (const record of await source.listViewExposuresRecords(tenantId)) {
+    push(
+      { surface: "exposures", object: record.object },
+      record.object,
+      record.published,
+      record.history.map((c) => ({ revision: c.revision })),
+    );
+  }
+  for (const record of await source.listFlowRenderModeRecords(tenantId)) {
+    push(
+      { surface: "flows", object: record.flowApiName },
+      labels[record.flowApiName] ?? record.flowApiName,
+      record.published,
+      record.history.map((c) => ({ revision: c.revision, name: c.mode })),
+    );
+  }
+  for (const record of await source.listHomeCardRecords(tenantId)) {
+    push(
+      { surface: "homecard", object: record.audience, audience: record.audience },
+      "Home card",
+      record.published,
+      record.history.map((c) => ({ revision: c.revision })),
+    );
+  }
+  for (const record of await source.listCustomScreenRecords(tenantId)) {
+    push(
+      { surface: "screen", object: record.id },
+      record.published?.label ?? record.draft?.label ?? record.id,
+      record.published,
+      record.history.map((c) => ({ revision: c.revision, name: c.label })),
+    );
+  }
+  return out;
+}
+
+/** The per-surface rollback verbs a store must expose for the dispatcher. */
+export interface RollbackTarget {
+  rollback(
+    tenantId: string,
+    object: string,
+    toRevision: number,
+    audience?: string,
+  ): Promise<{ revision: number }>;
+  rollbackViewExposures(
+    tenantId: string,
+    object: string,
+    toRevision: number,
+  ): Promise<{ revision: number }>;
+  rollbackFlowRenderMode(
+    tenantId: string,
+    flowApiName: string,
+    toRevision: number,
+  ): Promise<{ revision: number }>;
+  rollbackHomeCard(
+    tenantId: string,
+    toRevision: number,
+    audience?: string,
+  ): Promise<{ revision: number }>;
+  rollbackCustomScreen(
+    tenantId: string,
+    id: string,
+    toRevision: number,
+  ): Promise<{ revision: number }>;
+}
+
+/**
+ * One entry point for restoring any surface, so the API doesn't have to know
+ * five method shapes and the two stores can't disagree about the dispatch.
+ */
+export function runStagedRollback(
+  store: RollbackTarget,
+  tenantId: string,
+  key: StagedKey,
+  toRevision: number,
+): Promise<{ revision: number }> {
+  switch (key.surface) {
+    case "layout":
+      return store.rollback(tenantId, key.object, toRevision, key.audience ?? "default");
+    case "exposures":
+      return store.rollbackViewExposures(tenantId, key.object, toRevision);
+    case "flows":
+      return store.rollbackFlowRenderMode(tenantId, key.object, toRevision);
+    case "homecard":
+      return store.rollbackHomeCard(tenantId, toRevision, key.audience ?? "default");
+    case "screen":
+      return store.rollbackCustomScreen(tenantId, key.object, toRevision);
+  }
 }

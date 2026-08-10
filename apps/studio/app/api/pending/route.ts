@@ -2,7 +2,9 @@
  * The pending-changes tray (docs/studio-staging-model.md).
  *
  * GET  — everything staged for this tenant across all six governed surfaces,
- *        with a diff per entry, ready for Review & publish.
+ *        with a diff per entry, plus every surface with restorable history.
+ *        Rollback is about PUBLISHED history, so it is listed even when
+ *        nothing is staged — that's exactly when you reach for it.
  * POST — publish the named surfaces. SEQUENTIAL, not atomic: the response
  *        reports each surface's outcome so a partial failure is stated, never
  *        smoothed over.
@@ -40,8 +42,12 @@ export async function GET(req: Request) {
   try {
     const { tenantId } = getUserContextFromRequest(req);
     const store = await getStore();
-    const changes = await store.listStagedChanges(tenantId, await resolveLabels(tenantId));
-    return NextResponse.json({ changes });
+    const labels = await resolveLabels(tenantId);
+    const [changes, history] = await Promise.all([
+      store.listStagedChanges(tenantId, labels),
+      store.listSurfaceHistory(tenantId, labels),
+    ]);
+    return NextResponse.json({ changes, history });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 502 });
   }

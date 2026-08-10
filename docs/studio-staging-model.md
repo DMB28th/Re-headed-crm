@@ -321,3 +321,34 @@ widget package is deliberately CRM-agnostic and knows nothing about Studio
 (hard rules 3–5). Layering builder affordances onto it would mean either
 leaking Studio concerns into the widget or forking it, and the preview's whole
 value is that it is the untouched thing reps get.
+
+
+---
+
+## Addendum (2026-08-10e): rollback for every surface
+
+The staging model gave all six surfaces `history` and a rollback verb, but only
+layouts ever exposed it — there were no API routes at all for the others. A
+rollback path that exists in the store and nowhere else is not a rollback path.
+
+- `rollbackCustomScreen` was the one verb still missing; both stores have it now.
+- `collectSurfaceHistory` and `runStagedRollback` live in `staging.ts`, so the
+  five per-surface shapes are dispatched once and the two stores can't disagree.
+- `POST /api/rollback` takes a `StagedKey` + revision. `GET /api/pending` also
+  returns `history`, because rollback is about PUBLISHED revisions and is
+  exactly what you reach for when nothing is staged.
+- `/publish` grows a **Roll back** section listing each surface's restorable
+  revisions behind a `ConfirmPopover`. Restoring republishes under a NEW
+  revision, so the chain stays linear and nothing is lost.
+
+Verified end to end: home card published v2, rolled back to v1, republished as
+v3 with the restored blocks, a `rollback` event logged against the `homecard`
+surface, and history then offering v2 and v1.
+
+**Custom screens: decision.** They stay VISIBLE rather than going behind a
+flag. The config is durable and may already be authored; hiding it would strand
+that work, and the surface is now correctly scoped (reachable only from a flow,
+uncreatable and unpublishable without one). What it must not do is imply a
+publish did something — so the publish confirmation now says the screen is
+stored as a revision and won't run until the M6 runtime ships, alongside the
+`RuntimePendingBanner` that was already there.

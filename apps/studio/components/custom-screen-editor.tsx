@@ -12,6 +12,15 @@
  * Design note (hard rule 6): this DEVIATES from 12b, which lists SHARED as
  * Home card / Custom screens / Flows. It implements 10c's "Build screen" fork
  * instead — the entry point 12b's rail entry was always supposed to complement.
+ *
+ * Milestone note: this is M6 config with no M6 runtime — no guardrail
+ * execution, no live preview, nothing that executes a published screen. It
+ * stays VISIBLE rather than hiding behind a flag: the config is durable and
+ * already authored in some tenants, hiding it would strand that work, and the
+ * surface is now correctly scoped (reachable only from a flow, can't be
+ * created or published without one). What it must never do is imply a publish
+ * did something — hence the RuntimePendingBanner and the publish confirmation
+ * below.
  */
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -155,7 +164,10 @@ export function CustomScreenEditor({ screenId }: { screenId: string }) {
             label="Publish"
             className="st-btn st-btn--primary"
             title="Publish this screen?"
-            detail="The flow ladder starts using it for every rep on the next render. The current version is kept for rollback."
+            // The M6 screen runtime doesn't exist, so publishing stores a
+            // versioned source and nothing more. Saying "live for reps" here
+            // would be the one lie left on this surface.
+            detail="Stores this source as the published revision, kept for rollback. It won't run yet — the runtime that executes custom screens ships with M6, so reps see no change today."
             confirmLabel="Publish"
             busyLabel="Publishing…"
             busy={status === "publishing"}

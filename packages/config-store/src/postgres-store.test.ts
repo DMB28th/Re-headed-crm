@@ -161,6 +161,25 @@ describe("PostgresConfigStore", () => {
     expect(new Set(events.map((event) => event.batchId)).size).toBe(1);
   });
 
+  it("lists surface history and rolls back through the dispatcher, like the file store", async () => {
+    const home = (await store.getHomeCard(DEMO_TENANT_ID))!;
+    await store.setHomeCard({ ...home, blocks: [home.blocks[0]!] });
+    await store.publishHomeCard(DEMO_TENANT_ID);
+
+    const history = await store.listSurfaceHistory(DEMO_TENANT_ID);
+    const card = history.find((entry) => entry.surface === "homecard")!;
+    expect(card.publishedRevision).toBe(2);
+    expect(card.revisions.map((r) => r.revision)).toEqual([1]);
+
+    const restored = await store.rollbackStaged(
+      DEMO_TENANT_ID,
+      { surface: "homecard", object: "default", audience: "default" },
+      1,
+    );
+    expect(restored.revision).toBe(3);
+    expect((await store.getHomeCard(DEMO_TENANT_ID))!.blocks.length).toBe(home.blocks.length);
+  });
+
   it("rolls exposures back under a NEW revision", async () => {
     const v1 = (await store.getViewExposuresConfig(DEMO_TENANT_ID, "deals"))!;
     await store.setViewExposures({

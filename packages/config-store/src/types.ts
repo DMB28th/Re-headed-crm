@@ -162,6 +162,18 @@ export interface StagedChange extends StagedKey {
   diff: LayoutDiff;
 }
 
+/**
+ * A surface's published revision plus what can be restored. Drives the
+ * rollback list in Review & publish — rollback is about published history, so
+ * a surface appears here whether or not anything is staged.
+ */
+export interface SurfaceHistory extends StagedKey {
+  label: string;
+  publishedRevision: number | null;
+  /** Restorable revisions, newest first. */
+  revisions: { revision: number; name?: string }[];
+}
+
 /** Outcome of one surface inside a `publishStaged` batch. */
 export interface PublishResult extends StagedKey {
   ok: boolean;
@@ -248,11 +260,27 @@ export interface AdminConfigStore extends ConfigStore {
    * handed per-surface results and must report partial failure honestly.
    */
   publishStaged(tenantId: string, keys: StagedKey[]): Promise<PublishResult[]>;
+  /** Every surface with publish history, and which revisions can be restored. */
+  listSurfaceHistory(tenantId: string, labels?: DiffLabels): Promise<SurfaceHistory[]>;
+  /**
+   * Restore a previous revision of any surface. Rolling back is itself a
+   * publish: the restored config gets a NEW revision so the chain stays linear.
+   */
+  rollbackStaged(
+    tenantId: string,
+    key: StagedKey,
+    toRevision: number,
+  ): Promise<{ revision: number }>;
   listCustomScreenRecords(tenantId: string): Promise<(CustomScreenRecord & { id: string })[]>;
   getCustomScreenRecord(tenantId: string, id: string): Promise<CustomScreenRecord>;
   saveCustomScreenDraft(config: CustomScreenConfig): Promise<void>;
   discardCustomScreenDraft(tenantId: string, id: string): Promise<void>;
   publishCustomScreen(tenantId: string, id: string): Promise<CustomScreenConfig>;
+  rollbackCustomScreen(
+    tenantId: string,
+    id: string,
+    toRevision: number,
+  ): Promise<CustomScreenConfig>;
   listPublishes(tenantId: string): Promise<PublishEvent[]>;
   setConnection(state: ConnectionState): Promise<void>;
   setUserConnection(state: UserConnectionState): Promise<void>;

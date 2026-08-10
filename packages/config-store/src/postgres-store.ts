@@ -58,11 +58,17 @@ import type {
   StagedChange,
   StagedKey,
   StagedRecord,
+  SurfaceHistory,
   UserConnectionState,
   ViewExposuresRecord,
 } from "./types.js";
 import type { DiffLabels } from "./diff.js";
-import { collectStagedChanges, runStagedPublish } from "./staging.js";
+import {
+  collectStagedChanges,
+  collectSurfaceHistory,
+  runStagedPublish,
+  runStagedRollback,
+} from "./staging.js";
 import { defaultConnection, demoDealsLayout, demoHomeCard, demoViewExposures } from "./seed.js";
 import { openConnection, sealConnection } from "./crypto.js";
 
@@ -464,6 +470,18 @@ export class PostgresConfigStore implements AdminConfigStore {
 
   async listStagedChanges(tenantId: string, labels: DiffLabels = {}): Promise<StagedChange[]> {
     return collectStagedChanges(this, tenantId, labels);
+  }
+
+  async listSurfaceHistory(tenantId: string, labels: DiffLabels = {}): Promise<SurfaceHistory[]> {
+    return collectSurfaceHistory(this, tenantId, labels);
+  }
+
+  async rollbackStaged(
+    tenantId: string,
+    key: StagedKey,
+    toRevision: number,
+  ): Promise<{ revision: number }> {
+    return runStagedRollback(this, tenantId, key, toRevision);
   }
 
   async publishStaged(tenantId: string, keys: StagedKey[]): Promise<PublishResult[]> {
@@ -947,6 +965,50 @@ export class PostgresConfigStore implements AdminConfigStore {
 
   async publishCustomScreen(tenantId: string, id: string): Promise<CustomScreenConfig> {
     return this.publishOne(tenantId, { surface: "screen", object: id });
+  }
+
+  async rollbackCustomScreen(
+    tenantId: string,
+    id: string,
+    toRevision: number,
+  ): Promise<CustomScreenConfig> {
+    await this.ready;
+    const published = await this.inTransaction(async (sql) => {
+      const { rows } = await sql.query(
+        "SELECT config FROM custom_screens WHERE tenant_id=$1 AND screen_id=$2 AND status='history' AND revision=$3",
+        [tenantId, id, toRevision],
+      );
+      if (!rows[0]) {
+        throw new Error(`No revision v${toRevision} in history for custom screen ${id}.`);
+      }
+      const currentRows = await sql.query(
+        "SELECT config FROM custom_screens WHERE tenant_id=$1 AND screen_id=$2 AND status='published'",
+        [tenantId, id],
+      );
+      const current = currentRows.rows[0]
+        ? CustomScreenSchema.parse(this.parse(currentRows.rows[0].config))
+        : null;
+      // Rolling back is itself a publish: NEW revision, linear version chain.
+      const restored = CustomScreenSchema.parse({
+        ...(this.parse(rows[0].config) as object),
+        status: "published",
+        revision: (current?.revision ?? 0) + 1,
+        updatedAt: new Date().toISOString(),
+      });
+      await sql.query(
+        "UPDATE custom_screens SET status='history' WHERE tenant_id=$1 AND screen_id=$2 AND status='published'",
+        [tenantId, id],
+      );
+      await sql.query(
+        "INSERT INTO custom_screens (tenant_id, screen_id, status, revision, config) VALUES ($1,$2,'published',$3,$4)",
+        [tenantId, id, restored.revision, JSON.stringify(restored)],
+      );
+      return restored;
+    });
+    await this.logEvent(
+      tenantId, published.label, "default", published.revision, "rollback", "screen",
+    );
+    return published;
   }
 
   private async publishScreen(tenantId: string, id: string): Promise<CustomScreenConfig> {

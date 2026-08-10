@@ -12,8 +12,9 @@
  */
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import type { PublishResult, StagedChange } from "@cardstack/config-store";
+import type { PublishResult, StagedChange, SurfaceHistory } from "@cardstack/config-store";
 import { LoadFailed } from "./load-failed";
+import { ConfirmPopover } from "./ui/confirm";
 import { ErrorNotice } from "./ui/error-notice";
 
 const SURFACE_LABEL: Record<StagedChange["surface"], string> = {
@@ -25,7 +26,7 @@ const SURFACE_LABEL: Record<StagedChange["surface"], string> = {
 };
 
 /** Where an entry's editor lives, so a row is one click from being fixed. */
-function editorHref(change: StagedChange): string {
+function editorHref(change: { surface: StagedChange["surface"]; object: string }): string {
   switch (change.surface) {
     case "layout":
       return `/objects/${change.object}/layouts`;
@@ -40,7 +41,8 @@ function editorHref(change: StagedChange): string {
   }
 }
 
-const keyOf = (change: StagedChange) => `${change.surface}:${change.object}:${change.audience ?? ""}`;
+const keyOf = (change: { surface: string; object: string; audience?: string }) =>
+  `${change.surface}:${change.object}:${change.audience ?? ""}`;
 
 function DiffRows({ diff }: { diff: StagedChange["diff"] }) {
   const rows = [
@@ -62,6 +64,10 @@ function DiffRows({ diff }: { diff: StagedChange["diff"] }) {
 
 export function PendingChanges() {
   const [changes, setChanges] = useState<StagedChange[] | null>(null);
+  const [history, setHistory] = useState<SurfaceHistory[]>([]);
+  const [rollingBack, setRollingBack] = useState<string | null>(null);
+  const [confirmRollback, setConfirmRollback] = useState<string | null>(null);
+  const [rollbackNote, setRollbackNote] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loadError, setLoadError] = useState<string | null>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
@@ -72,12 +78,17 @@ export function PendingChanges() {
     setLoadError(null);
     try {
       const res = await fetch("/api/pending");
-      const data = (await res.json()) as { changes?: StagedChange[]; error?: string };
+      const data = (await res.json()) as {
+        changes?: StagedChange[];
+        history?: SurfaceHistory[];
+        error?: string;
+      };
       if (!res.ok || data.error) {
         setLoadError(data.error ?? `Request failed (${res.status}).`);
         return;
       }
       setChanges(data.changes ?? []);
+      setHistory(data.history ?? []);
       setSelected(new Set((data.changes ?? []).map(keyOf)));
     } catch (error) {
       setLoadError(String(error));
@@ -114,6 +125,36 @@ export function PendingChanges() {
       setPublishError(String(error));
     } finally {
       setPublishing(false);
+    }
+  };
+
+  const rollback = async (entry: SurfaceHistory, toRevision: number) => {
+    const id = `${keyOf(entry)}:${toRevision}`;
+    setRollingBack(id);
+    setPublishError(null);
+    try {
+      const res = await fetch("/api/rollback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: { surface: entry.surface, object: entry.object, audience: entry.audience },
+          toRevision,
+        }),
+      });
+      const data = (await res.json()) as { revision?: number; error?: string };
+      if (!res.ok || data.error) {
+        setPublishError(data.error ?? `Request failed (${res.status}).`);
+        return;
+      }
+      setRollbackNote(
+        `Restored ${entry.label} v${toRevision} — republished as v${data.revision}, live for reps now.`,
+      );
+      await load();
+    } catch (error) {
+      setPublishError(String(error));
+    } finally {
+      setRollingBack(null);
+      setConfirmRollback(null);
     }
   };
 
@@ -154,6 +195,12 @@ export function PendingChanges() {
               }}
             />
           )}
+        </div>
+      )}
+
+      {rollbackNote && (
+        <div className="mt-5 rounded-[10px] border-l-[3px] border-published-ink bg-published px-4 py-3 text-[12.5px] text-published-ink">
+          {rollbackNote}
         </div>
       )}
 
@@ -252,6 +299,72 @@ export function PendingChanges() {
                 ? "Publishing…"
                 : `Publish ${selected.size} change${selected.size === 1 ? "" : "s"}`}
             </button>
+          </div>
+        </>
+      )}
+
+      {/* Rollback lives with publishing because it IS publishing: restoring a
+          revision republishes it under a new number. Listed even when nothing
+          is staged — that's when you reach for it. */}
+      {history.length > 0 && (
+        <>
+          <h2 className="st-section-label mt-8">Roll back</h2>
+          <p className="mt-1 text-[12px] text-ink-55">
+            Previous published revisions, kept per surface. Restoring one republishes it under a
+            new revision — the version chain stays linear, nothing is lost.
+          </p>
+          <div className="mt-2 space-y-2">
+            {history.map((entry) => (
+              <div key={keyOf(entry)} className="st-card p-4">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="st-chip-mono bg-crmmeta text-crmmeta-ink">
+                    {SURFACE_LABEL[entry.surface]}
+                  </span>
+                  <Link
+                    href={editorHref(entry)}
+                    className={`text-[13px] font-semibold hover:underline ${
+                      entry.surface === "layout" || entry.surface === "exposures"
+                        ? "capitalize"
+                        : ""
+                    }`}
+                  >
+                    {entry.label}
+                  </Link>
+                  <span className="st-chip-mono bg-published text-published-ink">
+                    live: v{entry.publishedRevision ?? "—"}
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {entry.revisions.map((revision) => {
+                    const id = `${keyOf(entry)}:${revision.revision}`;
+                    return (
+                      <span key={revision.revision} className="relative">
+                        <button
+                          type="button"
+                          className="st-btn !py-0.5 text-[11.5px]"
+                          disabled={rollingBack !== null}
+                          onClick={() => setConfirmRollback(id)}
+                        >
+                          v{revision.revision}
+                          {revision.name ? ` · ${revision.name}` : ""}
+                        </button>
+                        <ConfirmPopover
+                          open={confirmRollback === id}
+                          align="left"
+                          title={`Restore v${revision.revision}?`}
+                          detail={`Reps see it immediately. ${entry.label}'s current version is kept in history and republished under a new revision number.`}
+                          confirmLabel="Roll back"
+                          busyLabel="Rolling back…"
+                          busy={rollingBack === id}
+                          onConfirm={() => void rollback(entry, revision.revision)}
+                          onCancel={() => setConfirmRollback(null)}
+                        />
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </>
       )}
