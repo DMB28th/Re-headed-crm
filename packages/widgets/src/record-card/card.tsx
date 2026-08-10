@@ -18,9 +18,12 @@ import type {
   RecordCardPayload,
   RecordPage,
   RelatedListConfig,
+  UpdatePreviewPayload,
   WriteReceiptPayload,
 } from "@cardstack/core";
+import { selectRenderableActions } from "@cardstack/core";
 import {
+  AsOfChip,
   FieldInfo,
   LayoutChip,
   MakerChip,
@@ -178,13 +181,16 @@ export function RecordCard({
     setMode({ kind: "editing", draft });
   };
 
-  const confirmWrite = async (draft: Draft) => {
+  // editing → confirming goes through the SERVER: it re-reads the current values,
+  // applies the same write gauntlet, and returns the diff plus a token bound to
+  // it. A diff computed here in the browser could never be proven to the audit
+  // log, so the rep confirms what the server will actually write, not what the
+  // card happens to be holding.
+  const reviewChanges = async (draft: Draft) => {
     if (!host) return;
-    setMode({ kind: "writing", draft });
-    setLastDraft(draft);
+    setMode({ kind: "reviewing", draft });
     try {
-      // The write goes through the HOST as a tool call — auditable, never direct.
-      const result = await host.callTool("crm_update_record", {
+      const result = await host.callTool("crm_preview_update", {
         object: layout.object,
         id: record.id,
         patch: draft,
@@ -192,8 +198,41 @@ export function RecordCard({
       if (result.isError) {
         const text = result.content?.find((c) => c.type === "text");
         setMode({
+          kind: "editing",
+          draft,
+          previewError: text?.text ?? "Couldn't prepare these changes for review.",
+        });
+        return;
+      }
+      setMode({
+        kind: "confirming",
+        draft,
+        preview: result.structuredContent as UpdatePreviewPayload,
+      });
+    } catch (error) {
+      setMode({ kind: "editing", draft, previewError: String(error) });
+    }
+  };
+
+  const confirmWrite = async (draft: Draft, preview: UpdatePreviewPayload) => {
+    if (!host) return;
+    setMode({ kind: "writing", draft, preview });
+    setLastDraft(draft);
+    try {
+      // The write goes through the HOST as a tool call — auditable, never direct.
+      // The token is what makes the audit entry say "rep confirmed this diff".
+      const result = await host.callTool("crm_update_record", {
+        object: layout.object,
+        id: record.id,
+        patch: draft,
+        confirmToken: preview.confirmToken,
+      });
+      if (result.isError) {
+        const text = result.content?.find((c) => c.type === "text");
+        setMode({
           kind: "confirming",
           draft,
+          preview,
           writeError: text?.text ?? "The write failed. Nothing was saved.",
         });
         return;
@@ -220,7 +259,7 @@ export function RecordCard({
         receipt.failedCount > 0 ? { kind: "partial", receipt } : { kind: "receipt", receipt },
       );
     } catch (error) {
-      setMode({ kind: "confirming", draft, writeError: String(error) });
+      setMode({ kind: "confirming", draft, preview, writeError: String(error) });
     }
   };
 
@@ -256,15 +295,21 @@ export function RecordCard({
   const subtitle = header.subtitle ? fmt(header.subtitle, record.fields[header.subtitle]) : null;
   const badgeLabel = header.badge ? fmt(header.badge, record.fields[header.badge]) : null;
 
-  // Configured layout actions (design 1a/3a): update_record names the primary
-  // edit button; create_related actions post a followup so the model drives
-  // crm_create_record (upgrades to the inline create form when 10b lands).
+  // Configured layout actions (design 1a/3a). Order is the admin's control over
+  // which action is primary; `selectRenderableActions` drops disabled ones and
+  // skips update_record when nothing is editable. Flow and quick actions hand
+  // off to the host so the model starts them and flow-run renders the screens.
   const actions = layout.recordCard.actions;
   const titleText = title ?? record.id;
   const runCreateRelated = (action: Extract<CardAction, { type: "create_related" }>) =>
     host?.sendFollowup?.(
       `Create a new ${action.object} related to "${titleText}" (id ${record.id})`,
     );
+  const runFlowAction = (action: Extract<CardAction, { type: "screen_flow" }>) =>
+    host?.sendFollowup?.(`Run the "${action.label}" flow on "${titleText}" (id ${record.id})`);
+
+  const runQuickAction = (action: Extract<CardAction, { type: "quick_action" }>) =>
+    host?.sendFollowup?.(`Run the "${action.label}" action on "${titleText}" (id ${record.id})`);
 
   // "Your lists" replaces the card with the real home card until Back.
   if (homeView) {
@@ -305,16 +350,19 @@ export function RecordCard({
   };
 
   const collapsed = mode.kind === "receipt" || mode.kind === "partial";
+  // The rows come from the SERVER's preview — same values the confirm token is
+  // bound to, so what the rep reads and what gets written cannot drift apart.
+  // Lookup writes carry an ID, so the picked record's name (which only the
+  // browser knows) still supplies the display label.
   const diffRows =
     mode.kind === "confirming" || mode.kind === "writing"
-      ? Object.entries(mode.draft).map(([api, value]) => ({
-          label: meta[api]?.label ?? api,
-          before: fmt(api, record.fields[api] ?? null),
-          // A lookup draft carries an ID — the diff shows the picked record's name.
+      ? mode.preview.changes.map(({ field, label, before, after }) => ({
+          label,
+          before: fmt(field, before),
           after:
-            value !== null && draftLabels[api] !== undefined && meta[api]?.type === "reference"
-              ? draftLabels[api]!
-              : fmt(api, value),
+            after !== null && draftLabels[field] !== undefined && meta[field]?.type === "reference"
+              ? draftLabels[field]!
+              : fmt(field, after),
         }))
       : [];
 
@@ -396,7 +444,13 @@ export function RecordCard({
         </div>
       )}
 
-      {(mode.kind === "ready" || mode.kind === "editing") &&
+      {mode.kind === "editing" && mode.previewError && (
+        <div className="wd-write-error" role="alert">
+          {mode.previewError} <span className="cs-muted">Nothing was written.</span>
+        </div>
+      )}
+
+      {(mode.kind === "ready" || mode.kind === "editing" || mode.kind === "reviewing") &&
         sections
           .map((section) => ({
             ...section,
@@ -409,8 +463,10 @@ export function RecordCard({
               section={section}
               payload={payload}
               locale={locale}
-              editing={mode.kind === "editing"}
-              draft={mode.kind === "editing" ? mode.draft : undefined}
+              editing={mode.kind === "editing" || mode.kind === "reviewing"}
+              draft={
+                mode.kind === "editing" || mode.kind === "reviewing" ? mode.draft : undefined
+              }
               draftLabels={draftLabels}
               editableSet={editableSet}
               host={host}
@@ -456,15 +512,15 @@ export function RecordCard({
           connectedUser={provenance.connectedUser}
           onEdit={() => setMode({ kind: "editing", draft: {} })}
           onCreateRelated={runCreateRelated}
+          onFlowAction={runFlowAction}
+          onQuickAction={runQuickAction}
           onDiscard={() => setMode({ kind: "ready" })}
-          onReview={() =>
-            mode.kind === "editing" && setMode({ kind: "confirming", draft: mode.draft })
-          }
+          onReview={() => mode.kind === "editing" && void reviewChanges(mode.draft)}
           onBack={() =>
             mode.kind === "confirming" && setMode({ kind: "editing", draft: mode.draft })
           }
           onConfirm={() =>
-            (mode.kind === "confirming" || mode.kind === "writing") && confirmWrite(mode.draft)
+            mode.kind === "confirming" && void confirmWrite(mode.draft, mode.preview)
           }
         />
         <span className="rc-footer-right">
@@ -472,6 +528,7 @@ export function RecordCard({
           {mode.kind === "ready" && canEdit && (
             <span className="cs-muted rc-trust">Writes require confirmation</span>
           )}
+          <AsOfChip provenance={provenance} locale={locale} />
           <LayoutChip provenance={provenance} />
           <MakerChip provenance={provenance} />
         </span>
@@ -488,6 +545,8 @@ function FooterControls({
   connectedUser,
   onEdit,
   onCreateRelated,
+  onFlowAction,
+  onQuickAction,
   onDiscard,
   onReview,
   onBack,
@@ -500,6 +559,8 @@ function FooterControls({
   connectedUser?: string | undefined;
   onEdit: () => void;
   onCreateRelated: (action: Extract<CardAction, { type: "create_related" }>) => void;
+  onFlowAction: (action: Extract<CardAction, { type: "screen_flow" }>) => void;
+  onQuickAction: (action: Extract<CardAction, { type: "quick_action" }>) => void;
   onDiscard: () => void;
   onReview: () => void;
   onBack: () => void;
@@ -507,50 +568,94 @@ function FooterControls({
 }) {
   switch (mode.kind) {
     case "ready": {
-      const createActions = actions.filter(
-        (a): a is Extract<CardAction, { type: "create_related" }> => a.type === "create_related",
-      );
+      const rendered = selectRenderableActions(actions, { canEdit });
+      // An empty CONFIGURATION keeps the legacy button — every layout predating
+      // the actions editor has `actions: []` and must not silently lose its edit
+      // affordance. An empty RESULT (everything disabled) correctly renders none.
+      if (actions.length === 0) {
+        return (
+          <span className="rc-footer-left">
+            {canEdit && (
+              <button type="button" className="cs-btn cs-btn--primary" onClick={onEdit}>
+                Edit fields
+              </button>
+            )}
+          </span>
+        );
+      }
       return (
         <span className="rc-footer-left">
-          {/* Ready state opens editing; the actual save happens in the confirm
-              diff. Labeled "Edit" so it doesn't read like a one-click save. */}
-          {canEdit && (
-            <button type="button" className="cs-btn cs-btn--primary" onClick={onEdit}>
-              Edit fields
-            </button>
-          )}
-          {/* Actions are config-driven only — no hardcoded "Log a note". Add a
-              create-related action to log a task/note if you want one. */}
-          {createActions.map((action) => (
-            <button
-              key={`${action.object}:${action.label}`}
-              type="button"
-              className="cs-btn"
-              onClick={() => onCreateRelated(action)}
-            >
-              {action.label}
-            </button>
-          ))}
+          {rendered.map((action, i) => {
+            const className = i === 0 ? "cs-btn cs-btn--primary" : "cs-btn";
+            switch (action.type) {
+              case "update_record":
+                return (
+                  <button key="update_record" type="button" className={className} onClick={onEdit}>
+                    {action.label}
+                  </button>
+                );
+              case "create_related":
+                return (
+                  <button
+                    key={`create_related:${action.object}`}
+                    type="button"
+                    className={className}
+                    onClick={() => onCreateRelated(action)}
+                  >
+                    {action.label}
+                  </button>
+                );
+              case "quick_action":
+                return (
+                  <button
+                    key={`quick_action:${action.actionApiName}`}
+                    type="button"
+                    className={className}
+                    onClick={() => onQuickAction(action)}
+                  >
+                    {action.label}
+                  </button>
+                );
+              case "screen_flow":
+                return (
+                  <button
+                    key={`screen_flow:${action.flowApiName}`}
+                    type="button"
+                    className={className}
+                    onClick={() => onFlowAction(action)}
+                  >
+                    {action.label}
+                  </button>
+                );
+            }
+          })}
         </span>
       );
     }
-    case "editing": {
+    case "editing":
+    case "reviewing": {
+      const reviewing = mode.kind === "reviewing";
       const count = dirtyCount(mode.draft);
       return (
         <span className="rc-footer-left">
           <span className={`rc-dirty-count${count > 0 ? " rc-dirty-count--active" : ""}`}>
             {count} unsaved {count === 1 ? "change" : "changes"}
           </span>
-          <button type="button" className="cs-btn cs-btn--ghost" onClick={onDiscard}>
+          <button
+            type="button"
+            className="cs-btn cs-btn--ghost"
+            onClick={onDiscard}
+            disabled={reviewing}
+          >
             Discard
           </button>
           <button
             type="button"
             className="cs-btn cs-btn--primary"
             onClick={onReview}
-            disabled={count === 0}
+            disabled={count === 0 || reviewing}
           >
-            Review &amp; save…
+            {reviewing ? "Preparing…" : "Review & save…"}
           </button>
         </span>
       );
@@ -646,6 +751,14 @@ function Section({
               <div className="rc-field-label">
                 {isDirty && <span className="wd-dirty-dot" aria-label="unsaved change" />}
                 {fieldMeta?.label ?? field.api}
+                {/* At-rest affordance: a rep can glance and know what they can
+                    act on — without it, editable and read-only fields look
+                    identical until they hit "Edit fields" (design 1b). */}
+                {!editing && editableSet.has(field.api) && (
+                  <span className="rc-editable-mark" title="Editable from chat" aria-label="Editable from chat">
+                    ✎
+                  </span>
+                )}
                 {fieldMeta && (
                   <FieldInfo
                     {...(fieldMeta.description ? { description: fieldMeta.description } : {})}

@@ -1,18 +1,27 @@
 /**
  * The record-card state machine (design README "State Management"):
- *   loading → ready ↔ editing(dirty) → confirming(diff) → writing → receipt | partial-failure
+ *   loading → ready ↔ editing(dirty) → reviewing → confirming(diff) → writing
+ *                                                → receipt | partial-failure
  * Modeled explicitly — not ad-hoc booleans — per the design handoff decision.
+ *
+ * `reviewing` is the round trip to crm_preview_update. The diff used to be
+ * computed here in the browser, which meant the server had no way to tell a
+ * rep-confirmed write from a model-initiated one. Now the SERVER computes the
+ * diff and mints a token bound to it; `confirming` carries that payload and
+ * `writing` hands the token back, which is what lets the audit log record
+ * confirmation provenance it can actually verify.
  */
-import type { CrmFieldValue, FieldDescribe, WriteReceiptPayload } from "@cardstack/core";
+import type { CrmFieldValue, FieldDescribe, UpdatePreviewPayload, WriteReceiptPayload } from "@cardstack/core";
 
 /** Changed fields only: api → attempted new value. */
 export type Draft = Record<string, CrmFieldValue>;
 
 export type CardMode =
   | { kind: "ready" }
-  | { kind: "editing"; draft: Draft }
-  | { kind: "confirming"; draft: Draft; writeError?: string }
-  | { kind: "writing"; draft: Draft }
+  | { kind: "editing"; draft: Draft; previewError?: string }
+  | { kind: "reviewing"; draft: Draft }
+  | { kind: "confirming"; draft: Draft; preview: UpdatePreviewPayload; writeError?: string }
+  | { kind: "writing"; draft: Draft; preview: UpdatePreviewPayload }
   | { kind: "receipt"; receipt: WriteReceiptPayload; opening?: boolean }
   | { kind: "partial"; receipt: WriteReceiptPayload };
 

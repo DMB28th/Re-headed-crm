@@ -49,7 +49,9 @@ import {
   type LookupOptionsPayload,
   type RecordPage,
   type SearchQuery,
+  type UpdatePreviewPayload,
   type UserContext,
+  type WriteConfirmation,
   type WriteReceiptPayload,
 } from "@cardstack/core";
 import { scopeViewExposuresForUser } from "@cardstack/config-store";
@@ -64,6 +66,7 @@ import { getWidgetHtml, type WidgetName } from "@cardstack/widgets";
 import type { ConfigStore } from "./config/store.js";
 import type { PreferenceStore } from "./config/preferences.js";
 import type { AuditLog } from "./audit.js";
+import { mintConfirmToken, signState, verifyConfirmToken, verifyState } from "./confirm-token.js";
 import {
   describeExposedViews,
   resolveViewAsk,
@@ -1025,6 +1028,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
             crmLabel: anyLayout?.crm === "salesforce" ? "Salesforce" : "HubSpot",
             layoutRevision: homeCard.revision,
             connectedUser: await adapter.getConnectedUser(),
+            fetchedAt: new Date().toISOString(),
           },
         };
         const overdue = tasks.filter((t) => t.dueDate !== null && t.dueDate < today()).length;
@@ -1048,18 +1052,78 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     },
   );
 
+  // A task check-off is a one-value diff (open → completed), so its confirm
+  // step needs no diff payload — just the same signed, bound token every other
+  // write path uses, so the home card's inline confirm is provable too.
+  const TASK_COMPLETION_PATCH = { status: "completed" };
+  const taskTokenSubject = (id: string) => ({
+    tenantId,
+    object: "tasks",
+    recordId: id,
+    patch: TASK_COMPLETION_PATCH,
+    actorUserId: userContext.userId,
+  });
+
+  server.registerTool(
+    "crm_preview_complete_task",
+    {
+      title: "Preview completing a CRM task",
+      description:
+        "Mint a confirmation token for checking off a follow-up task. Writes nothing. The home " +
+        "card calls this when the rep clicks the checkbox; passing the token to crm_complete_task " +
+        "is what lets the audit log record it as rep-confirmed rather than model-initiated.",
+      inputSchema: { id: z.string() },
+      annotations: { readOnlyHint: true },
+    },
+    async (args): Promise<CallToolResult> => {
+      try {
+        await requireConnection();
+        const minted = mintConfirmToken(taskTokenSubject(args.id));
+        return {
+          content: [
+            { type: "text", text: `Ready to mark task ${args.id} complete — nothing written yet.` },
+          ],
+          structuredContent: {
+            taskId: args.id,
+            confirmToken: minted.token,
+            expiresAt: minted.expiresAt,
+          },
+          isError: false,
+        };
+      } catch (error) {
+        return asToolError(error, { tool: "crm_preview_complete_task" });
+      }
+    },
+  );
+
   // --- crm_complete_task (widget-invoked after inline confirm, or model-invoked) ---
   server.registerTool(
     "crm_complete_task",
     {
       title: "Complete a CRM task",
-      description: "Mark a CRM follow-up task as completed. This is a write and is logged.",
-      inputSchema: { id: z.string() },
+      description:
+        "Mark a CRM follow-up task as completed. This is a write and is logged. Pass the " +
+        "confirmToken from crm_preview_complete_task when the rep checked it off; without one " +
+        "the write is logged as model-initiated.",
+      inputSchema: {
+        id: z.string(),
+        confirmToken: z
+          .string()
+          .optional()
+          .describe(
+            "Token from crm_preview_complete_task, proving the rep checked this task off. Do not invent one.",
+          ),
+      },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },
     async (args): Promise<CallToolResult> => {
       try {
         await requireConnection();
+        // Verified BEFORE the write, and a bad token aborts rather than
+        // downgrading — same rule as crm_update_record.
+        const confirmation: WriteConfirmation = args.confirmToken
+          ? { via: "widget", ...verifyConfirmToken(args.confirmToken, taskTokenSubject(args.id)) }
+          : { via: "model" };
         const task = await adapter.completeTask(args.id);
         const writtenAs = await adapter.getConnectedUser();
         await auditLog.append({
@@ -1070,6 +1134,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
           recordId: task.id,
           changes: [{ field: "status", before: "open", after: "completed" }],
           timestamp: new Date().toISOString(),
+          confirmation,
         });
         return {
           content: [
@@ -1086,6 +1151,154 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
     },
   );
 
+  // --- Shared update gauntlet (crm_preview_update + crm_update_record) ---
+  // Both tools MUST apply the same rules: a diff the rep confirms is only
+  // meaningful if the write path enforces exactly what the preview validated.
+  // Returns the normalized patch — the values the confirm token is bound to.
+  const prepareUpdate = async (
+    object: string | undefined,
+    id: string,
+    rawPatch: Record<string, CrmFieldValue>,
+  ) => {
+    await requireConnection();
+    const config = await requireLayout(object);
+    if (!config.permissions.writeEnabled) {
+      throw new Error(`Writes are disabled for ${config.object}.`);
+    }
+    const describe = await adapter.describeObject(config.object);
+    const describeByApi = new Map(describe.fields.map((f) => [f.api, f]));
+    const caps = buildCapabilities(config, describeByApi);
+    const patch = { ...rawPatch };
+    const disallowed = Object.keys(patch).filter((field) => !caps.editableFields.includes(field));
+    if (disallowed.length > 0) {
+      // Config violation, not a CRM rejection: refuse the whole call.
+      throw new Error(
+        `Not editable on this layout: ${disallowed.join(", ")}. Editable fields: ${caps.editableFields.join(", ")}.`,
+      );
+    }
+
+    // Required fields (design 2a) can't be cleared from chat — enforcement,
+    // not just a badge. A null/"" on a required field refuses the whole call.
+    // Both admin-marked (layout) and CRM-required (describe) count.
+    const requiredApis = new Set([
+      ...config.recordCard.sections
+        .flatMap((s) => s.fields)
+        .filter((f) => f.required)
+        .map((f) => f.api),
+      ...describe.fields.filter((f) => f.required).map((f) => f.api),
+    ]);
+    const cleared = Object.keys(patch).filter(
+      (field) => requiredApis.has(field) && (patch[field] === null || patch[field] === ""),
+    );
+    if (cleared.length > 0) {
+      const names = cleared.map((f) => describeByApi.get(f)?.label ?? f).join(", ");
+      throw new Error(
+        `${names} ${cleared.length > 1 ? "are" : "is"} required on this card and can't be cleared from chat.`,
+      );
+    }
+
+    // Normalize model-supplied picklist LABELS to internal values (the model
+    // sees labels in every text response, so it will write them). A label
+    // that matches valueLabels case-insensitively is swapped for its value.
+    // Normalizing BEFORE the token is minted means preview and write hash the
+    // same patch even when one of them was handed a label.
+    for (const field of Object.keys(patch)) {
+      const raw = patch[field];
+      const labels = describeByApi.get(field)?.valueLabels;
+      const values = describeByApi.get(field)?.values;
+      if (typeof raw !== "string" || !labels || !values) continue;
+      if (values.includes(raw)) continue; // already an internal value
+      const match = Object.entries(labels).find(
+        ([, label]) => label.toLowerCase() === raw.toLowerCase(),
+      );
+      if (match) patch[field] = match[0];
+    }
+
+    const before = await adapter.getRecord(config.object, id, Object.keys(patch));
+    return { config, describeByApi, patch, before };
+  };
+
+  // --- crm_preview_update (mints the confirmation the audit log can verify) ---
+  server.registerTool(
+    "crm_preview_update",
+    {
+      title: "Preview a CRM record update",
+      description:
+        "Compute the before/after diff for a proposed update WITHOUT writing, and mint a " +
+        "confirmation token. Writes nothing. The record card calls this to render the " +
+        "confirmation diff; passing the returned confirmToken to crm_update_record is what " +
+        "lets the audit log record the write as rep-confirmed rather than model-initiated.",
+      inputSchema: {
+        object: z.string().optional().describe("Object API name; omit for the workspace default"),
+        id: z.string(),
+        patch: z
+          .record(z.union([z.string(), z.number(), z.boolean(), z.null()]))
+          .describe("Field API name → proposed new value"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (args): Promise<CallToolResult> => {
+      try {
+        const { config, describeByApi, patch, before } = await prepareUpdate(
+          args.object,
+          args.id,
+          args.patch as Record<string, CrmFieldValue>,
+        );
+        // Only fields that actually change belong in a diff — and the token is
+        // bound to those, so a no-op field can't ride along into the write.
+        const changed = Object.keys(patch).filter(
+          (field) => (before.fields[field] ?? null) !== (patch[field] ?? null),
+        );
+        if (changed.length === 0) {
+          throw new Error("Nothing to change — every value matches what's already in the CRM.");
+        }
+        const boundPatch = Object.fromEntries(changed.map((f) => [f, patch[f] ?? null]));
+        const minted = mintConfirmToken({
+          tenantId,
+          object: config.object,
+          recordId: args.id,
+          patch: boundPatch,
+          actorUserId: userContext.userId,
+        });
+
+        const sanitized = applyDenylist(config);
+        const named = await adapter.getRecord(config.object, args.id, [
+          config.recordCard.header.title,
+        ]);
+        const payload: UpdatePreviewPayload = {
+          kind: "update-preview",
+          object: config.object,
+          recordId: args.id,
+          recordName: String(named.fields[config.recordCard.header.title] ?? args.id),
+          changes: changed.map((field) => ({
+            field,
+            label: describeByApi.get(field)?.label ?? field,
+            before: before.fields[field] ?? null,
+            after: patch[field] ?? null,
+          })),
+          confirmToken: minted.token,
+          expiresAt: minted.expiresAt,
+          provenance: provenanceFor(sanitized),
+        };
+        const lines = payload.changes.map(
+          (c) => `- ${c.label}: ${String(c.before ?? "—")} → ${String(c.after ?? "—")}`,
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Proposed changes to ${payload.recordName} — nothing written yet:\n${lines.join("\n")}`,
+            },
+          ],
+          structuredContent: payload as unknown as Record<string, unknown>,
+          isError: false,
+        };
+      } catch (error) {
+        return asToolError(error, { tool: "crm_preview_update" });
+      }
+    },
+  );
+
   // --- crm_update_record (widget-invoked after the confirmation diff, or model-invoked) ---
   server.registerTool(
     "crm_update_record",
@@ -1093,74 +1306,56 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       title: "Update a CRM record",
       description:
         "Write field changes to a CRM record. Only fields the layout marks editable are writable. " +
-        "Returns per-field outcomes — a validation failure on one field does not block the others.",
+        "Returns per-field outcomes — a validation failure on one field does not block the others. " +
+        "Pass the confirmToken from crm_preview_update when the change was confirmed by the rep; " +
+        "without one the write is logged as model-initiated.",
       inputSchema: {
         object: z.string().optional().describe("Object API name; omit for the workspace default"),
         id: z.string(),
         patch: z
           .record(z.union([z.string(), z.number(), z.boolean(), z.null()]))
           .describe("Field API name → new value"),
+        confirmToken: z
+          .string()
+          .optional()
+          .describe(
+            "Token from crm_preview_update, proving a rep confirmed this exact diff. Do not invent one.",
+          ),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },
     async (args): Promise<CallToolResult> => {
       try {
-        await requireConnection();
-        const config = await requireLayout(args.object);
-        if (!config.permissions.writeEnabled) {
-          throw new Error(`Writes are disabled for ${config.object}.`);
-        }
-        const describe = await adapter.describeObject(config.object);
-        const describeByApi = new Map(describe.fields.map((f) => [f.api, f]));
-        const caps = buildCapabilities(config, describeByApi);
-        const patch = args.patch as Record<string, CrmFieldValue>;
-        const disallowed = Object.keys(patch).filter(
-          (field) => !caps.editableFields.includes(field),
+        const { config, describeByApi, patch, before } = await prepareUpdate(
+          args.object,
+          args.id,
+          args.patch as Record<string, CrmFieldValue>,
         );
-        if (disallowed.length > 0) {
-          // Config violation, not a CRM rejection: refuse the whole call.
-          throw new Error(
-            `Not editable on this layout: ${disallowed.join(", ")}. Editable fields: ${caps.editableFields.join(", ")}.`,
-          );
-        }
 
-        // Required fields (design 2a) can't be cleared from chat — enforcement,
-        // not just a badge. A null/"" on a required field refuses the whole call.
-        // Both admin-marked (layout) and CRM-required (describe) count.
-        const requiredApis = new Set([
-          ...config.recordCard.sections
-            .flatMap((s) => s.fields)
-            .filter((f) => f.required)
-            .map((f) => f.api),
-          ...describe.fields.filter((f) => f.required).map((f) => f.api),
-        ]);
-        const cleared = Object.keys(patch).filter(
-          (field) => requiredApis.has(field) && (patch[field] === null || patch[field] === ""),
-        );
-        if (cleared.length > 0) {
-          const names = cleared.map((f) => describeByApi.get(f)?.label ?? f).join(", ");
-          throw new Error(
-            `${names} ${cleared.length > 1 ? "are" : "is"} required on this card and can't be cleared from chat.`,
-          );
-        }
-
-        // Normalize model-supplied picklist LABELS to internal values (the model
-        // sees labels in every text response, so it will write them). A label
-        // that matches valueLabels case-insensitively is swapped for its value.
-        for (const field of Object.keys(patch)) {
-          const raw = patch[field];
-          const labels = describeByApi.get(field)?.valueLabels;
-          const values = describeByApi.get(field)?.values;
-          if (typeof raw !== "string" || !labels || !values) continue;
-          if (values.includes(raw)) continue; // already an internal value
-          const match = Object.entries(labels).find(
-            ([, label]) => label.toLowerCase() === raw.toLowerCase(),
-          );
-          if (match) patch[field] = match[0];
-        }
+        // Provenance is decided BEFORE anything is written: a token that doesn't
+        // verify aborts the write rather than silently downgrading to "model",
+        // because a caller presenting a bad token is a bug or an attack, not a
+        // model write. No token at all is the legitimate model path.
+        const confirmation: WriteConfirmation = args.confirmToken
+          ? {
+              via: "widget",
+              ...verifyConfirmToken(args.confirmToken, {
+                tenantId,
+                object: config.object,
+                recordId: args.id,
+                // The token binds only the fields that actually changed, so a
+                // no-op field in the patch can't ride along unconfirmed.
+                patch: Object.fromEntries(
+                  Object.keys(patch)
+                    .filter((f) => (before.fields[f] ?? null) !== (patch[f] ?? null))
+                    .map((f) => [f, patch[f] ?? null]),
+                ),
+                actorUserId: userContext.userId,
+              }),
+            }
+          : { via: "model" };
 
         const fields = Object.keys(patch);
-        const before = await adapter.getRecord(config.object, args.id, fields);
         const results: FieldWriteResult[] = [];
         const resultFor = (field: string, ok: boolean, error?: string): FieldWriteResult => ({
           field,
@@ -1200,6 +1395,7 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
             recordId: args.id,
             changes: saved.map(({ field, before, after }) => ({ field, before, after })),
             timestamp,
+            confirmation,
           });
         }
 
@@ -1291,6 +1487,10 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
             after,
           })),
           timestamp: new Date().toISOString(),
+          // Creation has no confirmation diff to mint a token against: the card
+          // posts a chat followup and the model calls this tool (10b, the
+          // in-widget create form, is still open). Model-initiated is the truth.
+          confirmation: { via: "model" },
         });
         const sanitized = applyDenylist(config);
         const fresh = filterRecord(created, new Set(recordCardFieldPaths(sanitized)));
@@ -1315,27 +1515,15 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
   // model passes, so no interview session is persisted (PLAN spike #2). Only the
   // HANDOFF rung is wired — the flow opens in the CRM, which owns the screens and
   // the write. Native/Embedded rungs are gated behind their spikes.
-  // Interview state tokens round-trip through the model and the widget — sign
-  // them so a tampered token (which could alter write targets) is rejected.
-  // Core stays browser-safe, so the HMAC lives here.
-  const hmac = (body: string, secret: string): string =>
-    createHmac("sha256", secret).update(body).digest("base64url");
-  const signInterviewState = (token: string): string => {
-    const secret = process.env.CARDSTACK_ENCRYPTION_KEY;
-    return secret ? `${token}.${hmac(token, secret)}` : token;
-  };
-  const verifyInterviewState = (state: string): string => {
-    const secret = process.env.CARDSTACK_ENCRYPTION_KEY;
-    if (!secret) return state;
-    const [body, signature] = state.split(".");
-    const expected = hmac(body ?? "", secret);
-    const a = Buffer.from(signature ?? "");
-    const b = Buffer.from(expected);
-    if (!body || a.length !== b.length || !timingSafeEqual(a, b)) {
-      throw new Error("Interview state token failed verification — restart the flow.");
-    }
-    return body;
-  };
+  // Interview state round-trips through the model and the widget, and it is not
+  // just a cursor: it carries `pendingWrite` and the answers the write executes
+  // with, so a forged one is a forged write authorization. It shares the confirm
+  // token's signer (confirm-token.ts) so both write paths have ONE security
+  // floor — in particular neither ever degrades to unsigned when no
+  // CARDSTACK_ENCRYPTION_KEY is configured.
+  const signInterviewState = (token: string): string => signState(token);
+  const verifyInterviewState = (state: string): string =>
+    verifyState(state, "Interview state token failed verification — restart the flow.");
 
   const runFlow = async (
     args: { object?: string; recordId: string; flowApiName: string },
@@ -1349,7 +1537,9 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       const config = await requireLayout(args.object);
       const action = config.recordCard.actions.find(
         (a): a is Extract<CardAction, { type: "screen_flow" }> =>
-          a.type === "screen_flow" && a.flowApiName === args.flowApiName,
+          a.type === "screen_flow" &&
+          a.flowApiName === args.flowApiName &&
+          a.enabled !== false,
       );
       if (!action) {
         throw new Error(
@@ -1447,6 +1637,16 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
               recordId,
               changes,
               timestamp: new Date().toISOString(),
+              // Reaching an interpreter write PROVES a rep confirmed it, by the
+              // same standard crm_update_record's token proves it: executeWrite
+              // has one call site, gated behind a `pendingWrite` frame that only
+              // the server mints (at a confirm-write pause) inside a SIGNED
+              // interview state, plus an explicit confirmWrite: true. The write
+              // uses the state's own answers — values passed on the confirming
+              // call are ignored — so it is bound to the diff the rep saw.
+              // No confirmationId: the gate is the signed state, not a minted
+              // token, and inventing an id would imply a receipt we don't hold.
+              confirmation: { via: "widget" },
             });
           };
           const effects: FlowRuntimeEffects = {
@@ -1630,7 +1830,9 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       const config = await requireLayout(args.object);
       const action = config.recordCard.actions.find(
         (a): a is Extract<CardAction, { type: "quick_action" }> =>
-          a.type === "quick_action" && a.actionApiName === args.actionApiName,
+          a.type === "quick_action" &&
+          a.actionApiName === args.actionApiName &&
+          a.enabled !== false,
       );
       if (!action) {
         throw new Error(
@@ -1740,6 +1942,10 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
             after,
           })),
           timestamp: new Date().toISOString(),
+          // Same standard as the interpreter: this branch requires a SIGNED
+          // quick-action state already in `confirming` plus an explicit
+          // confirmWrite: true, and the fields come from that state's answers.
+          confirmation: { via: "widget" },
         });
         const summary = `${label} done — ${describe.type === "Update" ? `${target} updated` : `${target} created${result.createdId ? ` (${result.createdId})` : ""}`}.`;
         return respond(
@@ -1925,15 +2131,23 @@ export async function createCardstackServer(deps: ServerDeps): Promise<McpServer
       description:
         "Abandon a flow the rep decided not to run. The server holds no interview state, so this just " +
         "acknowledges the cancellation for the conversation.",
-      inputSchema: { flowApiName: z.string(), actionSessionId: z.string() },
+      // The session id alone identifies the interview — requiring the flow api
+      // name too was just one more thing for the host/model to fumble on a
+      // cancel (UX review 2026-07-26 P2-18). Optional, echoed back when given.
+      inputSchema: { flowApiName: z.string().optional(), actionSessionId: z.string() },
       annotations: { readOnlyHint: true },
     },
     async (args): Promise<CallToolResult> => ({
-      content: [{ type: "text", text: `Cancelled flow "${args.flowApiName}". Nothing was run.` }],
+      content: [
+        {
+          type: "text",
+          text: `Cancelled ${args.flowApiName ? `flow "${args.flowApiName}"` : "the flow"}. Nothing was run.`,
+        },
+      ],
       structuredContent: {
         kind: "flow-run",
         actionSessionId: args.actionSessionId,
-        flowApiName: args.flowApiName,
+        ...(args.flowApiName ? { flowApiName: args.flowApiName } : {}),
         status: "cancelled",
       } as unknown as Record<string, unknown>,
     }),

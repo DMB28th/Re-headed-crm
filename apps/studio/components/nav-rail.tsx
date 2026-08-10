@@ -9,10 +9,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const objectTabs = [
-  { slug: "layouts", label: "Layouts" },
-  { slug: "lists", label: "Lists" },
-  { slug: "permissions", label: "Permissions" },
-  { slug: "assignment", label: "Assignment" },
+  { slug: "layouts", label: "Card design" },
+  { slug: "actions", label: "Card actions" },
+  { slug: "lists", label: "Lists & views" },
+  { slug: "permissions", label: "Write access" },
 ];
 
 interface ObjectsData {
@@ -28,15 +28,18 @@ function RailLink({
   active,
   children,
   indent,
+  onNavigate,
 }: {
   href: string;
   active: boolean;
   children: React.ReactNode;
   indent?: boolean;
+  onNavigate?: () => void;
 }) {
   return (
     <Link
       href={href}
+      onClick={onNavigate}
       className={`block rounded-[8px] px-2.5 py-1.5 text-[12.5px] transition-colors ${
         indent ? "ml-4" : ""
       } ${active ? "bg-[rgba(47,53,80,0.08)] font-medium text-ink" : "text-ink-55 hover:bg-[rgba(47,53,80,0.05)] hover:text-ink"}`}
@@ -54,6 +57,7 @@ export function NavRail() {
   const [pickerQuery, setPickerQuery] = useState("");
   const [adding, setAdding] = useState<string | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
 
   // Close the object picker on an outside click (org lists are long — it must
@@ -79,6 +83,8 @@ export function NavRail() {
   useEffect(() => {
     void load();
   }, [load, pathname]);
+
+  useEffect(() => setMobileOpen(false), [pathname]);
 
   const addObject = async (api: string) => {
     setAdding(api);
@@ -109,22 +115,61 @@ export function NavRail() {
   const connected = data?.connection?.status === "connected";
   const activeObject = pathname.startsWith("/objects/") ? pathname.split("/")[2] : null;
 
+  const signOut = async () => {
+    await fetch("/api/session", { method: "DELETE" });
+    window.location.assign("/login");
+  };
+
   return (
-    <nav className="w-[224px] shrink-0 border-r border-line-soft bg-surface px-3 py-5 flex flex-col gap-5">
+    <>
+      <div className="fixed inset-x-0 top-0 z-30 flex h-[60px] items-center justify-between border-b border-line bg-surface px-4 lg:hidden">
+        <button
+          type="button"
+          className="st-btn !px-2.5 !py-1.5"
+          aria-label="Open navigation"
+          aria-expanded={mobileOpen}
+          onClick={() => setMobileOpen(true)}
+        >
+          Menu
+        </button>
+        <span className="text-[15px] font-semibold tracking-[-0.02em]">Cardstack Studio</span>
+        <span className="w-[58px]" />
+      </div>
+      {mobileOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-30 bg-[rgba(20,24,40,0.35)] lg:hidden"
+          aria-label="Close navigation"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+      <nav
+        className={`fixed inset-y-0 left-0 z-40 flex w-[252px] shrink-0 flex-col gap-5 border-r border-line bg-surface px-3 py-5 shadow-xl transition-transform lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:shadow-none ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
       <div className="flex items-center gap-2 px-2">
         <span className="relative inline-block h-3.5 w-3.5">
           <span className="absolute left-0 top-0 h-2.5 w-2.5 rounded-[3px] border-[1.4px] border-ink opacity-50" />
           <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-[3px] border-[1.4px] border-ink" />
         </span>
-        <span className="text-[13.5px] font-semibold tracking-tight">Cardstack Studio</span>
+        <span className="text-[15px] font-semibold tracking-[-0.02em]">Cardstack Studio</span>
+        <button
+          type="button"
+          className="st-btn ml-auto !px-2 !py-1 lg:hidden"
+          aria-label="Close navigation"
+          onClick={() => setMobileOpen(false)}
+        >
+          ×
+        </button>
       </div>
 
       <RailLink href="/" active={pathname === "/"}>
-        Home
+        Overview
       </RailLink>
 
       <div>
-        <div className="st-section-label px-2.5 pb-1.5">Objects</div>
+        <div className="st-section-label px-2.5 pb-1.5">Cards</div>
         {data && !connected && (
           <div className="px-2.5 py-1.5 text-[12px] text-ink-45">
             No CRM connected —{" "}
@@ -243,23 +288,26 @@ export function NavRail() {
 
       {connected && (
         <div>
-          <div className="st-section-label px-2.5 pb-1.5">Shared</div>
-          {/* Home card / custom screens / flows all read from the connected CRM.
-              Audit log is intentionally omitted — the CRM's own field history /
-              setup audit trail is the system of record for changes. */}
+          <div className="st-section-label px-2.5 pb-1.5">Workspace</div>
           <RailLink href="/home-card" active={pathname === "/home-card"}>
             Home card
           </RailLink>
-          <RailLink href="/custom-screens" active={pathname === "/custom-screens"}>
-            Custom screens
-          </RailLink>
           <RailLink href="/flows" active={pathname === "/flows"}>
-            Flows
+            Automations
+          </RailLink>
+          <RailLink href="/audit" active={pathname === "/audit"}>
+            Activity
+          </RailLink>
+          <RailLink href="/custom-screens" active={pathname === "/custom-screens"}>
+            <span className="flex items-center justify-between">
+              <span>Labs</span>
+              <span className="st-chip-mono bg-draft text-draft-ink">preview</span>
+            </span>
           </RailLink>
         </div>
       )}
 
-      <div className="mt-auto">
+      <div className="mt-auto space-y-1">
         <RailLink href="/connections" active={pathname === "/connections"}>
           <span className="flex items-center gap-2">
             <span
@@ -268,7 +316,15 @@ export function NavRail() {
             Connections
           </span>
         </RailLink>
+        <button
+          type="button"
+          className="block w-full rounded-[8px] px-2.5 py-1.5 text-left text-[13px] text-ink-55 hover:bg-paper hover:text-ink"
+          onClick={signOut}
+        >
+          Sign out
+        </button>
       </div>
-    </nav>
+      </nav>
+    </>
   );
 }

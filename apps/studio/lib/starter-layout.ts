@@ -13,6 +13,11 @@ const TITLE_CANDIDATES = [
   "hs_full_name_or_email",
   "name",
   "Name",
+  // Salesforce objects that have no Name: Task/Event title on Subject, Case on
+  // CaseNumber. Without these the fallback picks `Id` and every card is titled
+  // with a raw record id.
+  "Subject",
+  "CaseNumber",
   "subject",
   "email",
   "firstname",
@@ -56,16 +61,58 @@ function score(field: FieldDescribe): number {
   return value;
 }
 
+// ---- Palette ranking (UX review 2026-07-26 P1-8) -------------------------
+// Describe order is API order, which fronts Account ID / Deleted / Master
+// Record and nine address components. The palette ranks by signal instead
+// and folds plumbing into collapsed groups.
+
+/** Record-keeping plumbing an admin almost never puts on a card. */
+const SYSTEM_FIELD =
+  /^(Id|IsDeleted|MasterRecordId|SystemModstamp|CreatedById|LastModifiedById|LastViewedDate|LastReferencedDate|LastActivityDate|RecordTypeId|CleanStatus|Jigsaw.*|PhotoUrl)$|^hs_(object_id|createdate|lastmodifieddate|all_|user_ids)/i;
+
+/** Compound-address components (Billing/Shipping/Mailing/bare Lead variants). */
+const ADDRESS_FIELD =
+  /^(Billing|Shipping|Mailing|Other)?(Street|City|State|StateCode|PostalCode|Country|CountryCode|Latitude|Longitude|GeocodeAccuracy|Address)$/;
+
+export type PaletteGroup = "main" | "address" | "system";
+
+export function paletteGroup(field: FieldDescribe): PaletteGroup {
+  if (SYSTEM_FIELD.test(field.api)) return "system";
+  if (ADDRESS_FIELD.test(field.api)) return "address";
+  return "main";
+}
+
+/** Higher = earlier in the palette. Known high-signal names first, then the
+ * generic score, with a nudge for admin-created custom fields. */
+export function paletteRank(field: FieldDescribe): number {
+  const known = BODY_PRIORITY.indexOf(field.api);
+  if (known >= 0) return 1000 - known;
+  let value = score(field);
+  if (field.api.endsWith("__c")) value += 2;
+  return value;
+}
+
+/** True when a field makes sense as a card title/subtitle — keeps `Deleted`
+ * and `System Modstamp` out of the header dropdowns. */
+export function headerCandidate(field: FieldDescribe): boolean {
+  return paletteGroup(field) !== "system" && field.type !== "boolean";
+}
+
 export function generateStarterLayout(
   tenantId: string,
   describe: ObjectDescribe,
   crm: "hubspot" | "salesforce" = "hubspot",
 ): LayoutConfig {
   const fields = describe.fields;
+  // The fallbacks skip system plumbing — `Id` is required, string-typed and
+  // first in Salesforce's describe, so an unfiltered search titles the card
+  // with a raw record id.
+  const titleable = fields.filter((f) => paletteGroup(f) !== "system");
   const title =
     pick(fields, TITLE_CANDIDATES) ??
-    fields.find((f) => f.required && f.type === "string") ??
-    fields.find((f) => f.type === "string") ??
+    titleable.find((f) => f.required && f.type === "string") ??
+    titleable.find((f) => f.type === "string") ??
+    titleable[0] ??
     fields[0];
   if (!title) throw new Error(`${describe.api} has no fields to build a layout from.`);
   const badge = pick(fields.filter((f) => f.api !== title.api), BADGE_CANDIDATES);

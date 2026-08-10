@@ -5,7 +5,7 @@ import { getUserContextFromRequest } from "../../../../../lib/auth";
 export async function POST(req: Request, { params }: { params: Promise<{ object: string }> }) {
   const { object } = await params;
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     const published = await (await getStore()).publish(tenantId, object);
     return NextResponse.json({ published });
   } catch (error) {

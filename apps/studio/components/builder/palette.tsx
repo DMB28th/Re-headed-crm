@@ -1,7 +1,14 @@
 "use client";
-/** Left palette (2a): searchable describe fields, gaps nudge, used-field dimming. */
+/**
+ * Left palette (2a): searchable describe fields ranked by SIGNAL (not API
+ * order — that fronts `Id`/`IsDeleted`/address parts), with address and
+ * system plumbing folded into collapsed groups. Gaps nudge, used-field
+ * dimming.
+ */
 import { useState } from "react";
-import type { ObjectDescribe } from "@cardstack/core";
+import type { FieldDescribe, ObjectDescribe } from "@cardstack/core";
+import { crmDisplayLabel } from "../../lib/crm-label";
+import { paletteGroup, paletteRank } from "../../lib/starter-layout";
 import { usePortalInfo } from "../use-portal-info";
 
 export function Palette({
@@ -16,30 +23,30 @@ export function Palette({
   onAdd: (api: string) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [openGroups, setOpenGroups] = useState<{ address: boolean; system: boolean }>({
+    address: false,
+    system: false,
+  });
   const { info } = usePortalInfo();
-  const crmLabel = crm === "hubspot" ? "HubSpot" : "Salesforce";
-  const fields = describe.fields.filter(
-    (f) =>
-      !query ||
-      f.label.toLowerCase().includes(query.toLowerCase()) ||
-      f.api.toLowerCase().includes(query.toLowerCase()),
-  );
+  const crmLabel = crmDisplayLabel(crm);
+  const matches = (f: FieldDescribe) =>
+    !query ||
+    f.label.toLowerCase().includes(query.toLowerCase()) ||
+    f.api.toLowerCase().includes(query.toLowerCase());
+  const bySignal = (a: FieldDescribe, b: FieldDescribe) =>
+    paletteRank(b) - paletteRank(a) || a.label.localeCompare(b.label);
+  const fields = describe.fields.filter(matches).sort(bySignal);
+  // Searching flattens the groups — a filtered-out match reads as "missing".
+  const grouped = query
+    ? { main: fields, address: [], system: [] }
+    : {
+        main: fields.filter((f) => paletteGroup(f) === "main"),
+        address: fields.filter((f) => paletteGroup(f) === "address"),
+        system: fields.filter((f) => paletteGroup(f) === "system"),
+      };
   const missing = describe.fields.filter((f) => !f.description).length;
 
-  return (
-    <aside className="w-[264px] shrink-0 overflow-y-auto">
-      <input
-        type="search"
-        placeholder="Search fields…"
-        className="st-input w-full"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
-      <div className="st-section-label mt-4 pb-1.5">
-        {describe.label} fields · {describe.fields.length}
-      </div>
-      <div className="space-y-1">
-        {fields.map((field) => {
+  const fieldButton = (field: FieldDescribe) => {
           const used = usedFields.has(field.api);
           return (
             <button
@@ -71,8 +78,38 @@ export function Palette({
               </span>
             </button>
           );
-        })}
+  };
+
+  const collapsedGroup = (key: "address" | "system", label: string, groupFields: FieldDescribe[]) =>
+    groupFields.length > 0 && (
+      <div className="mt-3">
+        <button
+          type="button"
+          className="st-section-label w-full pb-1.5 text-left text-ink-45 hover:text-ink"
+          aria-expanded={openGroups[key]}
+          onClick={() => setOpenGroups((g) => ({ ...g, [key]: !g[key] }))}
+        >
+          {openGroups[key] ? "▾" : "▸"} {label} · {groupFields.length}
+        </button>
+        {openGroups[key] && <div className="space-y-1">{groupFields.map(fieldButton)}</div>}
       </div>
+    );
+
+  return (
+    <aside className="max-h-[420px] w-full shrink-0 overflow-y-auto xl:max-h-none xl:w-[240px]">
+      <input
+        type="search"
+        placeholder="Search fields…"
+        className="st-input w-full"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      <div className="st-section-label mt-4 pb-1.5">
+        {describe.label} fields · {describe.fields.length}
+      </div>
+      <div className="space-y-1">{grouped.main.map(fieldButton)}</div>
+      {collapsedGroup("address", "Address fields", grouped.address)}
+      {collapsedGroup("system", "System & audit", grouped.system)}
 
       {missing > 0 && (
         <div className="mt-4 rounded-[10px] bg-crmmeta p-3 text-[11.5px] text-crmmeta-ink">

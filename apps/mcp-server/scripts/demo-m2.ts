@@ -7,7 +7,11 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { MockCrmAdapter } from "@cardstack/crm-adapters";
-import type { RecordCardPayload, WriteReceiptPayload } from "@cardstack/core";
+import type {
+  RecordCardPayload,
+  UpdatePreviewPayload,
+  WriteReceiptPayload,
+} from "@cardstack/core";
 import { createCardstackServer } from "../src/server.js";
 import { DEMO_TENANT_ID, InMemoryConfigStore } from "../src/config/store.js";
 import { InMemoryAuditLog } from "../src/audit.js";
@@ -17,6 +21,8 @@ const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
 const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
+/** Combining long stroke overlay — the diff's "before" reads as struck through. */
+const strike = (s: string) => [...s].map((c) => `${c}̶`).join("");
 
 const textOf = (result: { content?: unknown }): string => {
   const content = result.content as { type: string; text?: string }[];
@@ -47,13 +53,35 @@ async function main() {
   );
 
   console.log(bold("User edits Stage → Negotiation, Amount → 135000, clicks [Review & save…]"));
-  console.log(`${dim("widget shows the confirmation diff:")}
-    FIELD    BEFORE          AFTER
-    Stage    ${red("C̶o̶n̶t̶r̶a̶c̶t̶ ̶s̶e̶n̶t̶")}   ${green("Negotiation")}
-    Amount   ${red("1̶2̶8̶4̶0̶0̶")}          ${green("135000")}
-    ${dim("Written as Demo rep · logged in HubSpot history")}
-`);
-  console.log(bold("User clicks [✎ Confirm & write to HubSpot] → widget calls crm_update_record via the HOST\n"));
+  console.log(
+    bold("widget calls crm_preview_update — the SERVER computes the diff and signs it\n"),
+  );
+  const preview = await client.callTool({
+    name: "crm_preview_update",
+    arguments: {
+      object: "deals",
+      id: "d-001",
+      patch: { dealstage: "Negotiation", amount: 135000 },
+    },
+  });
+  const previewPayload = preview.structuredContent as unknown as UpdatePreviewPayload;
+  console.log(dim("widget shows the confirmation diff (server-computed, nothing written yet):"));
+  console.log("    FIELD    BEFORE          AFTER");
+  for (const c of previewPayload.changes) {
+    console.log(
+      `    ${c.label.padEnd(8)} ${red(strike(String(c.before)))}   ${green(String(c.after))}`,
+    );
+  }
+  console.log(dim("    Written as Demo rep · logged in HubSpot history"));
+  console.log(
+    dim(
+      `    confirm token ${previewPayload.confirmToken.slice(0, 12)}… bound to THIS diff, expires ${previewPayload.expiresAt}\n`,
+    ),
+  );
+
+  console.log(
+    bold("User clicks [✎ Confirm & write to HubSpot] → crm_update_record WITH the token\n"),
+  );
 
   const write = await client.callTool({
     name: "crm_update_record",
@@ -61,6 +89,7 @@ async function main() {
       object: "deals",
       id: "d-001",
       patch: { dealstage: "Negotiation", amount: 135000 },
+      confirmToken: previewPayload.confirmToken,
     },
   });
   const receipt = write.structuredContent as unknown as WriteReceiptPayload;
@@ -84,7 +113,32 @@ async function main() {
           e.changes.map((c) => `${c.field}: ${c.before}→${c.after}`).join(", "),
       ),
     );
+    console.log(
+      `    ${green("✓")} confirmation: ${bold(e.confirmation?.via ?? "not recorded")} ${dim(
+        e.confirmation?.via === "widget"
+          ? `— server verified token ${e.confirmation.confirmationId?.slice(0, 8)}… against this exact diff`
+          : "— no confirmation token presented",
+      )}`,
+    );
   }
+
+  console.log(bold("\n--- what the token buys: a tampered write is refused ---"));
+  console.log(
+    dim("the rep confirmed 135000; a caller replays that token with a different amount\n"),
+  );
+  const tampered = await client.callTool({
+    name: "crm_update_record",
+    arguments: {
+      object: "deals",
+      id: "d-001",
+      patch: { amount: 999999 },
+      confirmToken: previewPayload.confirmToken,
+    },
+  });
+  console.log(`  ${red("✕")} ${textOf(tampered)}`);
+  console.log(
+    dim(`  audit entries still: ${(await auditLog.list(DEMO_TENANT_ID)).length} (nothing logged)`),
+  );
 
   console.log(bold("\n--- partial failure path (design 1e) ---"));
   console.log(bold("User tries Stage → Closed lost (no loss reason) + Amount → 130000\n"));

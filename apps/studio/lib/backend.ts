@@ -16,6 +16,7 @@
 import path from "node:path";
 import {
   createPostgresConfigStore,
+  encryptionEnabled,
   FileConfigStore,
   DEMO_TENANT_ID,
   FileAuditLog,
@@ -24,9 +25,19 @@ import {
   type AdminConfigStore,
   type AuditLog,
 } from "@cardstack/config-store";
-import { createAdapterForConnection, type CrmAdapter } from "@cardstack/crm-adapters";
+import {
+  createAdapterForConnection,
+  createDevSalesforceAdapter,
+  devSalesforceOrg,
+  type CrmAdapter,
+} from "@cardstack/crm-adapters";
 
-export const TENANT_ID = process.env.CARDSTACK_TENANT_ID ?? DEMO_TENANT_ID;
+/**
+ * Workspace id for the pre-accounts access-key bridge in /api/session only.
+ * NOT a request-scoped default: everything else resolves the workspace from the
+ * signed-in session, because a deployment now serves many workspaces.
+ */
+export const LEGACY_TENANT_ID = process.env.CARDSTACK_TENANT_ID ?? DEMO_TENANT_ID;
 
 const configPath =
   process.env.CARDSTACK_CONFIG_PATH ??
@@ -34,6 +45,11 @@ const configPath =
 
 let storePromise: Promise<AdminConfigStore> | undefined;
 export function getStore(): Promise<AdminConfigStore> {
+  if (process.env.NODE_ENV === "production" && process.env.DATABASE_URL && !encryptionEnabled()) {
+    throw new Error(
+      "Studio is locked: CARDSTACK_ENCRYPTION_KEY is required in production.",
+    );
+  }
   storePromise ??= process.env.DATABASE_URL
     ? createPostgresConfigStore(process.env.DATABASE_URL)
     : Promise.resolve(new FileConfigStore(configPath));
@@ -49,8 +65,19 @@ export function getAuditLog(): Promise<AuditLog> {
   return auditPromise;
 }
 
-/** The tenant's adapter per its CURRENT connection (read fresh each call). */
-export async function getAdapter(tenantId = TENANT_ID): Promise<CrmAdapter> {
+/**
+ * The tenant's adapter per its CURRENT connection (read fresh each call).
+ *
+ * `tenantId` is REQUIRED — it used to default to the process-wide TENANT_ID,
+ * which in a multi-workspace deployment would silently serve one customer's
+ * adapter to another. Callers derive it from the signed-in session.
+ */
+export async function getAdapter(tenantId: string): Promise<CrmAdapter> {
+  // LOCAL DEV: CARDSTACK_DEV_SF_ORG points the whole app at a real Salesforce
+  // org via the sf CLI's own auth, bypassing the stored connection entirely so
+  // no token of the deployed connected app is ever read, refreshed, or written.
+  const devOrg = devSalesforceOrg();
+  if (devOrg) return createDevSalesforceAdapter(devOrg);
   const store = await getStore();
   const connection = await store.getConnection(tenantId);
   return createAdapterForConnection({

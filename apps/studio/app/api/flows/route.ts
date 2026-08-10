@@ -33,7 +33,7 @@ export interface FlowAdminRow {
 
 export async function GET(req: Request) {
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     const store = await getStore();
     const connection = await store.getConnection(tenantId);
     if (connection.status !== "connected") {
@@ -60,6 +60,7 @@ export async function GET(req: Request) {
       const record = await store.getLayoutRecord(tenantId, object).catch(() => null);
       const config = record?.draft ?? record?.published;
       for (const action of config?.recordCard.actions ?? []) {
+        if (action.enabled === false) continue;
         if (action.type === "screen_flow") {
           const list = assignments.get(action.flowApiName) ?? [];
           list.push({ object, label: action.label });
@@ -139,7 +140,7 @@ export async function GET(req: Request) {
 
 export async function PUT(req: Request) {
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     const body = (await req.json()) as { flowApiName?: string; mode?: string };
     const config = FlowRenderModeConfig.parse({
       version: 1,

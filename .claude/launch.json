@@ -4,8 +4,13 @@
     {
       "name": "studio",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@cardstack/studio", "dev"],
-      "port": 3002
+      "runtimeArgs": [
+        "--filter",
+        "@cardstack/studio",
+        "dev"
+      ],
+      "port": 3002,
+      "autoPort": true
     },
     {
       "name": "flow-widget-harness",
@@ -18,6 +23,17 @@
         "/private/tmp/claude-501/-Users-danielben-atar-Re-headed-crm/e69663ca-f12f-4d99-b79e-ff1e9c3be4db/scratchpad/harness/dist"
       ],
       "port": 4173
+    },
+    {
+      "name": "studio-salesforce",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@cardstack/studio",
+        "dev:sf"
+      ],
+      "port": 3002,
+      "autoPort": true
     }
   ]
 }

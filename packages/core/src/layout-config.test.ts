@@ -71,3 +71,46 @@ describe("screen_flow action inputs", () => {
     });
   });
 });
+
+describe("CardAction.enabled", () => {
+  const base = {
+    version: 1 as const,
+    tenantId: "t1",
+    crm: "hubspot" as const,
+    object: "deals",
+    listView: { columns: ["dealname"] },
+    permissions: { writeEnabled: true, fieldDenylist: [], requireConfirmation: true as const },
+  };
+
+  it("defaults every action to enabled when the key is absent", () => {
+    const parsed = parseLayoutConfig({
+      ...base,
+      recordCard: {
+        header: { title: "dealname" },
+        sections: [{ label: "Details", fields: [{ api: "dealname" }] }],
+        actions: [
+          { type: "update_record", label: "Edit fields" },
+          { type: "create_related", object: "tasks", label: "Log a task" },
+          { type: "quick_action", actionApiName: "NewTask", label: "New task" },
+          { type: "screen_flow", flowApiName: "Renewal", label: "Renewal", embed: "auto" },
+        ],
+      },
+    });
+    expect(parsed.recordCard.actions.map((a) => a.enabled)).toEqual([true, true, true, true]);
+  });
+
+  it("round-trips enabled: false", () => {
+    const parsed = parseLayoutConfig({
+      ...base,
+      recordCard: {
+        header: { title: "dealname" },
+        sections: [{ label: "Details", fields: [{ api: "dealname" }] }],
+        actions: [{ type: "update_record", label: "Edit fields", enabled: false }],
+      },
+    });
+    expect(parsed.recordCard.actions[0].enabled).toBe(false);
+    expect(parseLayoutConfig(JSON.parse(JSON.stringify(parsed))).recordCard.actions[0].enabled).toBe(
+      false,
+    );
+  });
+});

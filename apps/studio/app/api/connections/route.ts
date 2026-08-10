@@ -24,7 +24,7 @@ async function scopeGapsFor(adapter: CrmAdapter): Promise<string[]> {
 }
 
 export async function GET(req: Request) {
-  const { tenantId } = getUserContextFromRequest(req);
+  const { tenantId } = await getUserContextFromRequest(req);
   const store = await getStore();
   const connection = await store.getConnection(tenantId);
   if (connection.status !== "connected") {
@@ -45,7 +45,7 @@ interface ConnectBody {
 }
 
 export async function POST(req: Request) {
-  const { tenantId } = getUserContextFromRequest(req);
+  const { tenantId } = await getUserContextFromRequest(req);
   const body = (await req.json()) as ConnectBody;
   const store = await getStore();
 

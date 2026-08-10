@@ -9,6 +9,7 @@ import type {
   ViewExposure,
   ViewExposuresConfig,
 } from "@cardstack/core";
+import type { IdentityStore } from "./identity.js";
 
 /**
  * Whether a CRM is wired up for the tenant. Disconnected = empty canvas:
@@ -117,7 +118,7 @@ export interface PublishEvent {
 }
 
 /** Write side — what Studio needs on top of the read side. */
-export interface AdminConfigStore extends ConfigStore {
+export interface AdminConfigStore extends ConfigStore, IdentityStore {
   getLayoutRecord(tenantId: string, object: string, audience?: string): Promise<LayoutRecord>;
   saveDraft(config: LayoutConfig): Promise<void>;
   discardDraft(tenantId: string, object: string, audience?: string): Promise<void>;

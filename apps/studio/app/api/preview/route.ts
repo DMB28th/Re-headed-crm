@@ -13,6 +13,7 @@ import {
   type HomeCardPayload,
   type LayoutConfig,
   type LookupOptionsPayload,
+  type UpdatePreviewPayload,
   type WriteReceiptPayload,
 } from "@cardstack/core";
 import { HomeCardConfig as HomeCardConfigSchema } from "@cardstack/core";
@@ -30,7 +31,15 @@ import { getUserContextFromRequest } from "../../../lib/auth";
  */
 
 interface PreviewBody {
-  kind: "record" | "view" | "home" | "related" | "lookup" | "write" | "complete-task";
+  kind:
+    | "record"
+    | "view"
+    | "home"
+    | "related"
+    | "lookup"
+    | "preview-write"
+    | "write"
+    | "complete-task";
   object?: string;
   config?: unknown;
   recordId?: string;
@@ -53,7 +62,7 @@ async function layoutFor(tenantId: string, object: string, posted?: unknown): Pr
 
 export async function POST(req: Request) {
   try {
-    const user = getUserContextFromRequest(req);
+    const user = await getUserContextFromRequest(req);
     const { tenantId } = user;
     const body = (await req.json()) as PreviewBody;
     const store = await getStore();
@@ -216,6 +225,7 @@ export async function POST(req: Request) {
           crmLabel: connection.crm === "salesforce" ? "Salesforce" : "HubSpot",
           layoutRevision: config.revision,
           connectedUser: await adapter.getConnectedUser().catch(() => "—"),
+          fetchedAt: new Date().toISOString(),
         },
       };
       return NextResponse.json({ payload, live });
@@ -273,6 +283,53 @@ export async function POST(req: Request) {
         text: `Preview: completed "${task.subject}" (simulated — mock portal only).`,
         live,
       });
+    }
+
+    // The confirmation diff the card shows before a write. In chat this is
+    // crm_preview_update, which mints a signed token the audit log verifies;
+    // here there is nothing to attest — builder writes hit the mock portal and
+    // are never audited — so the token is a visible placeholder rather than
+    // something that could be mistaken for a real confirmation.
+    if (body.kind === "preview-write") {
+      if (!body.object || !body.recordId || !body.patch) {
+        throw new Error("object, recordId and patch required");
+      }
+      const config = await layoutFor(tenantId, body.object, body.config);
+      const patch = body.patch;
+      const before = await adapter.getRecord(config.object, body.recordId, Object.keys(patch));
+      const describe = await adapter.describeObject(config.object);
+      const changes = Object.entries(patch)
+        .filter(([field, value]) => (before.fields[field] ?? null) !== (value ?? null))
+        .map(([field, value]) => ({
+          field,
+          label: describe.fields.find((f) => f.api === field)?.label ?? field,
+          before: before.fields[field] ?? null,
+          after: value ?? null,
+        }));
+      if (changes.length === 0) {
+        return NextResponse.json(
+          { error: "Nothing to change — every value matches what's already in the mock portal." },
+          { status: 400 },
+        );
+      }
+      const named = await adapter.getRecord(config.object, body.recordId, [
+        config.recordCard.header.title,
+      ]);
+      const payload: UpdatePreviewPayload = {
+        kind: "update-preview",
+        object: config.object,
+        recordId: body.recordId,
+        recordName: String(named.fields[config.recordCard.header.title] ?? body.recordId),
+        changes,
+        confirmToken: "preview-not-a-real-confirmation",
+        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+        provenance: {
+          crm: config.crm,
+          crmLabel: config.crm === "hubspot" ? "HubSpot" : "Salesforce",
+          layoutRevision: config.revision,
+        },
+      };
+      return NextResponse.json({ payload, live });
     }
 
     if (body.kind === "write") {

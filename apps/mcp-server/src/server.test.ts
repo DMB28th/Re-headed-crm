@@ -2,6 +2,8 @@
  * Integration tests: a real MCP client talking to the server over an in-memory
  * transport — the M0 round-trip check plus M1's golden-path and security gates.
  */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -11,6 +13,7 @@ import type {
   LayoutConfig,
   RecordCardPayload,
   ResultsTablePayload,
+  UpdatePreviewPayload,
   UserContext,
   WriteReceiptPayload,
 } from "@cardstack/core";
@@ -243,6 +246,115 @@ describe("golden path 1: search → record card", () => {
   });
 });
 
+/**
+ * The confirmation diff is the product's spine (CLAUDE.md hard rule 8). These
+ * cover the part the server can actually enforce: that "a rep confirmed this"
+ * in the audit log is a verified finding rather than a caller's assertion.
+ */
+describe("confirmation provenance", () => {
+  const preview = async (patch: Record<string, unknown>) => {
+    const result = await client.callTool({
+      name: "crm_preview_update",
+      arguments: { object: "deals", id: "d-001", patch },
+    });
+    return result.structuredContent as unknown as UpdatePreviewPayload;
+  };
+
+  it("previews a diff without writing anything", async () => {
+    const payload = await preview({ amount: 135000 });
+    expect(payload.kind).toBe("update-preview");
+    expect(payload.changes).toEqual([
+      { field: "amount", label: "Amount", before: 128400, after: 135000 },
+    ]);
+    expect(payload.confirmToken).toBeTruthy();
+
+    // Nothing written, nothing logged.
+    const record = await client.callTool({
+      name: "crm_get_record",
+      arguments: { object: "deals", id: "d-001" },
+    });
+    expect((record.structuredContent as unknown as RecordCardPayload).record.fields.amount).toBe(
+      128400,
+    );
+    expect(await auditLog.list(DEMO_TENANT_ID)).toHaveLength(0);
+  });
+
+  it("records a token-backed write as rep-confirmed", async () => {
+    const { confirmToken } = await preview({ amount: 135000 });
+    const result = await client.callTool({
+      name: "crm_update_record",
+      arguments: { object: "deals", id: "d-001", patch: { amount: 135000 }, confirmToken },
+    });
+    expect(result.isError).toBeFalsy();
+    const [entry] = await auditLog.list(DEMO_TENANT_ID);
+    expect(entry!.confirmation?.via).toBe("widget");
+    expect(entry!.confirmation?.confirmationId).toBeTruthy();
+    expect(entry!.confirmation?.previewedAt).toBeTruthy();
+  });
+
+  it("refuses to write when the patch differs from what was confirmed", async () => {
+    // The rep approved 135000; the caller submits ten times that.
+    const { confirmToken } = await preview({ amount: 135000 });
+    const result = await client.callTool({
+      name: "crm_update_record",
+      arguments: { object: "deals", id: "d-001", patch: { amount: 1350000 }, confirmToken },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("doesn't match the changes being written");
+    expect(await auditLog.list(DEMO_TENANT_ID)).toHaveLength(0);
+
+    const record = await client.callTool({
+      name: "crm_get_record",
+      arguments: { object: "deals", id: "d-001" },
+    });
+    expect((record.structuredContent as unknown as RecordCardPayload).record.fields.amount).toBe(
+      128400,
+    );
+  });
+
+  it("refuses a forged token rather than downgrading it to model-initiated", async () => {
+    const result = await client.callTool({
+      name: "crm_update_record",
+      arguments: {
+        object: "deals",
+        id: "d-001",
+        patch: { amount: 135000 },
+        confirmToken: "bogus.token",
+      },
+    });
+    expect(result.isError).toBe(true);
+    expect(await auditLog.list(DEMO_TENANT_ID)).toHaveLength(0);
+  });
+
+  it("refuses a token minted for a different record", async () => {
+    const { confirmToken } = await preview({ amount: 135000 });
+    const result = await client.callTool({
+      name: "crm_update_record",
+      arguments: { object: "deals", id: "d-002", patch: { amount: 135000 }, confirmToken },
+    });
+    expect(result.isError).toBe(true);
+    expect(await auditLog.list(DEMO_TENANT_ID)).toHaveLength(0);
+  });
+
+  it("preview enforces the same gauntlet as the write (no token for a non-editable field)", async () => {
+    const result = await client.callTool({
+      name: "crm_preview_update",
+      arguments: { object: "deals", id: "d-001", patch: { createdate: "2020-01-01" } },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("Not editable on this layout");
+  });
+
+  it("will not mint a token for a no-op diff", async () => {
+    const result = await client.callTool({
+      name: "crm_preview_update",
+      arguments: { object: "deals", id: "d-001", patch: { amount: 128400 } },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("Nothing to change");
+  });
+});
+
 describe("golden path 2: confirmed write → receipt → audit", () => {
   it("writes a patch, returns per-field receipt, and logs the audit entry", async () => {
     const result = await client.callTool({
@@ -277,6 +389,15 @@ describe("golden path 2: confirmed write → receipt → audit", () => {
       before: "Contract sent",
       after: "Negotiation",
     });
+  });
+
+  it("logs a write with no confirm token as model-initiated", async () => {
+    await client.callTool({
+      name: "crm_update_record",
+      arguments: { object: "deals", id: "d-001", patch: { amount: 135000 } },
+    });
+    const [entry] = await auditLog.list(DEMO_TENANT_ID);
+    expect(entry!.confirmation).toEqual({ via: "model" });
   });
 
   it("lookup write: patch carries an ID, receipt shows the record's NAME", async () => {
@@ -508,6 +629,42 @@ describe("M4: home card (crm_home + crm_complete_task)", () => {
     const home = await client.callTool({ name: "crm_home", arguments: {} });
     const payload = home.structuredContent as { tasks: { id: string }[] };
     expect(payload.tasks.find((t) => t.id === "t-01")).toBeUndefined();
+  });
+
+  it("a check-off with no token is logged as model-initiated", async () => {
+    await client.callTool({ name: "crm_complete_task", arguments: { id: "t-01" } });
+    const [entry] = await auditLog.list(DEMO_TENANT_ID);
+    expect(entry!.confirmation).toEqual({ via: "model" });
+  });
+
+  it("a token-backed check-off is logged as rep-confirmed", async () => {
+    const preview = await client.callTool({
+      name: "crm_preview_complete_task",
+      arguments: { id: "t-01" },
+    });
+    // Preview writes nothing.
+    expect(await auditLog.list(DEMO_TENANT_ID)).toHaveLength(0);
+    const { confirmToken } = preview.structuredContent as { confirmToken: string };
+    await client.callTool({
+      name: "crm_complete_task",
+      arguments: { id: "t-01", confirmToken },
+    });
+    const [entry] = await auditLog.list(DEMO_TENANT_ID);
+    expect(entry!.confirmation?.via).toBe("widget");
+  });
+
+  it("a token minted for one task cannot check off another", async () => {
+    const preview = await client.callTool({
+      name: "crm_preview_complete_task",
+      arguments: { id: "t-01" },
+    });
+    const { confirmToken } = preview.structuredContent as { confirmToken: string };
+    const done = await client.callTool({
+      name: "crm_complete_task",
+      arguments: { id: "t-02", confirmToken },
+    });
+    expect(done.isError).toBe(true);
+    expect(await auditLog.list(DEMO_TENANT_ID)).toHaveLength(0);
   });
 });
 
@@ -807,5 +964,257 @@ describe("flow runtime (HANDOFF rung)", () => {
     });
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain("not configured");
+  });
+
+  async function serverWithDisabledFlowLayout() {
+    const configStore = new InMemoryConfigStore();
+    const layout: LayoutConfig = {
+      ...structuredClone(demoDealsLayout),
+      recordCard: {
+        ...structuredClone(demoDealsLayout.recordCard),
+        actions: [
+          ...structuredClone(demoDealsLayout.recordCard.actions),
+          {
+            type: "screen_flow",
+            flowApiName: "Renewal_Playbook",
+            label: "Run renewal playbook",
+            embed: "auto",
+            enabled: false,
+            inputs: { recordId: { source: "context", key: "recordId" } },
+          },
+        ],
+      },
+    };
+    await configStore.saveDraft(layout);
+    await configStore.publish(DEMO_TENANT_ID, "deals");
+    const server = await createCardstackServer({
+      adapter: new MockCrmAdapter(),
+      configStore,
+      auditLog: new InMemoryAuditLog(),
+      preferences: new InMemoryPreferenceStore(),
+      tenantId: DEMO_TENANT_ID,
+    });
+    const local = new Client({ name: "test-host", version: "0.0.1" });
+    const [c, s] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(s), local.connect(c)]);
+    return local;
+  }
+
+  it("crm_flow_start refuses a flow that is configured but disabled", async () => {
+    const local = await serverWithDisabledFlowLayout();
+    const result = await local.callTool({
+      name: "crm_flow_start",
+      arguments: { object: "deals", recordId: "d-001", flowApiName: "Renewal_Playbook" },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("not configured");
+  });
+
+  it("crm_flow_continue refuses a disabled flow too", async () => {
+    const local = await serverWithDisabledFlowLayout();
+    const result = await local.callTool({
+      name: "crm_flow_continue",
+      arguments: {
+        object: "deals",
+        recordId: "d-001",
+        flowApiName: "Renewal_Playbook",
+        actionSessionId: "s-1",
+      },
+    });
+    expect(result.isError).toBe(true);
+  });
+
+  async function serverWithDisabledQuickActionLayout() {
+    const configStore = new InMemoryConfigStore();
+    const layout: LayoutConfig = {
+      ...structuredClone(demoDealsLayout),
+      recordCard: {
+        ...structuredClone(demoDealsLayout.recordCard),
+        actions: [
+          ...structuredClone(demoDealsLayout.recordCard.actions),
+          {
+            type: "quick_action",
+            actionApiName: "LogACall",
+            label: "Log a call",
+            enabled: false,
+          },
+        ],
+      },
+    };
+    await configStore.saveDraft(layout);
+    await configStore.publish(DEMO_TENANT_ID, "deals");
+    const server = await createCardstackServer({
+      adapter: new MockCrmAdapter(),
+      configStore,
+      auditLog: new InMemoryAuditLog(),
+      preferences: new InMemoryPreferenceStore(),
+      tenantId: DEMO_TENANT_ID,
+    });
+    const local = new Client({ name: "test-host", version: "0.0.1" });
+    const [c, s] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(s), local.connect(c)]);
+    return local;
+  }
+
+  it("crm_quick_action_start refuses a quick action that is configured but disabled", async () => {
+    const local = await serverWithDisabledQuickActionLayout();
+    const result = await local.callTool({
+      name: "crm_quick_action_start",
+      arguments: { object: "deals", recordId: "d-001", actionApiName: "LogACall" },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("not configured");
+  });
+});
+
+/**
+ * The NATIVE rung — the interpreter actually running an org flow's metadata and
+ * doing the writes. Needs an adapter that can supply a flow definition; the mock
+ * portal has none, so these build one from the same fixture the interpreter's
+ * own tests use.
+ */
+describe("flow runtime (NATIVE rung): confirmation is server-verified", () => {
+  const flowDef = JSON.parse(
+    readFileSync(
+      fileURLToPath(
+        new URL("../../../packages/core/src/__fixtures__/test-screen-flow.json", import.meta.url),
+      ),
+      "utf8",
+    ),
+  ) as unknown;
+
+  async function nativeFlowServer() {
+    const adapter = new MockCrmAdapter() as MockCrmAdapter & {
+      getFlowDefinition?: (name: string) => Promise<unknown>;
+    };
+    adapter.getFlowDefinition = async (name: string) =>
+      name === "Test_Screen_Flow" ? flowDef : null;
+    // The fixture creates a Task, which the mock portal has no object for —
+    // without this the interpreter (correctly) degrades to handoff instead of
+    // reaching the write we're here to check.
+    (adapter as unknown as { createRecord: unknown }).createRecord = async (
+      _object: string,
+      fields: Record<string, unknown>,
+    ) => ({ id: "00T_NEW", fields });
+
+    const configStore = new InMemoryConfigStore();
+    const layout: LayoutConfig = {
+      ...structuredClone(demoDealsLayout),
+      recordCard: {
+        ...structuredClone(demoDealsLayout.recordCard),
+        actions: [
+          {
+            type: "screen_flow",
+            flowApiName: "Test_Screen_Flow",
+            label: "Run test flow",
+            embed: "native",
+            inputs: { recordId: { source: "context", key: "recordId" } },
+          },
+        ],
+      },
+    };
+    await configStore.saveDraft(layout);
+    await configStore.publish(DEMO_TENANT_ID, "deals");
+    const server = await createCardstackServer({
+      adapter,
+      configStore,
+      auditLog,
+      preferences: new InMemoryPreferenceStore(),
+      tenantId: DEMO_TENANT_ID,
+    });
+    const local = new Client({ name: "test-host", version: "0.0.1" });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(st), local.connect(ct)]);
+    return local;
+  }
+
+  const flowArgs = {
+    object: "deals",
+    recordId: "d-001",
+    flowApiName: "Test_Screen_Flow",
+    actionSessionId: "s-1",
+  };
+
+  /**
+   * Interview state is not a cursor — it carries pendingWrite and the answers a
+   * write executes with, so a forgeable one is a forgeable WRITE AUTHORIZATION.
+   * It used to pass through unsigned whenever CARDSTACK_ENCRYPTION_KEY was
+   * absent; it now shares the confirm token's never-degrading signer, so both
+   * write paths have one security floor.
+   */
+  it("rejects a forged interview state even with no encryption key set", async () => {
+    delete process.env.CARDSTACK_ENCRYPTION_KEY;
+    const local = await nativeFlowServer();
+    const forged = Buffer.from(
+      JSON.stringify({ frames: [{ pendingWrite: "Create_Order", answers: {} }] }),
+      "utf8",
+    ).toString("base64url");
+    const result = await local.callTool({
+      name: "crm_flow_continue",
+      arguments: { ...flowArgs, answers: {}, interviewState: forged, confirmWrite: true },
+    });
+    expect(textOf(result)).toMatch(/failed verification/i);
+    expect(await auditLog.list(DEMO_TENANT_ID)).toHaveLength(0);
+  });
+
+  it("interprets the flow, gates the write, and logs it as rep-confirmed", async () => {
+    const local = await nativeFlowServer();
+    const start = await local.callTool({ name: "crm_flow_start", arguments: flowArgs });
+    let payload = start.structuredContent as unknown as FlowRunPayload;
+    expect(payload.status).toBe("in-progress"); // rendered natively, not handed off
+
+    const step = async (answers: Record<string, unknown>, confirmWrite?: boolean) => {
+      const result = await local.callTool({
+        name: "crm_flow_continue",
+        arguments: {
+          ...flowArgs,
+          answers,
+          interviewState: payload.interviewState,
+          ...(confirmWrite !== undefined ? { confirmWrite } : {}),
+        },
+      });
+      payload = result.structuredContent as unknown as FlowRunPayload;
+      return payload;
+    };
+
+    // Intake → account table → rush confirm → the write pause.
+    await step({ CustomerName: "Jane", Quantity: 3, RushOrder: true, Priority: "High" });
+    await step({ Account_Table: ["001A"] });
+    const pause = await step({});
+    // The interpreter pauses for confirmation and has written nothing yet.
+    expect(pause.status).toBe("confirm-write");
+    expect(await auditLog.list(DEMO_TENANT_ID)).toHaveLength(0);
+
+    await step({}, true);
+    const [entry] = await auditLog.list(DEMO_TENANT_ID);
+    expect(entry).toBeDefined();
+    // The interpreter's write is rep-confirmed by the same standard as
+    // crm_update_record's token: it is unreachable without a signed state
+    // carrying pendingWrite plus an explicit confirmWrite.
+    expect(entry!.confirmation?.via).toBe("widget");
+  });
+
+  it("declining at the confirm pause writes nothing", async () => {
+    const local = await nativeFlowServer();
+    const start = await local.callTool({ name: "crm_flow_start", arguments: flowArgs });
+    let payload = start.structuredContent as unknown as FlowRunPayload;
+    const step = async (answers: Record<string, unknown>, confirmWrite?: boolean) => {
+      const result = await local.callTool({
+        name: "crm_flow_continue",
+        arguments: {
+          ...flowArgs,
+          answers,
+          interviewState: payload.interviewState,
+          ...(confirmWrite !== undefined ? { confirmWrite } : {}),
+        },
+      });
+      payload = result.structuredContent as unknown as FlowRunPayload;
+      return payload;
+    };
+    await step({ CustomerName: "Jane", Quantity: 3, RushOrder: true, Priority: "High" });
+    await step({ Account_Table: ["001A"] });
+    await step({});
+    await step({}, false);
+    expect(await auditLog.list(DEMO_TENANT_ID)).toHaveLength(0);
   });
 });

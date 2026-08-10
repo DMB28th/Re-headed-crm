@@ -31,14 +31,17 @@ import type {
   OAuthTokenRevocationRequest,
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
-import { normalizeUserId, DEFAULT_AUDIENCE, type UserContext } from "@cardstack/core";
+import { DEFAULT_AUDIENCE, type UserContext } from "@cardstack/core";
 import {
   buildSalesforceAuthorizationUrl,
+  cardstackSalesforceLoginApp,
   exchangeSalesforceAuthorizationCode,
+  fetchSalesforceSignerIdentity,
   normalizeSalesforceLoginUrl,
   type SalesforceCredentials,
+  type SalesforceLoginApp,
 } from "@cardstack/crm-adapters";
-import type { AdminConfigStore, UserConnectionState } from "@cardstack/config-store";
+import { resolveSignIn, type AdminConfigStore, type UserConnectionState } from "@cardstack/config-store";
 
 const NS = {
   clients: "oauth-clients",
@@ -62,6 +65,10 @@ interface PendingAuth {
   codeChallenge: string;
   mcpState: string | null;
   sfVerifier: string;
+  /** Host the authorize leg went to; the token exchange must match it. */
+  sfLoginUrl: string;
+  /** Set only while migrating a pre-workspace, single-tenant deployment. */
+  legacyTenantId?: string;
 }
 
 interface StoredCode {
@@ -94,25 +101,84 @@ export function userContextFromStoredUser(user: StoredUser): UserContext {
   };
 }
 
-/** Store surface the provider needs (kv + connections). */
+/** Store surface the provider needs (kv + connections + identity). */
 type ProviderStore = Pick<
   AdminConfigStore,
-  "kvGet" | "kvSet" | "kvDelete" | "getConnection" | "setUserConnection"
+  | "kvGet"
+  | "kvSet"
+  | "kvDelete"
+  | "getConnection"
+  | "setUserConnection"
+  | "getWorkspace"
+  | "getWorkspaceByOrgId"
+  | "createWorkspace"
+  | "getAccount"
+  | "getAccountBySalesforceUserId"
+  | "upsertAccount"
+  | "getMembership"
+  | "listMembershipsForAccount"
+  | "listMembershipsForWorkspace"
+  | "setMembership"
 >;
 
 export class CardstackOAuthProvider implements OAuthServerProvider {
   constructor(
     private readonly deps: {
       store: ProviderStore;
-      tenantId: string;
       /** Public MCP origin, e.g. https://cardstackmcp-server-production.up.railway.app */
       mcpOrigin: string;
       fetchImpl?: typeof fetch;
+      /** Overridable for tests; defaults to the CARDSTACK_SF_* env pair. */
+      loginApp?: SalesforceLoginApp;
+      /**
+       * Compatibility lane for existing single-tenant installs whose connected
+       * app still lives in the tenant's encrypted admin connection.
+       */
+      legacyTenantId?: string;
     },
   ) {}
 
+  private get loginApp(): SalesforceLoginApp | undefined {
+    return this.deps.loginApp ?? cardstackSalesforceLoginApp();
+  }
+
   private get sfCallbackUri(): string {
     return `${this.deps.mcpOrigin.replace(/\/$/, "")}/oauth/salesforce/callback`;
+  }
+
+  private async loginConfig(
+    legacyTenantId = this.deps.legacyTenantId,
+  ): Promise<
+    | { app: SalesforceLoginApp; loginUrl: string; legacyTenantId?: string }
+    | undefined
+  > {
+    const platformApp = this.loginApp;
+    if (platformApp) {
+      return {
+        app: platformApp,
+        loginUrl: normalizeSalesforceLoginUrl(process.env.CARDSTACK_SF_LOGIN_URL),
+      };
+    }
+    if (!legacyTenantId) return undefined;
+    const connection = await this.deps.store.getConnection(legacyTenantId);
+    const credentials = connection.credentials as SalesforceCredentials | undefined;
+    if (
+      connection.status !== "connected" ||
+      connection.crm !== "salesforce" ||
+      credentials?.authType !== "oauth" ||
+      !credentials.clientId ||
+      !credentials.clientSecret
+    ) {
+      return undefined;
+    }
+    return {
+      app: {
+        clientId: credentials.clientId,
+        clientSecret: credentials.clientSecret,
+      },
+      loginUrl: normalizeSalesforceLoginUrl(credentials.loginUrl),
+      legacyTenantId,
+    };
   }
 
   get clientsStore(): OAuthRegisteredClientsStore {
@@ -144,14 +210,14 @@ export class CardstackOAuthProvider implements OAuthServerProvider {
       if (params.state) url.searchParams.set("state", params.state);
       res.redirect(url.toString());
     };
-    const connection = await this.deps.store.getConnection(this.deps.tenantId);
-    const admin = connection.credentials as SalesforceCredentials | undefined;
-    if (
-      connection.status !== "connected" ||
-      connection.crm !== "salesforce" ||
-      admin?.authType !== "oauth"
-    ) {
-      fail("Cardstack: an admin must connect Salesforce with OAuth in Studio before reps can sign in.");
+    // New workspaces use Cardstack's connected app. Existing single-tenant
+    // installs may temporarily reuse the encrypted app on their admin
+    // connection so this migration doesn't break already-connected chat hosts.
+    const login = await this.loginConfig();
+    if (!login) {
+      fail(
+        "Cardstack sign-in is not configured on this server: CARDSTACK_SF_CLIENT_ID and CARDSTACK_SF_CLIENT_SECRET are unset.",
+      );
       return;
     }
     const sfState = rand("sfs");
@@ -163,6 +229,8 @@ export class CardstackOAuthProvider implements OAuthServerProvider {
       codeChallenge: params.codeChallenge,
       mcpState: params.state ?? null,
       sfVerifier,
+      sfLoginUrl: login.loginUrl,
+      ...(login.legacyTenantId ? { legacyTenantId: login.legacyTenantId } : {}),
     };
     await this.deps.store.kvSet(
       NS.pending,
@@ -172,8 +240,8 @@ export class CardstackOAuthProvider implements OAuthServerProvider {
     );
     res.redirect(
       buildSalesforceAuthorizationUrl({
-        loginUrl: admin.loginUrl,
-        clientId: admin.clientId,
+        loginUrl: login.loginUrl,
+        clientId: login.app.clientId,
         redirectUri: this.sfCallbackUri,
         state: sfState,
         codeChallenge: sfChallenge,
@@ -188,41 +256,57 @@ export class CardstackOAuthProvider implements OAuthServerProvider {
    * mints the Cardstack authorization code for the waiting MCP client.
    */
   async completeSalesforceCallback(sfState: string, sfCode: string): Promise<{ redirect: string }> {
-    const { store, tenantId } = this.deps;
+    const { store } = this.deps;
     const pending = (await store.kvGet(NS.pending, sfState)) as unknown as PendingAuth | undefined;
     if (!pending) throw new Error("This sign-in link expired or was already used. Start again from your chat app.");
     await store.kvDelete(NS.pending, sfState);
 
-    const connection = await store.getConnection(tenantId);
-    const admin = connection.credentials as SalesforceCredentials | undefined;
-    if (!admin?.clientSecret) {
-      throw new Error("The admin Salesforce connection is missing its client secret. Reconnect admin OAuth in Studio.");
-    }
+    const login = await this.loginConfig(pending.legacyTenantId);
+    if (!login) throw new Error("Cardstack sign-in is not configured on this server.");
+
     const credentials = await exchangeSalesforceAuthorizationCode(
       {
-        loginUrl: normalizeSalesforceLoginUrl(admin.loginUrl),
-        clientId: admin.clientId,
-        clientSecret: admin.clientSecret,
+        loginUrl: pending.sfLoginUrl,
+        clientId: login.app.clientId,
+        clientSecret: login.app.clientSecret,
         redirectUri: this.sfCallbackUri,
         code: sfCode,
         codeVerifier: pending.sfVerifier,
       },
       this.deps.fetchImpl ?? fetch,
     );
-    const identity = await this.fetchIdentity(credentials);
-    const userId = normalizeUserId(identity.email ?? identity.username ?? identity.sfUserId);
 
-    // Persist the rep's own SF connection — minus the shared client secret,
-    // mirroring Studio's user lane (the runtime merges it back in).
+    // The org this token belongs to decides the workspace — NOT an env var.
+    // Same resolver Studio's login uses, so a rep who arrives through a chat
+    // host first and an admin who arrives through Studio first converge on one
+    // workspace and one account id.
+    const identity = await fetchSalesforceSignerIdentity(credentials, this.deps.fetchImpl ?? fetch);
+    if (
+      pending.legacyTenantId &&
+      !(await store.getWorkspaceByOrgId(identity.orgId)) &&
+      !(await store.getWorkspace(pending.legacyTenantId))
+    ) {
+      await store.createWorkspace({
+        id: pending.legacyTenantId,
+        salesforceOrgId: identity.orgId,
+        name: identity.orgName?.trim() || "My workspace",
+        createdAt: new Date().toISOString(),
+      });
+    }
+    const { account, workspace } = await resolveSignIn(store, identity);
+    const tenantId = workspace.id;
+
+    // Persist the rep's own SF connection — minus the client secret, mirroring
+    // Studio's user lane (the runtime merges it back in at adapter build time).
     const { clientSecret: _omit, ...userCredentials } = credentials as unknown as Record<string, string>;
     const userConnection: UserConnectionState = {
       tenantId,
-      userId,
+      userId: account.id,
       status: "connected",
       crm: "salesforce",
       label: "user OAuth (chat sign-in)",
       changedAt: new Date().toISOString(),
-      connectedUser: identity.name,
+      connectedUser: account.name,
       credentials: userCredentials,
     };
     await store.setUserConnection(userConnection);
@@ -234,9 +318,9 @@ export class CardstackOAuthProvider implements OAuthServerProvider {
       codeChallenge: pending.codeChallenge,
       user: {
         tenantId,
-        userId,
-        name: identity.name,
-        ...(identity.email ? { email: identity.email } : {}),
+        userId: account.id,
+        name: account.name,
+        ...(account.email ? { email: account.email } : {}),
       },
     };
     await store.kvSet(NS.codes, code, stored as unknown as Record<string, unknown>, inMs(CODE_TTL_MS));
@@ -244,36 +328,6 @@ export class CardstackOAuthProvider implements OAuthServerProvider {
     redirect.searchParams.set("code", code);
     if (pending.mcpState) redirect.searchParams.set("state", pending.mcpState);
     return { redirect: redirect.toString() };
-  }
-
-  /** Identity from the token response: userId parsed from the identity URL,
-   *  name/email from a one-row User query (works with the `api` scope). */
-  private async fetchIdentity(credentials: SalesforceCredentials): Promise<{
-    sfUserId: string;
-    name: string;
-    username?: string;
-    email?: string;
-  }> {
-    const sfUserId = credentials.identityUrl?.split("/").pop() ?? "";
-    if (!sfUserId) throw new Error("Salesforce did not return an identity URL.");
-    const fetchImpl = this.deps.fetchImpl ?? fetch;
-    const soql = encodeURIComponent(
-      `SELECT Name, Email, Username FROM User WHERE Id = '${sfUserId.replace(/[^a-zA-Z0-9]/g, "")}'`,
-    );
-    const res = await fetchImpl(
-      `${credentials.instanceUrl}/services/data/v61.0/query?q=${soql}`,
-      { headers: { Authorization: `Bearer ${credentials.accessToken}` } },
-    );
-    const data = (await res.json().catch(() => ({}))) as {
-      records?: { Name?: string; Email?: string; Username?: string }[];
-    };
-    const row = data.records?.[0];
-    return {
-      sfUserId,
-      name: row?.Name ?? "Salesforce user",
-      ...(row?.Username ? { username: row.Username } : {}),
-      ...(row?.Email ? { email: row.Email } : {}),
-    };
   }
 
   async challengeForAuthorizationCode(

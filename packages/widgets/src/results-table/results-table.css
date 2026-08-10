@@ -113,6 +113,13 @@
   padding: 10px 20px;
 }
 
+.rt-footer-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
 .rt-footer-left {
   display: inline-flex;
   align-items: center;
@@ -173,7 +180,7 @@
 }
 
 /* Mobile (design 1g): rows become tappable summary cards. */
-@media (max-width: 420px) {
+@container (max-width: 420px) {
   .rt-row {
     grid-template-columns: 1fr auto;
     grid-auto-flow: row dense;

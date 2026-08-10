@@ -6,12 +6,26 @@ import { getUserContextFromRequest } from "../../../lib/auth";
  *  field change (timestamp,actor,writtenAs,object,recordId,field,before,after). */
 export async function GET(req: Request) {
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     const entries = await (await getAuditLog()).list(tenantId);
     const url = new URL(req.url);
     if (url.searchParams.get("format") === "csv") {
       const rows = [
-        ["timestamp", "actor", "actorEmail", "writtenAs", "object", "recordId", "field", "before", "after"],
+        [
+          "timestamp",
+          "actor",
+          "actorEmail",
+          "writtenAs",
+          "object",
+          "recordId",
+          "field",
+          "before",
+          "after",
+          // Blank for entries logged before provenance was recorded — an empty
+          // cell, never a guessed one, since this is the compliance export.
+          "confirmedVia",
+          "confirmationId",
+        ],
       ];
       for (const e of entries) {
         for (const c of e.changes) {
@@ -25,6 +39,8 @@ export async function GET(req: Request) {
             c.field,
             String(c.before ?? ""),
             String(c.after ?? ""),
+            e.confirmation?.via ?? "",
+            e.confirmation?.confirmationId ?? "",
           ]);
         }
       }

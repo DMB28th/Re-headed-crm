@@ -29,6 +29,13 @@
  *   read-only, all-fields, never persisted by Studio, and the widget shows a
  *   field-name filter box for them. Additive + optional; stored configs never
  *   carry it.
+ * - 2026-08-07: CardAction gains `enabled` (default true) on every variant.
+ *   A disabled action stays in the array with its label, order and input
+ *   mappings intact; it is hidden from the card and REFUSED by the server
+ *   (crm_flow_start / crm_flow_continue / crm_quick_action_start), and stays
+ *   visible and re-enableable in Studio. Defaulted, so stored configs parse
+ *   unchanged. Removal from the array remains a separate, destructive
+ *   operation — do not conflate the two.
  */
 import { z } from "zod";
 
@@ -140,11 +147,16 @@ export const ActionInputMappings = z.record(z.string().min(1), ActionInputMappin
 export type ActionInputMappings = z.infer<typeof ActionInputMappings>;
 
 export const CardAction = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("update_record"), label: z.string().min(1) }),
+  z.object({
+    type: z.literal("update_record"),
+    label: z.string().min(1),
+    enabled: z.boolean().default(true),
+  }),
   z.object({
     type: z.literal("create_related"),
     object: z.string().min(1),
     label: z.string().min(1),
+    enabled: z.boolean().default(true),
   }),
   // Salesforce screen flows land in M5; the config slot exists so publishing a
   // flow action later is not a schema migration.
@@ -154,6 +166,7 @@ export const CardAction = z.discriminatedUnion("type", [
     type: z.literal("quick_action"),
     actionApiName: z.string().min(1),
     label: z.string().min(1),
+    enabled: z.boolean().default(true),
   }),
   z.object({
     type: z.literal("screen_flow"),
@@ -166,6 +179,7 @@ export const CardAction = z.discriminatedUnion("type", [
      * action from chat.
      */
     inputs: ActionInputMappings,
+    enabled: z.boolean().default(true),
   }),
 ]);
 export type CardAction = z.infer<typeof CardAction>;

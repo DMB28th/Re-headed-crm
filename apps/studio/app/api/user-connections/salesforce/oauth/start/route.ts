@@ -15,7 +15,7 @@ import { createPkcePair, studioOrigin } from "../../../../../../lib/oauth";
 // URL for the client to navigate to, mirroring the admin lane.
 export async function POST(req: Request) {
   try {
-    const { tenantId, userId } = getUserContextFromRequest(req);
+    const { tenantId, userId } = await getUserContextFromRequest(req);
     const store = await getStore();
     const workspace = await store.getConnection(tenantId);
     const adminCredentials = workspace.credentials as SalesforceCredentials | undefined;

@@ -54,6 +54,13 @@
   margin-bottom: 2px;
 }
 
+/* Editable-from-chat mark: visible at rest, quiet enough to ignore. */
+.rc-editable-mark {
+  margin-left: 4px;
+  font-size: 10px;
+  opacity: 0.55;
+}
+
 .rc-field-value {
   font-size: 14px;
   overflow-wrap: anywhere;
@@ -415,7 +422,7 @@
 }
 
 /* Mobile 380 (design 1g): single column, label-left/value-right rows. */
-@media (max-width: 420px) {
+@container (max-width: 420px) {
   .rc-field-grid {
     grid-template-columns: 1fr !important;
   }

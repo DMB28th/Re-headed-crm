@@ -10,3 +10,6 @@ coverage/
 .DS_Store
 data/
 .next/
+
+# Claude Code worktrees (local scratch, never committed)
+.claude/worktrees/

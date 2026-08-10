@@ -348,7 +348,7 @@ export async function exchangeSalesforceAuthorizationCode(
     codeVerifier?: string;
   },
   fetchImpl: FetchLike = fetch,
-): Promise<SalesforceCredentials> {
+): Promise<SalesforceCredentials & { instanceUrl: string; accessToken: string }> {
   const loginUrl = normalizeSalesforceLoginUrl(args.loginUrl);
   const data = await postToken(fetchImpl, loginUrl, {
     grant_type: "authorization_code",
@@ -466,6 +466,14 @@ export class SalesforceAdapter implements CrmAdapter {
      * one-shot fallback before declaring the connection dead.
      */
     private readonly getFreshCredentials?: () => Promise<SalesforceCredentials | null>,
+    /**
+     * LOCAL DEV: mint an access token from an EXTERNAL source (the `sf` CLI)
+     * instead of an OAuth refresh or client-credentials grant. When present it
+     * wins over both — there is no refresh token in this mode, so a 401 is
+     * resolved by asking the source for a fresh token. Nothing minted here is
+     * ever persisted; see salesforce/cli-token.ts for why that matters.
+     */
+    private readonly tokenProvider?: () => Promise<{ accessToken: string; instanceUrl?: string }>,
   ) {
     this.token = credentials.accessToken ?? null;
     this.instanceUrl = credentials.instanceUrl ?? null;
@@ -500,6 +508,14 @@ export class SalesforceAdapter implements CrmAdapter {
   }
 
   private async grantToken(): Promise<string> {
+    // External token source (dev, sf CLI) — no refresh token exists in this
+    // mode, so re-asking the source IS the refresh.
+    if (this.tokenProvider) {
+      const minted = await this.tokenProvider();
+      this.token = minted.accessToken;
+      if (minted.instanceUrl) this.instanceUrl = minted.instanceUrl.replace(/\/$/, "");
+      return this.token;
+    }
     if (salesforceUsesOAuth(this.credentials as unknown as Record<string, string>)) {
       if (!this.refreshToken) {
         throw new CrmAuthError("Salesforce", "Salesforce authorization is missing a refresh token.");
@@ -1242,17 +1258,61 @@ export class SalesforceAdapter implements CrmAdapter {
       { Id: string; Name?: string; attributes: { type: string } }[]
     >("GET", `${API}/recent?limit=${limit}`);
     const global = await this.ensureGlobal().catch(() => null);
-    return items
+    const visible = items
       .filter((i) => !global || global.layoutable.has(i.attributes.type))
-      .slice(0, limit)
-      .map((i) => ({
+      .slice(0, limit);
+    if (visible.length === 0) return [];
+
+    // /recent returns no Name for subject-titled objects (Task, Event) and no
+    // view time at all. Both are repairable with real data: names via a
+    // per-type SOQL on the title field, view times via RecentlyViewed (the
+    // same store /recent reads). Either query failing degrades that datum,
+    // never the list.
+    const idList = visible.map((i) => `'${soqlEscape(i.Id)}'`).join(",");
+    const viewedAt = new Map<string, string>();
+    try {
+      const { records } = await this.soql<{ Id: string; LastViewedDate: string | null }>(
+        `SELECT Id, LastViewedDate FROM RecentlyViewed WHERE Id IN (${idList})`,
+      );
+      for (const r of records) if (r.LastViewedDate) viewedAt.set(r.Id, r.LastViewedDate);
+    } catch {
+      // no RecentlyViewed access — rows render without a relative time
+    }
+
+    const names = new Map<string, string>();
+    const nameless = visible.filter((i) => !i.Name);
+    const byType = new Map<string, string[]>();
+    for (const i of nameless) {
+      byType.set(i.attributes.type, [...(byType.get(i.attributes.type) ?? []), i.Id]);
+    }
+    for (const [type, ids] of byType) {
+      if (!SF_API_NAME.test(type)) continue;
+      const titleField = type === "Task" || type === "Event" ? "Subject" : "Name";
+      try {
+        const { records } = await this.soql<Record<string, string | null> & { Id: string }>(
+          `SELECT Id, ${titleField} FROM ${type} WHERE Id IN (${ids
+            .map((id) => `'${soqlEscape(id)}'`)
+            .join(",")})`,
+        );
+        for (const r of records) {
+          const title = r[titleField];
+          if (title) names.set(r.Id, title);
+        }
+      } catch {
+        // undescribable/unqueryable type — fall through to the id below
+      }
+    }
+
+    return visible.map((i) => {
+      const timestamp = viewedAt.get(i.Id);
+      return {
         id: i.Id,
         object: i.attributes.type,
         objectLabel: global?.byApi.get(i.attributes.type)?.label ?? i.attributes.type,
-        name: i.Name ?? i.Id,
-        note: "Recently viewed",
-        timestamp: new Date().toISOString(),
-      }));
+        name: i.Name ?? names.get(i.Id) ?? i.Id,
+        ...(timestamp ? { timestamp } : {}),
+      };
+    });
   }
 
   async getValidationRules(): Promise<RuleSummary[]> {

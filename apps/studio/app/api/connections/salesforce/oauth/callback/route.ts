@@ -28,7 +28,7 @@ export async function GET(req: Request) {
   if (!code || !state) return done(req, { error: "Salesforce callback was missing code or state." });
 
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     const store = await getStore();
     const pending = await store.getConnection(tenantId);
     const pendingAuth = pending.pendingAuth as

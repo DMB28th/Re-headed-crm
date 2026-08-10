@@ -1,0 +1,108 @@
+import { NextResponse } from "next/server";
+import {
+  createStudioSession,
+  expiredSessionCookieOptions,
+  newSessionId,
+  readStudioSession,
+  sessionSigningSecret,
+  STUDIO_SESSION_NS,
+  STUDIO_SESSION_COOKIE,
+  studioSessionCookieOptions,
+} from "../../../lib/studio-session";
+import { getStore, LEGACY_TENANT_ID } from "../../../lib/backend";
+import { parseSalesforceIdentityUrl } from "@cardstack/crm-adapters";
+
+export async function POST(req: Request) {
+  const signingSecret = sessionSigningSecret(process.env);
+  const accessKey = process.env.STUDIO_SHARED_SECRET?.trim();
+  if (!signingSecret || !accessKey) {
+    return NextResponse.json(
+      { error: "Studio authentication is not configured." },
+      { status: 503 },
+    );
+  }
+  const body = (await req.json().catch(() => ({}))) as { secret?: string };
+  if (!body.secret || body.secret !== accessKey) {
+    return NextResponse.json({ error: "That access key is not valid." }, { status: 401 });
+  }
+  const store = await getStore();
+  const accountId = process.env.CARDSTACK_USER_ID ?? "access-key-admin";
+  const workspaceId = process.env.CARDSTACK_TENANT_ID ?? LEGACY_TENANT_ID;
+  const createdAt = new Date().toISOString();
+
+  // Compatibility bridge for deployments that predate Cardstack accounts.
+  // The shared access key represents the existing workspace administrator, so
+  // create the additive identity rows once and let normal session resolution
+  // use them from then on. These store operations are idempotent.
+  if (!(await store.getWorkspace(workspaceId))) {
+    const connection = await store.getConnection(workspaceId);
+    const salesforceOrgId =
+      connection.crm === "salesforce"
+        ? parseSalesforceIdentityUrl(connection.credentials?.identityUrl)?.orgId
+        : undefined;
+    await store.createWorkspace({
+      id: workspaceId,
+      // A live Salesforce admin connection already contains the authoritative
+      // org id. Reuse it so future Salesforce sign-ins resolve to this legacy
+      // tenant instead of creating an empty parallel workspace.
+      salesforceOrgId: salesforceOrgId ?? `legacy-workspace-${workspaceId}`,
+      name: process.env.CARDSTACK_WORKSPACE_NAME ?? "Cardstack workspace",
+      createdAt,
+    });
+  }
+  await store.upsertAccount({
+    id: accountId,
+    salesforceUserId: `legacy-user-${accountId}`,
+    name: process.env.CARDSTACK_USER_NAME ?? "Workspace admin",
+    ...(process.env.CARDSTACK_USER_EMAIL
+      ? { email: process.env.CARDSTACK_USER_EMAIL }
+      : {}),
+    createdAt,
+  });
+  await store.setMembership({
+    accountId,
+    workspaceId,
+    role: "admin",
+    createdAt,
+  });
+
+  const sessionId = newSessionId();
+  const now = new Date();
+  await store.kvSet(
+    STUDIO_SESSION_NS,
+    sessionId,
+    {
+      accountId,
+      workspaceId,
+      role: "admin",
+      createdAt: now.toISOString(),
+    },
+    new Date(now.getTime() + studioSessionCookieOptions().maxAge * 1_000).toISOString(),
+  );
+  const response = NextResponse.json({ ok: true });
+  response.cookies.set(
+    STUDIO_SESSION_COOKIE,
+    await createStudioSession(sessionId, signingSecret),
+    studioSessionCookieOptions(),
+  );
+  return response;
+}
+
+export async function DELETE(req: Request) {
+  const secret = sessionSigningSecret(process.env);
+  const cookie = req.headers
+    .get("cookie")
+    ?.split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${STUDIO_SESSION_COOKIE}=`))
+    ?.slice(STUDIO_SESSION_COOKIE.length + 1);
+  const sessionId = secret
+    ? await readStudioSession(cookie ? decodeURIComponent(cookie) : undefined, secret)
+    : undefined;
+  if (sessionId) await (await getStore()).kvDelete(STUDIO_SESSION_NS, sessionId);
+  const response = NextResponse.json({ ok: true });
+  response.cookies.set(STUDIO_SESSION_COOKIE, "", {
+    ...expiredSessionCookieOptions(),
+  });
+  return response;
+}

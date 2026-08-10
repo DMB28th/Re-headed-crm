@@ -397,3 +397,36 @@
 input[type="range"] {
   max-width: 320px;
 }
+
+/* Mobile 380 (same 420px container breakpoint as every other widget): flows
+   are the longest forms in the product — inputs get the full row, 44px
+   targets, and the footer/actions stack instead of wrapping mid-button. */
+@container (max-width: 420px) {
+  .fr-input {
+    flex-direction: column;
+    gap: 2px;
+  }
+  .fr-input-value {
+    text-align: left;
+  }
+  .fr-text-input,
+  .fr-select {
+    max-width: none;
+  }
+  .fr-composite {
+    grid-template-columns: 1fr;
+    max-width: none;
+  }
+  .fr-footer,
+  .fr-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .fr-launch,
+  .fr-secondary {
+    min-height: 44px;
+  }
+  .fr-check {
+    min-height: 44px;
+  }
+}
