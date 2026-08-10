@@ -26,7 +26,7 @@ All decided by the product owner during brainstorming:
 | Fork | Decision |
 |---|---|
 | Two accounts connect the same org | **Refused — an org is claimed exclusively by one account.** Keeps org→workspace routing unique so chat-hosted reps land on the owner's config. |
-| "Sign in with Salesforce" on the login page | **Deferred.** The connection records the Salesforce user id from day one so the button can arrive later without a migration. It would only ever sign into an account that already connected that Salesforce user — never create accounts, never auto-link by email. |
+| "Sign in with Salesforce" on the login page | **Ships, sign-in only** (revised from "deferred" during spec review). Only signs into an account that already connected that Salesforce user and owns a workspace — never creates accounts, never auto-links by email. Rendered only when the Cardstack connected app is configured, so the dependency that failed in production can never block the email lane. See §3. |
 | Email-lane credential | **Password + verification** (argon2id, verify-email link, reset flow, rate limiting). |
 | Build approach | **Hand-rolled on the existing session machinery.** The shipped HMAC-cookie + KV-record session design, expiry semantics, and choke point survive byte-for-byte; sign-up/sign-in are new ways to *mint* a session, not a new session model. |
 | Login page direction | **Split brand panel** (accepted via mockup: accent-colored brand half, form on white). |
@@ -50,7 +50,7 @@ Created by email signup, not by Salesforce sign-in.
 - `emailVerifiedAt`, `passwordChangedAt` — see §3.
 - `salesforceUserId` — stays, becomes optional. Set when this account connects
   an org (recording *which* Salesforce user did the connecting). Feeds the
-  deferred sign-in button and lets the owner's own chat-host sign-in converge
+  "Sign in with Salesforce" button and lets the owner's own chat-host sign-in converge
   on their real account instead of forking a second one.
 
 ### Workspace — decoupled from the org
@@ -84,9 +84,10 @@ The People page, promote/demote and `membership-change.ts`, the zero-admin
 invariant and its backfill script, first-signer-becomes-admin, the "ask the
 admin by name" lockout messaging, `/me/connection` and `getSelfServiceIdentity`
 (a rep can never hold a Studio session of any kind; their re-auth path is the
-chat host's reconnect, which the re-auth card already deep-links), the Studio
-Salesforce login routes (`/api/auth/salesforce/*`), and — after migration —
-the access-key bridge. Audit attribution is unchanged: every actor still has an
+chat host's reconnect, which the re-auth card already deep-links), and — after
+migration — the access-key bridge. The Studio Salesforce login routes
+(`/api/auth/salesforce/*`) are NOT deleted: they are repurposed for the scoped
+"Sign in with Salesforce" button (§3). Audit attribution is unchanged: every actor still has an
 account id.
 
 ## 2. What explicitly survives from the shipped auth redesign
@@ -162,6 +163,30 @@ Lookup by email; argon2 verify — against a dummy hash when the account doesn't
 exist, so timing doesn't leak existence; one generic failure message. Success
 mints a fresh session (new session id every time — no fixation).
 
+### Sign in with Salesforce — scoped, sign-in only
+
+Rendered on `/login` only, below the email form, and only when the Cardstack
+connected app is configured (`cardstackSalesforceLoginApp()`), with the
+existing production/sandbox host choice. The email lane never depends on it.
+
+Flow: the existing `/api/auth/salesforce/start` (PKCE + `state` in KV, rate
+limiter kept) → Salesforce OAuth → callback verifies the identity URL, then
+resolves `getAccountBySalesforceUserId(sfUserId)`:
+
+- **No account has that Salesforce user recorded** → refuse: "No Cardstack
+  account has connected this Salesforce user. Sign up with email, then
+  connect your org." Never creates an account.
+- **Account found but owns no workspace** (a rep runtime identity) → refuse:
+  "Studio is for workspace owners — use Cardstack from your chat app." The
+  choke point would refuse the session anyway; refusing at the callback is
+  what makes the message useful.
+- **Account found and owns a workspace** → mint a standard session. Same
+  cookie, same windows.
+
+A Salesforce email matching an account's address is never sufficient — the
+match is on the recorded Salesforce user id alone, so there is no auto-link
+path.
+
 ### Password reset
 
 `POST /api/auth/forgot` always answers "if that email has an account, we sent a
@@ -218,7 +243,9 @@ right inside chat"), and a stacked-cards motif; the form on the right on white.
 Server components, forms POSTing to route handlers, errors rendered on first
 paint via query params — the current login page's pattern.
 
-- `/login` — email, password, "Forgot password?", "Create an account" link
+- `/login` — email, password, "Forgot password?", "Create an account" link;
+  "Sign in with Salesforce" below the form when the Cardstack app is
+  configured (sign-in only — `/signup` has no Salesforce button)
 - `/signup` — name, email, password
 - `/forgot` — email → neutral "check your inbox" state
 - `/reset` — new password, from the emailed token
@@ -246,7 +273,8 @@ Small because production is small: exactly one workspace (`t_demo`).
    connection's verified org id. Idempotent, report-first like the old
    backfill.
 4. **Swap the login page and delete the access-key bridge** (`POST
-   /api/session`'s bridging path) and the Studio Salesforce login routes.
+   /api/session`'s bridging path). The Studio Salesforce login routes stay,
+   repurposed for the scoped sign-in button (§3).
 5. **Existing clocks unchanged:** `STUDIO_SHARED_SECRET` stays in the cookie
    verify-list until ~2026-08-24 (14 days after `CARDSTACK_SESSION_SECRET`
    went live). The MCP legacy connected-app fallback keeps its posture (armed
@@ -292,6 +320,10 @@ every signup/sign-in.
   rate limiting, choke-point ownership check, `passwordChangedAt` session
   invalidation, and the passwordless-claim rule (signup with a rep's email
   must not mint a session or set a password without the verify step).
+- **Salesforce sign-in (scoped):** unknown Salesforce user refused with no
+  account created; rep runtime identity (no owned workspace) refused; owner
+  signs in; an email-address match without the recorded Salesforce user id is
+  never linked.
 - **Reshaped:** `sign-in.test.ts` — find-or-refuse, reps always `member`,
   owner chat-lane convergence via recorded Salesforce user id.
   `auth.test.ts` — ownership gate replaces the role gate.
@@ -305,13 +337,11 @@ every signup/sign-in.
 
 ## 9. Deliberately not doing
 
-- **Salesforce sign-in button** — deferred (decision table). The plumbing it
-  needs (`salesforceUserId` on the account) ships now.
+- **Salesforce signup** — the button signs in; it never creates accounts.
 - **Invites / multi-user workspaces / roles** — removed, not rebuilt. When
   collaboration returns it will be invite-shaped, not org-auto-join-shaped.
-- **Auto-linking accounts by email** — never. A Salesforce sign-in (when it
-  arrives) only signs into an account that explicitly connected that
-  Salesforce user.
+- **Auto-linking accounts by email** — never. The Salesforce button only
+  signs into an account that explicitly connected that Salesforce user.
 - **Org transfer between accounts** — disconnect-then-claim is the mechanism;
   no ownership-transfer feature.
 - **Sandbox↔production config sync** — unchanged non-feature from the previous
