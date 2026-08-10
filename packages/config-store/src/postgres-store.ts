@@ -69,7 +69,7 @@ import type {
   UserConnectionState,
   ViewExposuresRecord,
 } from "./types.js";
-import type { Account, Membership, Workspace } from "./identity.js";
+import { salesforceIdKey, type Account, type Membership, type OrgClaimResult, type Workspace } from "./identity.js";
 import type { DiffLabels } from "./diff.js";
 import {
   collectStagedChanges,
@@ -182,11 +182,17 @@ CREATE TABLE IF NOT EXISTS kv_entries (
 
 -- 2026-07-27: Cardstack's own accounts. Until these existed, identity was a
 -- self-asserted header and the workspace was an env var, so one deployment
--- served one customer. A workspace IS a Salesforce org, hence the unique
--- org_key -- it is what makes same-org auto-join work. org_key/sf_user_key hold
--- the LOWERCASED 15-char id because Salesforce returns 15 or 18 chars for the
--- same entity depending on the API, and both must resolve to one row.
+-- served one customer. org_key/sf_user_key hold the LOWERCASED 15-char id
+-- because Salesforce returns 15 or 18 chars for the same entity depending on
+-- the API, and both must resolve to one row.
 -- Additive: every other table stays keyed by the same opaque tenant_id.
+--
+-- 2026-08-10 (spec: docs/superpowers/specs/2026-08-10-self-serve-accounts-
+-- design.md): a workspace is no longer created FROM a Salesforce org — it is
+-- created by its owning account (email or Salesforce signup) and a
+-- Salesforce org is claimed onto it later, exclusively, by setting org_key.
+-- The UNIQUE constraint on org_key is that exclusivity's enforcement -- see
+-- the nullable-columns migration below for how an org-less workspace fits it.
 CREATE TABLE IF NOT EXISTS workspaces (
   id         text PRIMARY KEY,
   org_key    text NOT NULL UNIQUE,
@@ -240,10 +246,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS flow_render_modes_published_uq
 
 ALTER TABLE publish_events ADD COLUMN IF NOT EXISTS surface text;
 ALTER TABLE publish_events ADD COLUMN IF NOT EXISTS batch_id text;
-`;
 
-/** Salesforce returns 15- or 18-char ids for the same entity; key on the 15. */
-const idKey = (salesforceId: string): string => salesforceId.slice(0, 15).toLowerCase();
+-- Self-serve accounts migration (2026-08-10, spec: docs/superpowers/specs/
+-- 2026-08-10-self-serve-accounts-design.md). Additive + idempotent:
+-- * org_key becomes NULLABLE: a workspace now starts unconnected, and setting
+--   org_key IS the exclusive claim (the existing UNIQUE enforces it -- Postgres
+--   allows many NULLs under a unique constraint).
+-- * sf_user_key becomes NULLABLE: email-created accounts have no SF user yet.
+ALTER TABLE workspaces ALTER COLUMN org_key DROP NOT NULL;
+ALTER TABLE accounts ALTER COLUMN sf_user_key DROP NOT NULL;
+`;
 
 export class PostgresConfigStore implements AdminConfigStore {
   private ready: Promise<void>;
@@ -739,22 +751,37 @@ export class PostgresConfigStore implements AdminConfigStore {
   async getWorkspaceByOrgId(salesforceOrgId: string): Promise<Workspace | undefined> {
     await this.ready;
     const { rows } = await this.sql.query("SELECT config FROM workspaces WHERE org_key=$1", [
-      idKey(salesforceOrgId),
+      salesforceIdKey(salesforceOrgId),
     ]);
+    return rows[0] ? this.parse<Workspace>(rows[0].config) : undefined;
+  }
+
+  async getWorkspaceByOwner(ownerAccountId: string): Promise<Workspace | undefined> {
+    await this.ready;
+    const { rows } = await this.sql.query(
+      "SELECT config FROM workspaces WHERE config->>'ownerAccountId' = $1 LIMIT 1",
+      [ownerAccountId],
+    );
     return rows[0] ? this.parse<Workspace>(rows[0].config) : undefined;
   }
 
   /**
    * DO NOTHING on conflict, not DO UPDATE: two people from a new org can sign
    * in simultaneously, and the loser must adopt the winner's workspace rather
-   * than overwrite it. resolveSignIn re-reads after calling this.
+   * than overwrite it. resolveSignIn re-reads after calling this. org_key may
+   * be NULL — a self-serve signup creates a workspace before claiming an org
+   * (spec §1), and Postgres allows many NULLs under the UNIQUE constraint.
    */
   async createWorkspace(workspace: Workspace): Promise<void> {
     await this.ready;
     await this.sql.query(
       `INSERT INTO workspaces (id, org_key, config) VALUES ($1,$2,$3)
        ON CONFLICT (org_key) DO NOTHING`,
-      [workspace.id, idKey(workspace.salesforceOrgId), JSON.stringify(workspace)],
+      [
+        workspace.id,
+        workspace.salesforceOrgId ? salesforceIdKey(workspace.salesforceOrgId) : null,
+        JSON.stringify(workspace),
+      ],
     );
   }
 
@@ -763,6 +790,60 @@ export class PostgresConfigStore implements AdminConfigStore {
     await this.ready;
     const { rows } = await this.sql.query("SELECT config FROM workspaces");
     return rows.map((row) => this.parse<Workspace>(row.config));
+  }
+
+  /**
+   * The unique constraint on org_key IS the claim's enforcement: the race
+   * between two owners claiming one org is decided by the database, and the
+   * loser gets a typed conflict, never a partial write (spec §7).
+   */
+  async claimOrg(
+    workspaceId: string,
+    salesforceOrgId: string,
+    orgName?: string,
+  ): Promise<OrgClaimResult> {
+    await this.ready;
+    const workspace = await this.getWorkspace(workspaceId);
+    if (!workspace) throw new Error(`Unknown workspace: ${workspaceId}`);
+    const updated: Workspace = {
+      ...workspace,
+      salesforceOrgId,
+      ...(orgName?.trim() ? { name: orgName.trim() } : {}),
+    };
+    try {
+      await this.sql.query("UPDATE workspaces SET org_key=$2, config=$3 WHERE id=$1", [
+        workspaceId,
+        salesforceIdKey(salesforceOrgId),
+        JSON.stringify(updated),
+      ]);
+    } catch (error) {
+      if ((error as { code?: string }).code === "23505") {
+        return { ok: false, reason: "org-already-claimed" };
+      }
+      throw error;
+    }
+    return { ok: true, workspace: updated };
+  }
+
+  async releaseOrg(workspaceId: string): Promise<void> {
+    await this.ready;
+    const workspace = await this.getWorkspace(workspaceId);
+    if (!workspace) return;
+    const { salesforceOrgId: _released, ...rest } = workspace;
+    await this.sql.query("UPDATE workspaces SET org_key=NULL, config=$2 WHERE id=$1", [
+      workspaceId,
+      JSON.stringify(rest),
+    ]);
+  }
+
+  async setWorkspaceOwner(workspaceId: string, ownerAccountId: string): Promise<void> {
+    await this.ready;
+    const workspace = await this.getWorkspace(workspaceId);
+    if (!workspace) throw new Error(`Unknown workspace: ${workspaceId}`);
+    await this.sql.query("UPDATE workspaces SET config=$2 WHERE id=$1", [
+      workspaceId,
+      JSON.stringify({ ...workspace, ownerAccountId }),
+    ]);
   }
 
   async getAccount(id: string): Promise<Account | undefined> {
@@ -774,8 +855,17 @@ export class PostgresConfigStore implements AdminConfigStore {
   async getAccountBySalesforceUserId(salesforceUserId: string): Promise<Account | undefined> {
     await this.ready;
     const { rows } = await this.sql.query("SELECT config FROM accounts WHERE sf_user_key=$1", [
-      idKey(salesforceUserId),
+      salesforceIdKey(salesforceUserId),
     ]);
+    return rows[0] ? this.parse<Account>(rows[0].config) : undefined;
+  }
+
+  async getAccountByEmail(email: string): Promise<Account | undefined> {
+    await this.ready;
+    const { rows } = await this.sql.query(
+      "SELECT config FROM accounts WHERE lower(config->>'email') = lower($1) LIMIT 1",
+      [email.trim()],
+    );
     return rows[0] ? this.parse<Account>(rows[0].config) : undefined;
   }
 
@@ -785,7 +875,11 @@ export class PostgresConfigStore implements AdminConfigStore {
     await this.sql.query(
       `INSERT INTO accounts (id, sf_user_key, config) VALUES ($1,$2,$3)
        ON CONFLICT (id) DO UPDATE SET config = EXCLUDED.config, sf_user_key = EXCLUDED.sf_user_key`,
-      [account.id, idKey(account.salesforceUserId), JSON.stringify(account)],
+      [
+        account.id,
+        account.salesforceUserId ? salesforceIdKey(account.salesforceUserId) : null,
+        JSON.stringify(account),
+      ],
     );
   }
 
