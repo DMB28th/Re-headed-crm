@@ -48,6 +48,8 @@ export interface FieldDescribe {
    * openOnly filter instead of guessing by label.
    */
   closedValues?: string[];
+  /** For reference fields: target object api name(s) — drill-through target. */
+  referenceTo?: string[];
 }
 
 import type { ActionInputValueType } from "./layout-config.js";
@@ -76,10 +78,18 @@ export interface ObjectDescribe extends ObjectSummary {
 }
 
 export interface RelationshipDescribe {
-  /** Relationship / association API name. */
+  /** UNIQUE relationship API name (Salesforce relationshipName / HubSpot assoc). */
   api: string;
   label: string;
   relatedObject: string;
+  /**
+   * Salesforce only: the child's foreign-key FIELD that points back to the
+   * parent (from describe childRelationships). getRelated queries by it. Absent
+   * for HubSpot (which resolves related records via the associations API).
+   * Multiple relationships can share a foreign key (Contacts/Opportunities/Cases
+   * all use AccountId), which is why `api` — not this — is the unique id.
+   */
+  foreignKey?: string;
 }
 
 export type CrmFieldValue = string | number | boolean | null;
@@ -88,6 +98,19 @@ export interface CrmRecord {
   id: string;
   /** Field API name → value. Dot-path columns are pre-flattened by the adapter. */
   fields: Record<string, CrmFieldValue>;
+  /**
+   * For reference fields with a value: the referenced record's id, so the
+   * widget can open it (drill-through) and lookup editors can compare against
+   * it. Present even when the display name could not be resolved (the field
+   * then still shows the raw id). Only for fields also present in `fields`.
+   */
+  refs?: Record<string, string>;
+  /**
+   * For reference fields in `refs`: the RESOLVED target object api name.
+   * Matters for polymorphic lookups (OwnerId → User|Group, WhatId → many),
+   * where `referenceTo` alone can't tell the widget which card to open.
+   */
+  refObjects?: Record<string, string>;
 }
 
 export interface RecordPage {
@@ -103,6 +126,13 @@ export interface SearchQuery {
   /** Simple field filters, ANDed. */
   filters?: FieldFilter[];
   sort?: { field: string; dir: "asc" | "desc" };
+  /**
+   * Fields the caller actually renders (e.g. the layout's list columns).
+   * Adapters SHOULD restrict their fetch to these — selecting an object's
+   * full field list drags in system references whose traversal can be
+   * unqueryable (seen live: OpportunityHistory has no Name). Absent = all.
+   */
+  columns?: string[];
   limit?: number;
   cursor?: string;
 }
@@ -191,13 +221,32 @@ export interface RecentRecord {
   objectLabel?: string;
   name: string;
   /** One-line activity note ("Contract emailed · 2d ago" without the timestamp). */
-  note: string;
-  timestamp: string;
+  note?: string;
+  /** When the rep last touched it — REAL CRM data only; adapters that can't
+   * source it omit it rather than stamping fetch time (a fabricated "0m ago"
+   * on every render reads as a bug). */
+  timestamp?: string;
+}
+
+/** One row of a server-side aggregation (crm_aggregate). */
+export interface AggregateBucket {
+  /** The groupBy field's value; null for the ungrouped total. */
+  group: string | null;
+  count: number;
+  /** Present when a sum field was requested. */
+  sum?: number | null;
+}
+
+export interface AggregateQuery {
+  groupBy?: string;
+  sumField?: string;
+  filters?: FieldFilter[];
 }
 
 export interface ActivityEntry {
   id: string;
-  kind: "email" | "call" | "note" | "meeting";
+  /** "update" = a field change from CRM history; "task" = a CRM task/to-do. */
+  kind: "email" | "call" | "note" | "meeting" | "task" | "update";
   summary: string;
   timestamp: string;
 }

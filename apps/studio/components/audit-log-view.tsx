@@ -29,6 +29,42 @@ function formatValue(v: unknown): string {
   return String(v);
 }
 
+/**
+ * Confirmation provenance, stated only as strongly as the server can back it.
+ * "Rep confirmed" means a confirm token minted by crm_preview_update verified
+ * against this exact diff — not that a widget said so. Entries written before
+ * 2026-08-02 carry nothing, and claiming either origin for them would be a
+ * guess in a compliance record.
+ */
+function confirmationLabel(entry: { confirmation?: { via: "widget" | "model" } }): {
+  text: string;
+  title: string;
+  className: string;
+} {
+  switch (entry.confirmation?.via) {
+    case "widget":
+      return {
+        text: "Rep confirmed",
+        title:
+          "A rep confirmed this exact diff in the card; the server verified the confirmation token before writing.",
+        className: "bg-paper text-ink",
+      };
+    case "model":
+      return {
+        text: "Model-initiated",
+        title:
+          "The assistant called the write tool directly — no confirmation diff was shown to a rep.",
+        className: "bg-paper text-ink-55",
+      };
+    default:
+      return {
+        text: "Not recorded",
+        title: "Logged before Cardstack recorded confirmation provenance (2026-08-02).",
+        className: "bg-paper text-ink-45",
+      };
+  }
+}
+
 function toParams(filters: Filters, extra: Record<string, string> = {}): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries({ ...filters, ...extra })) {
@@ -184,8 +220,8 @@ export function AuditLogView() {
       ) : (
         <>
           <div className="st-card mt-4 overflow-hidden">
-            <div className="grid grid-cols-[1.3fr_1.1fr_1.1fr_1fr_2fr] gap-3 border-b border-line-soft px-4 py-2">
-              {["When", "Actor", "Written as", "Record", "Change"].map((h) => (
+            <div className="grid grid-cols-[1.3fr_1.1fr_1.1fr_1fr_2fr_0.9fr] gap-3 border-b border-line-soft px-4 py-2">
+              {["When", "Actor", "Written as", "Record", "Change", "Confirmation"].map((h) => (
                 <span key={h} className="st-section-label">
                   {h}
                 </span>
@@ -194,7 +230,7 @@ export function AuditLogView() {
             {entries.map((e) => (
               <div
                 key={e.id}
-                className="grid grid-cols-[1.3fr_1.1fr_1.1fr_1fr_2fr] gap-3 border-b border-line-soft px-4 py-2.5 text-[12px] last:border-b-0"
+                className="grid grid-cols-[1.3fr_1.1fr_1.1fr_1fr_2fr_0.9fr] gap-3 border-b border-line-soft px-4 py-2.5 text-[12px] last:border-b-0"
               >
                 <span className="text-ink-55">{new Date(e.timestamp).toLocaleString()}</span>
                 <span className="break-words">{e.actor?.name ?? "—"}</span>
@@ -208,6 +244,16 @@ export function AuditLogView() {
                       <strong>{c.field}</strong> {formatValue(c.before)} → {formatValue(c.after)}
                     </span>
                   ))}
+                </span>
+                <span>
+                  {(() => {
+                    const badge = confirmationLabel(e);
+                    return (
+                      <span className={`st-chip-mono ${badge.className}`} title={badge.title}>
+                        {badge.text}
+                      </span>
+                    );
+                  })()}
                 </span>
               </div>
             ))}

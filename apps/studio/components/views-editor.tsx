@@ -125,6 +125,7 @@ export function ViewsEditor({ object }: { object: string }) {
   const [currentUser, setCurrentUser] = useState<UserContext | null>(null);
   const [saved, setSaved] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
+  const [expandedView, setExpandedView] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -280,7 +281,11 @@ export function ViewsEditor({ object }: { object: string }) {
       aliasInput: (
         <input
           className="st-input w-full min-w-0 text-[11.5px]"
-          placeholder="my deals, open deals…"
+          placeholder={
+            describe
+              ? `my ${describe.labelPlural.toLowerCase()}, open ${describe.labelPlural.toLowerCase()}…`
+              : "my records, open records…"
+          }
           defaultValue={exposure.aliases.join(", ")}
           onBlur={(e) =>
             updateView(viewId, {
@@ -322,7 +327,7 @@ export function ViewsEditor({ object }: { object: string }) {
   };
 
   return (
-    <div className="max-w-[820px]">
+    <div className="max-w-[980px]">
       <div className="flex items-center justify-between">
         <h1 className="text-[16px] font-semibold capitalize">{object} · Lists</h1>
         <StatusChip status={saved ? "staged" : "clean"} />
@@ -337,8 +342,8 @@ export function ViewsEditor({ object }: { object: string }) {
         .
       </p>
 
-      <h2 className="st-section-label mt-6">Synced CRM components</h2>
-      <div className="mt-2 grid grid-cols-1 gap-2.5">
+      <h2 className="mt-7 text-[16px] font-semibold">Synced CRM views</h2>
+      <div className="st-card mt-3 overflow-hidden">
         {savedViews.length === 0 && (
           <div className="st-card px-4 py-3 text-[12.5px] text-ink-45">
             No CRM lists for this object. HubSpot <strong>Lists</strong> (Contacts ▸ Lists, plus
@@ -352,37 +357,48 @@ export function ViewsEditor({ object }: { object: string }) {
           const { aliasInput, toggle, defaultChip, exposure } = exposureRowControls(view.id);
           const primaryPhrase = exposure.aliases[0] ?? view.name.toLowerCase();
           return (
-            <div key={view.id} className="st-card min-w-0 overflow-hidden p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
+            <div key={view.id} className="border-b border-line-soft last:border-b-0">
+              <div className="grid items-center gap-3 px-4 py-3 md:grid-cols-[minmax(220px,1fr)_150px_150px_110px]">
                 <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="break-words text-[13px] font-semibold">{view.name}</span>
-                    <span className="st-chip-mono bg-crmmeta text-crmmeta-ink">CRM list</span>
-                    {view.visibility === "private" && (
-                      <span className="st-chip-mono bg-paper text-ink-45">private</span>
-                    )}
-                    {defaultChip}
+                  <div className="truncate text-[14px] font-semibold">{view.name}</div>
+                  <div className="mt-0.5 truncate text-[12px] text-ink-55">
+                    {view.filterSummary}
                   </div>
-                  <div className="mt-1 text-[11.5px] text-ink-55">{view.filterSummary}</div>
                 </div>
-                <label className="flex flex-wrap items-center gap-2 text-[11.5px] text-ink-55">
+                <div className="text-[13px] text-ink-55">
+                  {view.visibility === "private" ? "Private CRM view" : "CRM view"}
+                </div>
+                <label className="flex items-center gap-2 text-[13px] text-ink-55">
                   {exposure.exposed ? "Available in chat" : "Hidden from chat"}
                   {toggle}
                 </label>
-              </div>
-              <div className="mt-3 grid gap-2 md:grid-cols-[1fr_1.3fr]">
-                <div className="min-w-0 rounded-[9px] border border-line-soft bg-paper px-3 py-2">
-                  <div className="text-[10px] font-semibold uppercase text-ink-55">Ask</div>
-                  <div className="mt-1 break-words text-[12px] text-ink-55">
-                    Chat resolves <span className="font-medium text-ink">"{primaryPhrase}"</span> to this
-                    CRM-managed list.
-                  </div>
+                <div className="text-right">
+                  <button
+                    type="button"
+                    className="st-btn"
+                    aria-expanded={expandedView === view.id}
+                    onClick={() => setExpandedView(expandedView === view.id ? null : view.id)}
+                  >
+                    {expandedView === view.id ? "Close" : "Configure"}
+                  </button>
                 </div>
-                <label className="text-[11.5px] text-ink-55">
-                  aliases
-                  <div className="mt-1">{aliasInput}</div>
-                </label>
               </div>
+              {expandedView === view.id && (
+                <div className="grid gap-4 border-t border-line-soft bg-paper px-4 py-4 md:grid-cols-[1fr_1.3fr]">
+                  <div>
+                    <div className="st-section-label">Primary phrase</div>
+                    <div className="mt-2 text-[13px] text-ink-55">
+                      Asking for <span className="font-medium text-ink">“{primaryPhrase}”</span>{" "}
+                      opens this view.
+                    </div>
+                    <div className="mt-2">{defaultChip}</div>
+                  </div>
+                  <label className="text-[13px] font-medium text-ink-55">
+                    Other phrases
+                    <div className="mt-2">{aliasInput}</div>
+                  </label>
+                </div>
+              )}
             </div>
           );
         })}

@@ -4,6 +4,7 @@
  * Edits autosave as a DRAFT; reps keep seeing the published revision until
  * "Publish layout…" (2b). The preview renders the REAL widget component.
  */
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LayoutConfig, ObjectDescribe } from "@cardstack/core";
@@ -41,13 +42,30 @@ export function Builder({ object }: { object: string }) {
   const [saveState, setSaveState] = useState<"clean" | "saving" | "saved" | "error">("clean");
   const [publishOpen, setPublishOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Unknown slug — a 404 with the real objects to link to, NOT a CRM outage.
+  const [notFound, setNotFound] = useState<{ api: string; labelPlural: string }[] | null>(null);
   const skipNextSave = useRef(true);
 
   const load = useCallback(async () => {
     setLoadError(null);
+    setNotFound(null);
     try {
       const res = await fetch(`/api/layout/${object}`);
-      const data = (await res.json()) as LayoutApiResponse & { error?: string };
+      const data = (await res.json()) as LayoutApiResponse & {
+        error?: string;
+        redirect?: string;
+        notFound?: boolean;
+        objects?: { api: string; labelPlural: string }[];
+      };
+      // Mis-cased slug ("accounts" for "Account") — hop to the real one.
+      if (data.redirect) {
+        router.replace(`/objects/${data.redirect}/layouts`);
+        return;
+      }
+      if (data.notFound) {
+        setNotFound(data.objects ?? []);
+        return;
+      }
       if (!res.ok || data.error) {
         setLoadError(data.error ?? `Request failed (${res.status}).`);
         return;
@@ -65,7 +83,7 @@ export function Builder({ object }: { object: string }) {
     } catch (error) {
       setLoadError(String(error));
     }
-  }, [object]);
+  }, [object, router]);
 
   const rollback = async (revision: number) => {
     setRollingBack(revision);
@@ -159,6 +177,30 @@ export function Builder({ object }: { object: string }) {
     return () => clearTimeout(timer);
   }, [config, saveDraft]);
 
+  if (notFound) {
+    return (
+      <div className="mx-auto mt-12 max-w-[560px] rounded-[13px] border border-line p-6">
+        <h2 className="text-[14px] font-semibold">No object called “{object}”</h2>
+        <p className="mt-2 text-[12px] text-ink-55">
+          The CRM connection is fine — this URL just doesn&apos;t match any object in the
+          connected portal.{notFound.length > 0 ? " Did you mean:" : ""}
+        </p>
+        {notFound.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {notFound.map((o) => (
+              <Link
+                key={o.api}
+                href={`/objects/${o.api}/layouts`}
+                className="rounded-[8px] border border-line px-2.5 py-1 text-[12px] text-ink-55 hover:border-accent hover:text-ink"
+              >
+                {o.labelPlural}
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
   if (loadError) {
     return <LoadFailed error={loadError} onRetry={() => void load()} />;
   }
@@ -174,9 +216,9 @@ export function Builder({ object }: { object: string }) {
     // Viewport-bounded so palette / canvas / preview scroll INDEPENDENTLY —
     // on real portals the palette has hundreds of fields and must not scroll
     // the whole page (feedback round 2).
-    <div className="flex h-[calc(100vh-48px)] min-h-0 flex-col">
-      <header className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+    <div className="flex min-h-0 flex-col xl:h-[calc(100vh-56px)]">
+      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {configuredObjects.length > 1 ? (
             <select
               aria-label="Switch object"
@@ -212,7 +254,7 @@ export function Builder({ object }: { object: string }) {
             onRetry={() => config && void saveDraft(config)}
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {history.length > 0 && (
             <div className="relative">
               <button
@@ -340,7 +382,7 @@ export function Builder({ object }: { object: string }) {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 xl:flex-row xl:overflow-x-auto">
         <Palette
           describe={describe}
           crm={config.crm}

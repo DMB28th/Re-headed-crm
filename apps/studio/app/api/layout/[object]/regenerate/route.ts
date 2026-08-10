@@ -13,7 +13,7 @@ type Params = { params: Promise<{ object: string }> };
 export async function POST(req: Request, { params }: Params) {
   const { object } = await params;
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     const store = await getStore();
     const connection = await store.getConnection(tenantId);
     const describe = await (await getAdapter(tenantId)).describeObject(object);

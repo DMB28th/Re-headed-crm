@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { BaseConfigStore, seededState, type StoreState } from "./memory-store.js";
-import { openConnection, sealConnection } from "./crypto.js";
+import { openConnection, openKvValue, sealConnection, sealKvValue } from "./crypto.js";
 
 /**
  * Seal/open the secret-bearing records in a whole StoreState. Only what hits
@@ -18,6 +18,20 @@ function mapConnections(state: StoreState, fn: <T extends SecretBearing>(v: T) =
     ...state,
     ...(state.connections ? { connections: remap(state.connections) } : {}),
     ...(state.userConnections ? { userConnections: remap(state.userConnections) } : {}),
+  };
+}
+
+/** KV values carry MCP OAuth bearer secrets — sealed on write, opened on load. */
+function mapKv(
+  state: StoreState,
+  fn: (value: Record<string, unknown>) => Record<string, unknown>,
+): StoreState {
+  if (!state.kv) return state;
+  return {
+    ...state,
+    kv: Object.fromEntries(
+      Object.entries(state.kv).map(([k, entry]) => [k, { ...entry, value: fn(entry.value) }]),
+    ),
   };
 }
 
@@ -39,7 +53,7 @@ export class FileConfigStore extends BaseConfigStore {
 
   protected async load(): Promise<StoreState> {
     const raw = JSON.parse(readFileSync(this.filePath, "utf-8")) as StoreState;
-    return mapConnections(raw, openConnection);
+    return mapKv(mapConnections(raw, openConnection), openKvValue);
   }
 
   protected async save(state: StoreState): Promise<void> {
@@ -48,7 +62,10 @@ export class FileConfigStore extends BaseConfigStore {
 
   private writeAtomic(state: StoreState): void {
     const tmp = `${this.filePath}.tmp`;
-    writeFileSync(tmp, JSON.stringify(mapConnections(state, sealConnection), null, 2));
+    writeFileSync(
+      tmp,
+      JSON.stringify(mapKv(mapConnections(state, sealConnection), sealKvValue), null, 2),
+    );
     renameSync(tmp, this.filePath);
   }
 }

@@ -5,6 +5,7 @@ import { getUserContext } from "../../lib/auth";
 
 export const dynamic = "force-dynamic";
 
+
 export default async function AuditPage() {
   const { tenantId } = await getUserContext();
   const connection = await (await getStore()).getConnection(tenantId);

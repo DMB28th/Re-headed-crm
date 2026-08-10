@@ -15,6 +15,27 @@
  * - 2026-07-20: screen_flow actions gain an `inputs` mapping contract. Existing
  *   actions default to no explicit inputs; runtimes can still inject their safe
  *   host context, while new Studio configs map variables intentionally.
+ * - 2026-07-23: RelatedListConfig gains optional `foreignKey` — the Salesforce
+ *   child FK field used to query the related records. `relationship` is now the
+ *   unique relationshipName (multiple relationships can share a foreign key).
+ *   Additive + optional; existing HubSpot configs (no foreignKey) parse and
+ *   resolve unchanged.
+ * - 2026-07-26: CardAction gains the `quick_action` variant (Salesforce quick
+ *   actions rendered in chat via the flow-run form; the CRM executes). New
+ *   union member — existing configs parse unchanged.
+ * - 2026-07-23 (b): LayoutConfig gains optional `generatedFallback` — true only
+ *   on layouts the SERVER generates at runtime for objects with no configured
+ *   layout (record-card drill-through to e.g. OpportunityLineItem). These are
+ *   read-only, all-fields, never persisted by Studio, and the widget shows a
+ *   field-name filter box for them. Additive + optional; stored configs never
+ *   carry it.
+ * - 2026-08-07: CardAction gains `enabled` (default true) on every variant.
+ *   A disabled action stays in the array with its label, order and input
+ *   mappings intact; it is hidden from the card and REFUSED by the server
+ *   (crm_flow_start / crm_flow_continue / crm_quick_action_start), and stays
+ *   visible and re-enableable in Studio. Defaulted, so stored configs parse
+ *   unchanged. Removal from the array remains a separate, destructive
+ *   operation — do not conflate the two.
  */
 import { z } from "zod";
 
@@ -59,6 +80,8 @@ export const RelatedListConfig = z.object({
   object: z.string().min(1),
   /** Relationship / association API name, e.g. "OpportunityContactRoles". */
   relationship: z.string().min(1),
+  /** Salesforce child FK field to query by (see 2026-07-23 migration note). */
+  foreignKey: z.string().optional(),
   columns: z.array(z.string().min(1)).min(1),
   limit: z.number().int().positive().max(50).default(5),
 });
@@ -124,14 +147,27 @@ export const ActionInputMappings = z.record(z.string().min(1), ActionInputMappin
 export type ActionInputMappings = z.infer<typeof ActionInputMappings>;
 
 export const CardAction = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("update_record"), label: z.string().min(1) }),
+  z.object({
+    type: z.literal("update_record"),
+    label: z.string().min(1),
+    enabled: z.boolean().default(true),
+  }),
   z.object({
     type: z.literal("create_related"),
     object: z.string().min(1),
     label: z.string().min(1),
+    enabled: z.boolean().default(true),
   }),
   // Salesforce screen flows land in M5; the config slot exists so publishing a
   // flow action later is not a schema migration.
+  // Salesforce quick action exposed on the card; the chat form renders its
+  // mini-layout and the CRM executes (validations, predefined values, triggers).
+  z.object({
+    type: z.literal("quick_action"),
+    actionApiName: z.string().min(1),
+    label: z.string().min(1),
+    enabled: z.boolean().default(true),
+  }),
   z.object({
     type: z.literal("screen_flow"),
     flowApiName: z.string().min(1),
@@ -143,6 +179,7 @@ export const CardAction = z.discriminatedUnion("type", [
      * action from chat.
      */
     inputs: ActionInputMappings,
+    enabled: z.boolean().default(true),
   }),
 ]);
 export type CardAction = z.infer<typeof CardAction>;
@@ -194,6 +231,9 @@ export const LayoutConfig = z.object({
   listView: ListViewConfig,
   recordCard: RecordCardConfig,
   permissions: PermissionsConfig,
+  /** Server-generated all-fields fallback (drill-through to an unconfigured
+   *  object). Never persisted; widgets render a field-name filter for it. */
+  generatedFallback: z.boolean().optional(),
 });
 export type LayoutConfig = z.infer<typeof LayoutConfig>;
 

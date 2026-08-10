@@ -22,12 +22,15 @@ function hostFromApp(app: App | null): WidgetHost | null {
     sendFollowup: (text) => {
       app.sendMessage({ role: "user", content: [{ type: "text", text }] }).catch(() => {});
     },
+    openLink: (url) => {
+      app.openLink({ url }).catch(() => {});
+    },
   };
 }
 
 function RecordCardApp() {
   const { app, payload, setPayload, toolError, connectionError, locale } =
-    useWidget<RecordCardPayload>("Record Card");
+    useWidget<RecordCardPayload>("Record Card", { openLinks: {} });
   // The last good record payload survives a typed error so any in-progress
   // edit state stays mounted (design 1e re-auth: "edits kept").
   const [lastGood, setLastGood] = useState<RecordCardPayload | null>(null);

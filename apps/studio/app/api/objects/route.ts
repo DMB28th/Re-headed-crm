@@ -6,7 +6,7 @@ import { generateStarterLayout } from "../../../lib/starter-layout";
 
 /** Objects panel data: what's configured (draft or published) vs addable. */
 export async function GET(req: Request) {
-  const { tenantId } = getUserContextFromRequest(req);
+  const { tenantId } = await getUserContextFromRequest(req);
   const store = await getStore();
   const adapter = await getAdapter(tenantId);
   const connection = await store.getConnection(tenantId);
@@ -47,7 +47,7 @@ export async function GET(req: Request) {
 /** Add an object: generate a starter DRAFT layout from describe (3c). */
 export async function POST(req: Request) {
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     const { object } = (await req.json()) as { object?: string };
     if (!object) return NextResponse.json({ error: "object required" }, { status: 400 });
     const store = await getStore();

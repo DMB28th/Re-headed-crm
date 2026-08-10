@@ -37,6 +37,31 @@ describe("PostgresConfigStore", () => {
     expect((await store.getHomeCard(DEMO_TENANT_ID))?.blocks.length).toBe(3);
   });
 
+  it("backfills the demo home card on databases seeded before home_cards existed", async () => {
+    const db = new PGlite();
+    const session: SqlSession = {
+      query: async (text, params) =>
+        (await db.query(text, params as never[])) as { rows: Record<string, unknown>[] },
+    };
+    const first = new PostgresConfigStore(session);
+    // Simulate a pre-M4 database: layouts seeded, home_cards row missing.
+    await first.getLayout(DEMO_TENANT_ID, "deals");
+    await session.query("DELETE FROM home_cards", []);
+
+    const rebooted = new PostgresConfigStore(session);
+    expect((await rebooted.getHomeCard(DEMO_TENANT_ID))?.blocks.length).toBe(3);
+
+    // ...and a later boot must not clobber an admin's published card.
+    const current = (await rebooted.getHomeCard(DEMO_TENANT_ID))!;
+    await rebooted.setHomeCard({
+      ...current,
+      blocks: current.blocks.filter((b) => b.type !== "recent"),
+    });
+    await rebooted.publishHomeCard(DEMO_TENANT_ID);
+    const third = new PostgresConfigStore(session);
+    expect((await third.getHomeCard(DEMO_TENANT_ID))!.blocks).toHaveLength(2);
+  });
+
   it("draft → publish → rollback lifecycle matches the file store semantics", async () => {
     await store.saveDraft(editedDraft());
     // reps still see v4 while the draft exists

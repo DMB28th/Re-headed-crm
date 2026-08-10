@@ -24,7 +24,7 @@ async function scopeGapsFor(adapter: CrmAdapter): Promise<string[]> {
 }
 
 export async function GET(req: Request) {
-  const { tenantId } = getUserContextFromRequest(req);
+  const { tenantId } = await getUserContextFromRequest(req);
   const store = await getStore();
   const connection = await store.getConnection(tenantId);
   if (connection.status !== "connected") {
@@ -45,7 +45,7 @@ interface ConnectBody {
 }
 
 export async function POST(req: Request) {
-  const { tenantId } = getUserContextFromRequest(req);
+  const { tenantId } = await getUserContextFromRequest(req);
   const body = (await req.json()) as ConnectBody;
   const store = await getStore();
 
@@ -60,18 +60,41 @@ export async function POST(req: Request) {
     invalidateAdapterCache({ crm: current.crm, credentials: current.credentials });
     let connectedUser: string | null = null;
     let scopeGaps: string[] = [];
+    // The probe may force a token refresh; under Salesforce rotation the NEW
+    // refresh token must reach the store, or the stored one is dead after this
+    // request and the whole connection dies.
+    let rotated: Record<string, string> | null = null;
     try {
       const probe =
         current.crm === "salesforce"
-          ? new SalesforceAdapter(current.credentials as unknown as SalesforceCredentials)
+          ? new SalesforceAdapter(
+              current.credentials as unknown as SalesforceCredentials,
+              undefined,
+              (credentials) => {
+                rotated = credentials as unknown as Record<string, string>;
+              },
+            )
           : new HubSpotAdapter(current.credentials as unknown as HubSpotCredentials);
       connectedUser = await probe.validateConnection();
       scopeGaps = await scopeGapsFor(probe);
     } catch (error) {
+      // Even on failure, a rotation that DID happen must be persisted — the
+      // old token is already invalid.
+      if (rotated) {
+        await store.setConnection({
+          ...current,
+          credentials: rotated,
+          changedAt: new Date().toISOString(),
+        });
+      }
       const message = error instanceof Error ? error.message : String(error);
       return NextResponse.json({ error: `Refresh failed: ${message}` }, { status: 400 });
     }
-    const state: ConnectionState = { ...current, changedAt: new Date().toISOString() };
+    const state: ConnectionState = {
+      ...current,
+      ...(rotated ? { credentials: rotated } : {}),
+      changedAt: new Date().toISOString(),
+    };
     await store.setConnection(state);
     return NextResponse.json({ connection: redact(state), connectedUser, scopeGaps });
   }
@@ -167,6 +190,12 @@ export async function POST(req: Request) {
     // Same credential set may have been cached with pre-scope-change state.
     invalidateAdapterCache({ crm: state.crm, credentials: state.credentials });
   }
+  // Connecting a CRM whose object model differs from the existing config (e.g. the
+  // demo "deals"/hubspot seed when a Salesforce org connects) leaves stale layouts,
+  // lists, and home cards behind. Wipe them so the workspace starts clean.
+  const existingCrm = await store.tenantConfigCrm(tenantId);
+  const clearedStaleConfig = !!existingCrm && existingCrm !== state.crm;
+  if (clearedStaleConfig) await store.clearTenantConfig(tenantId);
   await store.setConnection(state);
-  return NextResponse.json({ connection: redact(state), connectedUser, scopeGaps });
+  return NextResponse.json({ connection: redact(state), connectedUser, scopeGaps, clearedStaleConfig });
 }

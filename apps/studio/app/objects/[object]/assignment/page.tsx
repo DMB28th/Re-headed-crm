@@ -25,7 +25,9 @@ export default async function AssignmentPage({
 
   return (
     <div className="max-w-[620px]">
-      <h1 className="text-[16px] font-semibold capitalize">{object} · Assignment</h1>
+      <h1 className="text-[22px] font-semibold tracking-[-0.025em] capitalize">
+        {object} audiences
+      </h1>
 
       <div className="st-card mt-5 divide-y divide-line-soft">
         <div className="flex items-center justify-between px-4 py-3">
@@ -54,14 +56,10 @@ export default async function AssignmentPage({
 
       <div className="mt-6 rounded-[13px] border border-dashed border-line p-6 text-center">
         <div className="text-[13px] font-medium">Everyone gets “{layoutName}”.</div>
-        <p className="mx-auto mt-1 max-w-[400px] text-[12px] text-ink-55">
-          Add an audience to vary the card by team — audiences map to CRM-native groupings
-          (HubSpot teams, Salesforce profiles), never hand-maintained lists. Lands with
-          role-based layouts.
+        <p className="mx-auto mt-1 max-w-[400px] text-[13px] text-ink-55">
+          Team-specific cards are not available yet. This page is intentionally read-only
+          until CRM-native audience mapping is ready.
         </p>
-        <button type="button" className="st-btn mt-3" disabled>
-          + Add an audience
-        </button>
       </div>
     </div>
   );

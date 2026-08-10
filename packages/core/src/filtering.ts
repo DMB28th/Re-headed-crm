@@ -74,7 +74,22 @@ export function filterRecord(
   for (const [key, value] of Object.entries(record.fields)) {
     if (allowed.has(key)) fields[key] = value;
   }
-  return { id: record.id, fields };
+  // Drill-through ids ride with their field — and are filtered with it, so a
+  // denied reference field leaks neither its name nor its record id.
+  const refs: Record<string, string> = {};
+  for (const [key, id] of Object.entries(record.refs ?? {})) {
+    if (allowed.has(key)) refs[key] = id;
+  }
+  const refObjects: Record<string, string> = {};
+  for (const [key, obj] of Object.entries(record.refObjects ?? {})) {
+    if (allowed.has(key)) refObjects[key] = obj;
+  }
+  return {
+    id: record.id,
+    fields,
+    ...(Object.keys(refs).length > 0 ? { refs } : {}),
+    ...(Object.keys(refObjects).length > 0 ? { refObjects } : {}),
+  };
 }
 
 export function filterPage(page: RecordPage, allowed: ReadonlySet<string>): RecordPage {

@@ -4,10 +4,18 @@
  */
 import type {
   ActivityEntry,
+  AggregateBucket,
+  AggregateQuery,
+  CrmFieldValue,
   CrmRecord,
   CrmTask,
   FieldPatch,
+  FlowDefinitionJson,
   FlowSummary,
+  FlowTableRow,
+  QuickActionDescribeJson,
+  QuickActionExecuteResult,
+  QuickActionSummary,
   ObjectDescribe,
   ObjectSummary,
   RecentRecord,
@@ -26,6 +34,10 @@ export interface CrmAdapter {
 
   // Data
   search(objectApi: string, query: SearchQuery): Promise<RecordPage>;
+  /** Server-side count/sum over ALL matching records (optionally grouped) —
+   *  totals must not depend on paging rows into context. Optional: CRMs
+   *  without a native aggregate surface may omit it. */
+  aggregate?(objectApi: string, query: AggregateQuery): Promise<AggregateBucket[]>;
   getRecord(objectApi: string, id: string, fields: string[]): Promise<CrmRecord>;
   getRelated(parentId: string, rel: RelatedListConfig): Promise<RecordPage>;
   getActivity(objectApi: string, id: string, limit: number): Promise<ActivityEntry[]>;
@@ -34,7 +46,9 @@ export interface CrmAdapter {
 
   // Saved views (design 5a/5b)
   listSavedViews(objectApi: string): Promise<SavedView[]>;
-  getViewRows(viewId: string, cursor?: string): Promise<RecordPage>;
+  /** `columns` mirrors SearchQuery.columns — the fields the caller renders;
+   *  adapters should restrict the fetch to them when provided. */
+  getViewRows(viewId: string, cursor?: string, columns?: string[]): Promise<RecordPage>;
 
   // Tasks / follow-ups + recents (home card, 7a)
   listTasks(userScope: string): Promise<TaskPage>;
@@ -50,7 +64,39 @@ export interface CrmAdapter {
    * flow URL (e.g. HubSpot workflows). Never drives an interview; the CRM owns
    * the screens and the write.
    */
-  getFlowLaunchUrl?(flowApiName: string): string | null;
+  getFlowLaunchUrl?(flowApiName: string, params?: Record<string, string>): string | null;
+  /**
+   * NATIVE-rung flow definition (experimental spike): the CRM's screen-flow
+   * definition JSON for in-chat interpretation. Optional — null when the CRM
+   * can't expose the definition (then only the handoff rung is available).
+   */
+  getFlowDefinition?(flowApiName: string): Promise<FlowDefinitionJson | null>;
+  /**
+   * Generic row fetch feeding flow data tables / record choice sets. Optional;
+   * identifiers are validated by the adapter before querying.
+   */
+  queryRows?(
+    objectApi: string,
+    fields: string[],
+    opts: { sortField?: string; sortOrder?: "Asc" | "Desc"; limit?: number },
+  ): Promise<FlowTableRow[]>;
+  /**
+   * Quick actions (v1): the CRM's per-object action list, a mini-layout
+   * describe, record-contextual defaults, and an execute that the CRM itself
+   * runs (its validations, predefined values, triggers). Optional — CRMs
+   * without an equivalent surface omit them.
+   */
+  listQuickActions?(objectApi: string): Promise<QuickActionSummary[]>;
+  describeQuickAction?(actionApiName: string): Promise<QuickActionDescribeJson | null>;
+  getQuickActionDefaults?(
+    actionApiName: string,
+    contextRecordId: string,
+  ): Promise<Record<string, CrmFieldValue>>;
+  executeQuickAction?(
+    actionApiName: string,
+    contextRecordId: string | null,
+    fields: Record<string, CrmFieldValue>,
+  ): Promise<QuickActionExecuteResult>;
 
   // Auth
   refreshTokenIfNeeded(): Promise<void>;

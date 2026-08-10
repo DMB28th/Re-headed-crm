@@ -39,7 +39,7 @@ const dealFields: FieldDescribe[] = [
   { api: "health_score", label: "Health score", type: "number", required: false, readOnly: true },
   { api: "commission", label: "Commission", type: "currency", required: false, readOnly: false, currencyCode: "USD" },
   { api: "loss_reason", label: "Loss reason", type: "picklist", required: false, readOnly: false, values: ["Price", "Competitor", "No decision", "Product gap"] },
-  { api: "company", label: "Company", type: "string", required: false, readOnly: true, description: "Primary associated company (flattened from the association by the adapter)." },
+  { api: "company", label: "Company", type: "reference", required: false, readOnly: false, referenceTo: ["companies"], description: "Primary associated company. The adapter resolves it to the company's name and ships the id for drill-through." },
 ];
 
 const contactFields: FieldDescribe[] = [

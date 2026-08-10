@@ -49,6 +49,18 @@ export function formatDate(raw: string, locale: string, withTime = false): strin
   }).format(date);
 }
 
+/** "as of 2:32 PM" (same-day) / "as of Jul 15, 2:32 PM" — the staleness line. */
+export function formatAsOf(iso: string, locale: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const sameDay = date.toDateString() === new Date().toDateString();
+  return new Intl.DateTimeFormat(locale, {
+    ...(sameDay ? {} : { month: "short", day: "numeric" }),
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
 /** "2d ago" style timestamps for the activity timeline. */
 export function formatRelative(iso: string, locale: string): string {
   const then = new Date(iso).getTime();

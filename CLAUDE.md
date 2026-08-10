@@ -68,15 +68,38 @@ says so on the Flows page rather than implying otherwise;
 `MODES[].delivered` in `flows-editor.tsx` is the flag to flip when a widget
 actually branches on it.
 
+**The staging model is in** (docs/studio-staging-model.md). Every governed
+surface — layouts, view exposures, home cards, flow render modes, custom
+screens — carries `status` (draft|published|history) + `revision`, stages as a
+draft, and publishes/rolls back from `/publish` (Review & publish).
+`FlowRenderModeConfig.active` gates `crm_flow_start`, so flows are opt-in;
+`pnpm --filter @cardstack/mcp-server migrate:flows-active` backfills existing
+flows so none go dark on deploy.
+
+**The actions editor (3a) is in** — per-object at
+`/objects/[object]/actions`, with screen-flow input mapping. Card actions are
+config, enforced server-side.
+
 **Still open.** View-as / audience preview (2f–2i beyond the teaching state) is
 the biggest remaining trust gap — `scopeViewExposuresForUser` exists
 server-side but nothing surfaces it. Custom screens are M6 config with no M6
 runtime (guardrail execution, live preview); the editor carries a
 `RuntimePendingBanner` saying so. Also open: onboarding auto-generation (2c),
-actions editor (3a), related-list picker (3b), object picker (3c), requirements
-pass-through (3d), audience picker (3e), stale-card strip and re-auth widget
-states. Audit log + preferences move to Postgres alongside multi-tenant auth
-(M7).
+related-list picker (3b), object picker (3c), requirements pass-through (3d),
+audience picker (3e), stale-card strip and re-auth widget states. Audit log +
+preferences move to Postgres alongside multi-tenant auth (M7).
+PostgresConfigStore ships behind DATABASE_URL (Railway two-service deploys).
+
+**Cardstack accounts and multi-workspace tenancy are in.** Sign-in is
+Salesforce OAuth against a Cardstack-owned connected app
+(`CARDSTACK_SF_CLIENT_ID/SECRET`); a workspace IS a Salesforce org, so the
+first signer from an org creates it and becomes admin and later signers
+auto-join as members. Studio identity is a session cookie backed by the
+store's KV — the `x-cardstack-*` headers are no longer trusted, and
+`CARDSTACK_TENANT_ID` is only a migration fallback, not a request default.
+Full model, env vars, and migration notes: **docs/accounts-and-workspaces.md**.
+Cross-tenant isolation is asserted in
+`packages/config-store/src/tenant-isolation.test.ts` — keep it passing.
 
 ## Hard rules
 
@@ -97,7 +120,16 @@ states. Audit log + preferences move to Postgres alongside multi-tenant auth
    `@modelcontextprotocol/ext-apps` SDK (types in node_modules) — do not trust
    training data or PLAN.md for exact `_meta` shapes.
 8. Every write is preceded by a confirmation diff — "require confirmation" is
-   locked ON; it is the product's spine, not a setting.
+   locked ON; it is the product's spine, not a setting. This is enforced
+   server-side, not by widget flow: `crm_preview_update` computes the diff and
+   mints a signed token bound to it, and `crm_update_record` verifies that token
+   before writing, so the audit log's "rep confirmed" is a finding the server
+   checked rather than a claim the caller made. Flow and quick-action writes are
+   gated the same way by their SIGNED interview state (which carries
+   `pendingWrite`), not by a token — same floor, same signer. Never widen a write
+   tool to accept confirmation as a boolean or a caller-supplied string, and
+   never let a signer degrade to unsigned when no key is configured.
+   See **docs/confirmation-provenance.md**.
 
 ## Commands
 
@@ -109,6 +141,28 @@ states. Audit log + preferences move to Postgres alongside multi-tenant auth
 - `pnpm demo:m3` — Golden Path 3 demo (publish → live layout change → rollback)
 - `pnpm demo:m4` — home card demo (lists/recents/follow-ups → confirmed task check-off)
 - `pnpm --filter @cardstack/studio dev` — Studio on :3002 (shares data/cardstack-config.json with the server); `/publish` is Review & publish + rollback
+
+### Local dev against a REAL Salesforce org
+
+The stock seed is the HubSpot-shaped mock portal (`deals`/`dealname`) — fine for
+tests and demos, but it describes nothing in a Salesforce org. To develop
+against real data instead:
+
+- `pnpm --filter @cardstack/studio seed:salesforce -- --org <alias>` — reads the
+  org's actual objects, fields and list views and writes
+  `data/cardstack-salesforce.json` (gitignored). Defaults to Account, Contact,
+  Opportunity, Lead, Case, Task; `--objects A,B` to override.
+- `pnpm --filter @cardstack/studio dev:sf` — Studio on that store, live against
+  the org. `pnpm --filter @cardstack/mcp-server dev:sf` for the MCP server.
+  Both default to the `screenflow-org` alias (`CARDSTACK_DEV_SF_ORG` overrides).
+
+**Auth is the `sf` CLI's own, held in memory only.** `CARDSTACK_DEV_SF_ORG`
+bypasses the stored connection entirely, so a local run never reads, refreshes,
+or writes the connected app's refresh token — which matters because that app
+rotates refresh tokens with reuse detection, and a local refresh would revoke
+the deployed connection's whole grant family. Never persist a token from
+`readSalesforceCliToken` into a config store. Plain `pnpm dev` (no `:sf`) is
+untouched and still uses the mock portal.
 - `pnpm --filter @cardstack/mcp-server dev` — run the MCP server locally (streamable HTTP on :3001)
 - MCP Inspector: `npx @modelcontextprotocol/inspector` → connect to `http://localhost:3001/mcp`
 

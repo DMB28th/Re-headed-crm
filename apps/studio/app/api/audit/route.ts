@@ -29,7 +29,7 @@ function queryFromUrl(url: URL): AuditQuery {
 
 export async function GET(req: Request) {
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     const url = new URL(req.url);
     const log = await getAuditLog();
     const filters = queryFromUrl(url);
@@ -37,6 +37,9 @@ export async function GET(req: Request) {
     if (url.searchParams.get("format") === "csv") {
       const header = [
         "timestamp", "actor", "actorEmail", "writtenAs", "object", "recordId", "field", "before", "after",
+        // Blank for entries logged before provenance was recorded — an empty
+        // cell, never a guessed one, since this is the compliance export.
+        "confirmedVia", "confirmationId",
       ];
       const cell = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
       const PAGE = 1000;
@@ -63,6 +66,8 @@ export async function GET(req: Request) {
                       change.field,
                       change.before,
                       change.after,
+                      entry.confirmation?.via ?? "",
+                      entry.confirmation?.confirmationId ?? "",
                     ]
                       .map(cell)
                       .join(",") + "\n",

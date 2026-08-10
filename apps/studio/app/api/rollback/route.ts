@@ -13,7 +13,7 @@ import { getUserContextFromRequest } from "../../../lib/auth";
 
 export async function POST(req: Request) {
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     const body = (await req.json()) as { key?: StagedKey; toRevision?: number };
     if (!body.key?.surface || !body.key.object || typeof body.toRevision !== "number") {
       return NextResponse.json({ error: "Missing surface, object or revision." }, { status: 400 });

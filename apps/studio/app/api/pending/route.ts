@@ -40,7 +40,7 @@ async function resolveLabels(tenantId: string): Promise<DiffLabels> {
 
 export async function GET(req: Request) {
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     const store = await getStore();
     const labels = await resolveLabels(tenantId);
     const [changes, history] = await Promise.all([
@@ -55,7 +55,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     const body = (await req.json()) as { keys?: StagedKey[] };
     const keys = body.keys ?? [];
     if (keys.length === 0) {

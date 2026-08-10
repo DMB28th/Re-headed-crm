@@ -8,6 +8,11 @@
  * - 2026-07-12: new module. PostgresAuditLog creates `audit_entries`
  *   (CREATE TABLE IF NOT EXISTS — safe on a live DB). FileAuditLog appends
  *   JSON-lines next to the file config store's data file.
+ * - 2026-08-02: AuditEntry gains `confirmation` (widget-confirmed vs
+ *   model-initiated). Optional, and entries are stored as whole JSON blobs
+ *   (JSONB / JSON-lines), so no schema change and no backfill is required —
+ *   pre-existing entries read back with `confirmation: undefined`, which
+ *   readers must render as "unknown" rather than assuming either origin.
  * - 2026-08-10: added `query()` — filtered, paged reads with a total count.
  *   `list()` is unchanged and still means "newest N"; it just can't answer
  *   "who changed amount on this record last Tuesday", which is the question a
@@ -31,6 +36,16 @@ export interface AuditEntry {
   recordId: string;
   changes: { field: string; before: unknown; after: unknown }[];
   timestamp: string;
+  /**
+   * Whether a rep confirmed a server-computed diff before this write, or the
+   * model called the write tool directly. Undefined on entries written before
+   * 2026-08-02, when the distinction wasn't recorded — render those as unknown.
+   */
+  confirmation?: {
+    via: "widget" | "model";
+    confirmationId?: string;
+    previewedAt?: string;
+  };
 }
 
 /** Filters for a compliance read. Every field is optional and ANDed. */

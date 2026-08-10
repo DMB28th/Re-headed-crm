@@ -26,12 +26,16 @@ function hostFromApp(app: App | null): WidgetHost | null {
     sendFollowup: (text) => {
       app.sendMessage({ role: "user", content: [{ type: "text", text }] }).catch(() => {});
     },
+    // The embedded RecordCard's "View in Salesforce" uses this.
+    openLink: (url) => {
+      app.openLink({ url }).catch(() => {});
+    },
   };
 }
 
 function ResultsTableApp() {
   const { app, payload, setPayload, toolError, connectionError, locale } =
-    useWidget<TablePayload>("Results Table");
+    useWidget<TablePayload>("Results Table", { openLinks: {} });
 
   if (connectionError) {
     return <MessageCard title="Couldn't connect to the chat host" body={connectionError.message} />;

@@ -120,7 +120,9 @@ function fingerprint(config: LayoutConfig): Map<string, Unit> {
         ? "action · save"
         : action.type === "create_related"
           ? `action · create ${action.object}`
-          : `action · flow ${action.flowApiName}`;
+          : action.type === "quick_action"
+            ? `action · quick action ${action.actionApiName}`
+            : `action · flow ${action.flowApiName}`;
     map.set(key, {
       fp: JSON.stringify({
         label: action.label,

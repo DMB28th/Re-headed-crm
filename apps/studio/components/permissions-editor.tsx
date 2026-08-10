@@ -12,6 +12,7 @@ export function PermissionsEditor({ object }: { object: string }) {
   const [config, setConfig] = useState<LayoutConfig | null>(null);
   const [describe, setDescribe] = useState<ObjectDescribe | null>(null);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -25,11 +26,17 @@ export function PermissionsEditor({ object }: { object: string }) {
   const save = useCallback(
     async (next: LayoutConfig) => {
       setConfig(next);
-      await fetch(`/api/layout/${object}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(next),
-      });
+      setError(null);
+      const response = await fetch(`/api/layout/${object}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(next),
+        });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        setError(body.error ?? `Couldn't save (${response.status}).`);
+        return;
+      }
       setSaved(true);
       setTimeout(() => setSaved(false), STATUS_FLASH_MS);
     },
@@ -40,15 +47,20 @@ export function PermissionsEditor({ object }: { object: string }) {
   const permissions = config.permissions;
 
   return (
-    <div className="max-w-[620px]">
+    <div className="max-w-[720px]">
       <div className="flex items-center justify-between">
         <h1 className="text-[16px] font-semibold capitalize">{object} · Permissions</h1>
         <StatusChip status={saved ? "staged" : "clean"} />
       </div>
-      <p className="mt-1 text-[12.5px] text-ink-55">
+      <p className="mt-1 text-[14px] text-ink-55">
         Changes here land in the draft and go live with the next publish. The CRM&apos;s own
         permissions (FLS, scopes) always win — Cardstack only ever narrows.
       </p>
+      {error && (
+        <div role="alert" className="mt-4 rounded-[9px] bg-drift px-3 py-2 text-[13px] text-drift-ink">
+          {error}
+        </div>
+      )}
 
       <div className="st-card mt-5 divide-y divide-line-soft">
         <div className="flex items-center justify-between px-4 py-3">

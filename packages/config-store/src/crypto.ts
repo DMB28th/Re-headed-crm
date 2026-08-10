@@ -110,3 +110,25 @@ export function openConnection<T extends SecretBearing>(raw: T): T {
   if (raw.pendingAuth !== undefined) opened.pendingAuth = openField(raw.pendingAuth);
   return opened as unknown as T;
 }
+
+/**
+ * Seal an arbitrary JSON object for KV storage (MCP OAuth codes/tokens hold
+ * live bearer secrets). Same AES-256-GCM path as connection credentials;
+ * plaintext passthrough when no key is configured (dev/demo).
+ */
+export function sealKvValue(value: Record<string, unknown>): Record<string, unknown> {
+  const sealed = sealField({ blob: JSON.stringify(value) });
+  return typeof sealed === "string" ? { __sealed: sealed } : value;
+}
+
+export function openKvValue(raw: Record<string, unknown>): Record<string, unknown> {
+  const sealed = raw.__sealed;
+  if (typeof sealed === "string") {
+    const opened = openField(sealed);
+    return JSON.parse((opened as { blob?: string } | undefined)?.blob ?? "{}") as Record<
+      string,
+      unknown
+    >;
+  }
+  return raw;
+}

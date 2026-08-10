@@ -15,7 +15,7 @@ export interface ExposedViewInfo {
 
 export async function GET(req: Request) {
   try {
-    const user = getUserContextFromRequest(req);
+    const user = await getUserContextFromRequest(req);
     const { tenantId } = user;
     const store = await getStore();
     const adapter = await getAdapter(tenantId);
@@ -28,38 +28,40 @@ export async function GET(req: Request) {
 
     // Exposed views across EVERY published object (the home card is not deals-only).
     const objects = await store.listConfiguredObjects(tenantId);
-    const exposedViews: ExposedViewInfo[] = [];
-    for (const object of objects) {
-      const config = await store.getViewExposuresConfig(tenantId, object);
-      const scoped = config ? scopeViewExposuresForUser(config, user) : null;
-      const exposures = scoped?.views.filter((v) => v.exposed) ?? [];
-      // A CRM that can't list views (or is missing a scope) must not sink the
-      // whole builder — custom lists still resolve without it.
-      const savedViews = await adapter.listSavedViews(object).catch(() => []);
-      const customs = new Map((scoped?.customLists ?? []).map((c) => [c.id, c]));
-      for (const exposure of exposures) {
-        const custom = customs.get(exposure.viewId);
-        if (custom) {
-          exposedViews.push({
-            viewId: custom.id,
-            object,
-            name: custom.name,
-            filterSummary: summarizeCustomFilters(custom),
-            custom,
+    const exposedViews = (
+      await Promise.all(
+        objects.map(async (object): Promise<ExposedViewInfo[]> => {
+          const config = await store.getViewExposuresConfig(tenantId, object);
+          const scoped = config ? scopeViewExposuresForUser(config, user) : null;
+          const exposures = scoped?.views.filter((view) => view.exposed) ?? [];
+          // A CRM that can't list views (or is missing a scope) must not sink
+          // the whole builder — custom lists still resolve without it.
+          const savedViews = await adapter.listSavedViews(object).catch(() => []);
+          const customs = new Map((scoped?.customLists ?? []).map((list) => [list.id, list]));
+          return exposures.flatMap((exposure) => {
+            const custom = customs.get(exposure.viewId);
+            if (custom) {
+              return [{
+                viewId: custom.id,
+                object,
+                name: custom.name,
+                filterSummary: summarizeCustomFilters(custom),
+                custom,
+              }];
+            }
+            const view = savedViews.find((saved) => saved.id === exposure.viewId);
+            return view
+              ? [{
+                  viewId: view.id,
+                  object,
+                  name: view.name,
+                  filterSummary: view.filterSummary,
+                }]
+              : [];
           });
-          continue;
-        }
-        const view = savedViews.find((v) => v.id === exposure.viewId);
-        if (view) {
-          exposedViews.push({
-            viewId: view.id,
-            object,
-            name: view.name,
-            filterSummary: view.filterSummary,
-          });
-        }
-      }
-    }
+        }),
+      )
+    ).flat();
     // Redact: credentials never leave the server (hard rule 3).
     const { credentials, ...connectionSafe } = connection;
     return NextResponse.json({
@@ -84,7 +86,7 @@ export async function GET(req: Request) {
  */
 export async function POST(req: Request) {
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     const config = HomeCardConfig.parse(await req.json());
     if (config.tenantId !== tenantId) {
       return NextResponse.json({ error: "tenant mismatch" }, { status: 400 });
@@ -99,7 +101,7 @@ export async function POST(req: Request) {
 /** Discards the staged draft, restoring what reps already see. */
 export async function DELETE(req: Request) {
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     await (await getStore()).discardHomeCardDraft(tenantId);
     return NextResponse.json({ ok: true });
   } catch (error) {

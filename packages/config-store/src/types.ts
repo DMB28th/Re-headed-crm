@@ -1,4 +1,5 @@
 import type {
+  CrmKind,
   CustomScreenConfig,
   CustomScreenRecord,
   CustomList,
@@ -8,6 +9,7 @@ import type {
   ViewExposure,
   ViewExposuresConfig,
 } from "@cardstack/core";
+import type { IdentityStore } from "./identity.js";
 import type { DiffLabels, LayoutDiff } from "./diff.js";
 
 /**
@@ -70,6 +72,12 @@ export interface ConfigStore {
     audience?: string,
   ): Promise<LayoutConfig | undefined>;
   listConfiguredObjects(tenantId: string): Promise<string[]>;
+  /**
+   * CRM the tenant's existing config was built for (from any layout), or
+   * undefined when there's no config. Used on connect to detect a CRM switch
+   * (e.g. demo "deals"/hubspot config left over when a Salesforce org connects).
+   */
+  tenantConfigCrm(tenantId: string): Promise<CrmKind | undefined>;
   /** Exposed saved-view config only (unexposed views stay invisible to chat). */
   getViewExposures(tenantId: string, object: string): Promise<ViewExposure[]>;
   /** Full exposure config for user-scoped reads; callers must filter before display. */
@@ -182,7 +190,7 @@ export interface PublishResult extends StagedKey {
 }
 
 /** Write side — what Studio needs on top of the read side. */
-export interface AdminConfigStore extends ConfigStore {
+export interface AdminConfigStore extends ConfigStore, IdentityStore {
   getLayoutRecord(tenantId: string, object: string, audience?: string): Promise<LayoutRecord>;
   /** Every layout slot for the tenant, INCLUDING drafts never published. */
   listLayoutRecords(
@@ -284,11 +292,27 @@ export interface AdminConfigStore extends ConfigStore {
   listPublishes(tenantId: string): Promise<PublishEvent[]>;
   setConnection(state: ConnectionState): Promise<void>;
   setUserConnection(state: UserConnectionState): Promise<void>;
+  /** Every user who has authenticated to this workspace (admin visibility +
+   *  MCP per-user auth). Credentials are INCLUDED — API layers must redact. */
+  listUserConnections(tenantId: string): Promise<UserConnectionState[]>;
   deleteUserConnection(
     tenantId: string,
     userId: string,
     crm: UserConnectionState["crm"],
   ): Promise<void>;
+  /**
+   * Namespaced KV with optional expiry — backing for MCP OAuth state
+   * (registered clients, pending authorizations, codes, tokens). Reads of
+   * expired entries return undefined; stores may lazily purge.
+   */
+  kvGet(namespace: string, key: string): Promise<Record<string, unknown> | undefined>;
+  kvSet(
+    namespace: string,
+    key: string,
+    value: Record<string, unknown>,
+    expiresAt?: string,
+  ): Promise<void>;
+  kvDelete(namespace: string, key: string): Promise<void>;
   /**
    * Remove an object's Cardstack config entirely — every audience's layout
    * (draft + published + history), its view exposures / custom lists, and its
@@ -296,6 +320,14 @@ export interface AdminConfigStore extends ConfigStore {
    * simply returns to "available to add". Idempotent.
    */
   removeObject(tenantId: string, object: string): Promise<void>;
+  /**
+   * Wipe ALL of a tenant's Cardstack config — layouts, view exposures / custom
+   * lists, home cards, flow render modes, custom screens, publish events.
+   * Connections (admin + per-user auth) are left intact. Called when a new CRM
+   * connects over config built for a different CRM, so the workspace starts
+   * clean instead of showing the previous CRM's objects/lists. Idempotent.
+   */
+  clearTenantConfig(tenantId: string): Promise<void>;
 }
 
 export const layoutKey = (tenantId: string, object: string, audience = "default"): string =>

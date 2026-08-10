@@ -54,6 +54,9 @@ export const demoDealsLayout: LayoutConfig = parseLayoutConfig({
           { api: "deal_owner" },
           { api: "renewal_date", editable: true },
           { api: "next_step", editable: true, control: "textarea" },
+          // Reference field: renders as a drill-through link; editing opens
+          // the CRM-searching lookup editor (typeahead via crm_lookup_search).
+          { api: "company", editable: true },
         ],
       },
     ],

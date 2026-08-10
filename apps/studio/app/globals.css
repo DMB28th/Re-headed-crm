@@ -5,15 +5,16 @@
  * the widget inherits host tokens and must never use these).
  */
 @theme {
-  --color-paper: #f6f6f4;
+  --color-paper: #f4f4f1;
   --color-surface: #ffffff;
-  --color-ink: #191c24;
-  --color-ink-55: rgba(25, 28, 36, 0.55);
-  --color-ink-45: rgba(25, 28, 36, 0.45);
-  --color-accent: #2f3550;
-  --color-accent-hover: #252a40;
-  --color-line: rgba(20, 24, 40, 0.1);
-  --color-line-soft: rgba(20, 24, 40, 0.08);
+  --color-ink: #171a22;
+  --color-ink-70: rgba(23, 26, 34, 0.72);
+  --color-ink-55: rgba(23, 26, 34, 0.64);
+  --color-ink-45: rgba(23, 26, 34, 0.53);
+  --color-accent: #303750;
+  --color-accent-hover: #242a3e;
+  --color-line: rgba(20, 24, 40, 0.16);
+  --color-line-soft: rgba(20, 24, 40, 0.11);
   --color-draft: #faf3dd;
   --color-draft-ink: #8a5a10;
   --color-published: #eefaf2;
@@ -31,13 +32,14 @@
   --radius-control: 7px;
   --radius-input: 9px;
   --radius-row: 10px;
-  --radius-card: 13px;
+  --radius-card: 10px;
 }
 
 body {
   background: var(--color-paper);
   color: var(--color-ink);
-  font-size: 12.5px;
+  font-size: 14px;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -46,6 +48,7 @@ body {
   background: var(--color-surface);
   border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-card);
+  box-shadow: 0 1px 1px rgba(20, 24, 40, 0.02);
 }
 
 .st-section-label {
@@ -66,7 +69,7 @@ body {
 }
 
 .st-btn {
-  font-size: 12.5px;
+  font-size: 13.5px;
   font-weight: 500;
   padding: 6px 13px;
   border-radius: var(--radius-input);
@@ -105,7 +108,7 @@ body {
 }
 
 .st-input {
-  font-size: 12.5px;
+  font-size: 13.5px;
   padding: 5px 9px;
   border: 1px solid var(--color-line);
   border-radius: var(--radius-input);

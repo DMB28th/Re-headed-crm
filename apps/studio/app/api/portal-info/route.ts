@@ -16,7 +16,7 @@ const UNKNOWN: PortalInfo = {
  * drop the number rather than invent one.
  */
 export async function GET(req: Request) {
-  const { tenantId } = getUserContextFromRequest(req);
+  const { tenantId } = await getUserContextFromRequest(req);
   const store = await getStore();
   const connection = await store.getConnection(tenantId);
   if (connection.status !== "connected") {

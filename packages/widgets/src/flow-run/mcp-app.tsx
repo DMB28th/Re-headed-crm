@@ -47,7 +47,7 @@ function FlowRunApp() {
   if (payload.kind === "error") {
     return <ErrorCard payload={payload} host={hostFromApp(app)} onPayload={setPayload} />;
   }
-  return <FlowRunCard payload={payload} host={hostFromApp(app)} />;
+  return <FlowRunCard payload={payload} host={hostFromApp(app)} onPayload={setPayload} />;
 }
 
 createRoot(document.getElementById("root")!).render(

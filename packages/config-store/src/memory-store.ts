@@ -2,6 +2,7 @@ import {
   CustomScreenConfig as CustomScreenSchema,
   FlowRenderModeConfig as FlowRenderModeSchema,
   ViewExposuresConfig as ViewExposuresSchema,
+  type CrmKind,
   type CustomScreenConfig,
   type CustomScreenRecord,
   type CustomList,
@@ -32,6 +33,12 @@ import {
   type UserConnectionState,
   type ViewExposuresRecord,
 } from "./types.js";
+import {
+  membershipKey,
+  type Account,
+  type Membership,
+  type Workspace,
+} from "./identity.js";
 import type { DiffLabels } from "./diff.js";
 import {
   collectStagedChanges,
@@ -129,6 +136,14 @@ interface StoreState {
   connections?: Record<string, ConnectionState>;
   /** Keyed tenant::userId::crm. Absent = user has not authorized that CRM. */
   userConnections?: Record<string, UserConnectionState>;
+  /** Namespaced KV (MCP OAuth clients/codes/tokens). Keyed namespace::key. */
+  kv?: Record<string, { value: Record<string, unknown>; expiresAt?: string }>;
+  /** Cardstack workspaces, keyed by workspace id (= tenantId). Absent = no one has signed in yet. */
+  workspaces?: Record<string, Workspace>;
+  /** Cardstack accounts, keyed by account id. */
+  accounts?: Record<string, Account>;
+  /** Keyed accountId::workspaceId. */
+  memberships?: Record<string, Membership>;
   publishes: PublishEvent[];
 }
 
@@ -242,6 +257,115 @@ export abstract class BaseConfigStore implements AdminConfigStore {
     await this.save(state);
   }
 
+  async listUserConnections(tenantId: string): Promise<UserConnectionState[]> {
+    const state = await this.load();
+    return Object.values(state.userConnections ?? {})
+      .filter((c) => c.tenantId === tenantId)
+      .sort((a, b) => b.changedAt.localeCompare(a.changedAt));
+  }
+
+  async kvGet(namespace: string, key: string): Promise<Record<string, unknown> | undefined> {
+    const state = await this.load();
+    const entry = state.kv?.[`${namespace}::${key}`];
+    if (!entry) return undefined;
+    if (entry.expiresAt && entry.expiresAt <= new Date().toISOString()) {
+      delete state.kv![`${namespace}::${key}`];
+      await this.save(state);
+      return undefined;
+    }
+    return entry.value;
+  }
+
+  async kvSet(
+    namespace: string,
+    key: string,
+    value: Record<string, unknown>,
+    expiresAt?: string,
+  ): Promise<void> {
+    const state = await this.load();
+    state.kv = {
+      ...(state.kv ?? {}),
+      [`${namespace}::${key}`]: { value, ...(expiresAt ? { expiresAt } : {}) },
+    };
+    await this.save(state);
+  }
+
+  async kvDelete(namespace: string, key: string): Promise<void> {
+    const state = await this.load();
+    if (!state.kv) return;
+    delete state.kv[`${namespace}::${key}`];
+    await this.save(state);
+  }
+
+  // ---- Identity (accounts / workspaces / memberships) ----
+
+  async getWorkspace(id: string): Promise<Workspace | undefined> {
+    return (await this.load()).workspaces?.[id];
+  }
+
+  async getWorkspaceByOrgId(salesforceOrgId: string): Promise<Workspace | undefined> {
+    const state = await this.load();
+    // Match on the 15-char prefix: Salesforce APIs disagree about returning 15
+    // vs 18 chars for the same org, and both must find the one workspace.
+    const prefix = salesforceOrgId.slice(0, 15).toLowerCase();
+    return Object.values(state.workspaces ?? {}).find(
+      (w) => w.salesforceOrgId.slice(0, 15).toLowerCase() === prefix,
+    );
+  }
+
+  /** Idempotent on the org id — see resolveSignIn's creation-race note. */
+  async createWorkspace(workspace: Workspace): Promise<void> {
+    const state = await this.load();
+    const prefix = workspace.salesforceOrgId.slice(0, 15).toLowerCase();
+    const clash = Object.values(state.workspaces ?? {}).some(
+      (w) => w.salesforceOrgId.slice(0, 15).toLowerCase() === prefix,
+    );
+    if (clash) return;
+    state.workspaces = { ...(state.workspaces ?? {}), [workspace.id]: workspace };
+    await this.save(state);
+  }
+
+  async getAccount(id: string): Promise<Account | undefined> {
+    return (await this.load()).accounts?.[id];
+  }
+
+  async getAccountBySalesforceUserId(salesforceUserId: string): Promise<Account | undefined> {
+    const state = await this.load();
+    const prefix = salesforceUserId.slice(0, 15).toLowerCase();
+    return Object.values(state.accounts ?? {}).find(
+      (a) => a.salesforceUserId.slice(0, 15).toLowerCase() === prefix,
+    );
+  }
+
+  async upsertAccount(account: Account): Promise<void> {
+    const state = await this.load();
+    state.accounts = { ...(state.accounts ?? {}), [account.id]: account };
+    await this.save(state);
+  }
+
+  async getMembership(accountId: string, workspaceId: string): Promise<Membership | undefined> {
+    return (await this.load()).memberships?.[membershipKey(accountId, workspaceId)];
+  }
+
+  async listMembershipsForAccount(accountId: string): Promise<Membership[]> {
+    const state = await this.load();
+    return Object.values(state.memberships ?? {}).filter((m) => m.accountId === accountId);
+  }
+
+  async listMembershipsForWorkspace(workspaceId: string): Promise<Membership[]> {
+    const state = await this.load();
+    return Object.values(state.memberships ?? {}).filter((m) => m.workspaceId === workspaceId);
+  }
+
+  async setMembership(membership: Membership): Promise<void> {
+    const state = await this.load();
+    state.memberships = {
+      ...(state.memberships ?? {}),
+      [membershipKey(membership.accountId, membership.workspaceId)]: membership,
+    };
+    await this.save(state);
+  }
+
   async getLayoutRecord(
     tenantId: string,
     object: string,
@@ -287,6 +411,34 @@ export abstract class BaseConfigStore implements AdminConfigStore {
     state.publishes = state.publishes.filter(
       (p) => !(p.tenantId === tenantId && p.object === object),
     );
+    await this.save(state);
+  }
+
+  async tenantConfigCrm(tenantId: string): Promise<CrmKind | undefined> {
+    const state = await this.load();
+    for (const [key, record] of Object.entries(state.layouts)) {
+      if (key.split("::")[0] !== tenantId) continue;
+      const cfg = record.published ?? record.draft;
+      if (cfg?.crm) return cfg.crm;
+    }
+    return undefined;
+  }
+
+  async clearTenantConfig(tenantId: string): Promise<void> {
+    const state = await this.load();
+    const prefix = `${tenantId}::`;
+    const purge = (map: Record<string, unknown> | undefined): void => {
+      if (!map) return;
+      for (const key of Object.keys(map)) {
+        if (key.startsWith(prefix)) delete map[key];
+      }
+    };
+    purge(state.layouts);
+    purge(state.viewExposures);
+    purge(state.homeCards);
+    purge(state.flowRenderModes);
+    purge(state.customScreens);
+    state.publishes = state.publishes.filter((p) => p.tenantId !== tenantId);
     await this.save(state);
   }
 

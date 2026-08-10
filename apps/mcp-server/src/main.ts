@@ -1,16 +1,37 @@
 /**
+ * Deploy touch 2026-07-26b: quick-actions diff fix is packages-only; watch patterns need an apps/ change.
  * HTTP entry: streamable HTTP, stateless JSON — a fresh McpServer + transport
  * per request, nothing held in memory between calls (PLAN.md multi-tenancy rule).
+ *
+ * NOTE: runtime behavior also depends on @cardstack/crm-adapters (objects,
+ * describe, relationships, reference-name resolution read from the CRM) and on
+ * @cardstack/widgets (the inlined record card). Railway's deploy watch pattern
+ * only covers /apps/**, so a packages-only change is SKIPPED — touch this file to
+ * force a rebuild that picks up the bundled package changes.
  */
 import express from "express";
 import cors from "cors";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createAdapterForConnection, salesforceUsesOAuth } from "@cardstack/crm-adapters";
-import { createPostgresConfigStore, type ConfigStore } from "@cardstack/config-store";
+import { mcpAuthRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
+import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
+import {
+  cardstackSalesforceLoginApp,
+  createAdapterForConnection,
+  createDevSalesforceAdapter,
+  devSalesforceOrg,
+  salesforceUsesOAuth,
+  type ConnectionSettings,
+} from "@cardstack/crm-adapters";
+import {
+  createPostgresConfigStore,
+  encryptionEnabled,
+  type AdminConfigStore,
+} from "@cardstack/config-store";
 import { createCardstackServer } from "./server.js";
 import { defaultConfigPath, FileConfigStore, DEMO_TENANT_ID } from "./config/store.js";
 import { userContextFromHeaders } from "./auth.js";
 import { resolveMcpAuth } from "./auth-config.js";
+import { CardstackOAuthProvider, userContextFromStoredUser } from "./oauth-provider.js";
 import {
   InMemoryAuditLog,
   FileAuditLog,
@@ -18,7 +39,7 @@ import {
   defaultAuditPath,
   type AuditLog,
 } from "./audit.js";
-import { InMemoryPreferenceStore } from "./config/preferences.js";
+import { ConfigPreferenceStore } from "./config/preferences.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
 
@@ -37,11 +58,16 @@ const auditLog: AuditLog = process.env.DATABASE_URL
     ? new FileAuditLog(defaultAuditPath())
     : new InMemoryAuditLog();
 console.log(`audit log: ${process.env.DATABASE_URL ? "postgres" : "file"}`);
-const preferences = new InMemoryPreferenceStore();
-const configStore: ConfigStore = process.env.DATABASE_URL
+const configStore: AdminConfigStore = process.env.DATABASE_URL
   ? await createPostgresConfigStore(process.env.DATABASE_URL)
   : new FileConfigStore(defaultConfigPath());
 console.log(`config store: ${process.env.DATABASE_URL ? "postgres" : "file"}`);
+if (process.env.NODE_ENV === "production" && !encryptionEnabled()) {
+  throw new Error(
+    "Refusing to start in production without CARDSTACK_ENCRYPTION_KEY; CRM and OAuth secrets must be encrypted at rest.",
+  );
+}
+const preferences = new ConfigPreferenceStore(configStore);
 
 const app = express();
 
@@ -59,26 +85,94 @@ if (corsOrigins.length > 0) {
 }
 app.use(express.json({ limit: "4mb" }));
 
+// Reports the running build so "is my change actually live?" is one curl —
+// Railway injects RAILWAY_GIT_COMMIT_SHA (deploys from a pushed commit) but
+// not for `railway up` tarball deploys, hence the fallback.
+const BOOTED_AT = new Date().toISOString();
 app.get("/healthz", (_req, res) => {
-  res.json({ ok: true });
+  res.json({
+    ok: true,
+    commit:
+      process.env.CARDSTACK_RELEASE_SHA ??
+      process.env.RAILWAY_GIT_COMMIT_SHA ??
+      "local",
+    bootedAt: BOOTED_AT,
+  });
 });
 
-// Shared-secret gate on /mcp. In production MCP_SHARED_SECRET is REQUIRED —
-// resolveMcpAuth throws at boot when it's missing, so the server never serves
-// /mcp internet-open. Outside production, unset is allowed (the live demo) but
-// warned about.
-const { secret: MCP_SECRET } = resolveMcpAuth(process.env);
-if (!MCP_SECRET) {
-  console.warn(
-    "⚠ /mcp is UNAUTHENTICATED — set MCP_SHARED_SECRET and pass it as x-cardstack-key from the chat host.",
-  );
-}
+// Shared-secret fallback for deployments that do not use per-user OAuth.
+const { secret: MCP_SECRET, warnOpen } = resolveMcpAuth(process.env);
 function authorized(req: express.Request): boolean {
   if (!MCP_SECRET) return true;
   const header = req.header("x-cardstack-key");
   if (header && header === MCP_SECRET) return true;
   const bearer = req.header("authorization");
   return bearer === `Bearer ${MCP_SECRET}`;
+}
+
+// --- Per-user OAuth (CARDSTACK_USER_AUTH=oauth): Salesforce is the IdP. ---
+// Opt-in by env so a half-configured deploy degrades to the shared-secret
+// mode instead of crash-looping (the 6a8913b lesson: never fail closed at
+// boot). Requires CARDSTACK_MCP_URL (public origin) and the Salesforce
+// Connected App to allowlist `<origin>/oauth/salesforce/callback`.
+const USER_AUTH_MODE = process.env.CARDSTACK_USER_AUTH === "oauth";
+const MCP_ORIGIN = (process.env.CARDSTACK_MCP_URL ?? "").trim().replace(/\/$/, "");
+const oauthProvider =
+  USER_AUTH_MODE && MCP_ORIGIN
+    ? new CardstackOAuthProvider({
+        // No tenantId: the workspace is resolved from the Salesforce org the
+        // rep signs in to, so one server serves every workspace.
+        store: configStore,
+        mcpOrigin: MCP_ORIGIN,
+        legacyTenantId: process.env.CARDSTACK_TENANT_ID ?? DEMO_TENANT_ID,
+      })
+    : undefined;
+if (USER_AUTH_MODE && !oauthProvider) {
+  console.warn(
+    "⚠ CARDSTACK_USER_AUTH=oauth but CARDSTACK_MCP_URL is unset — per-user auth DISABLED, serving shared-secret mode.",
+  );
+}
+if (process.env.NODE_ENV === "production" && !oauthProvider && !MCP_SECRET) {
+  throw new Error(
+    "Refusing to expose /mcp in production without configured per-user OAuth or MCP_SHARED_SECRET.",
+  );
+}
+if (oauthProvider) {
+  console.log("MCP auth: per-user OAuth");
+} else if (!MCP_SECRET) {
+  console.warn(
+    (warnOpen ? "⚠ PRODUCTION: " : "⚠ ") +
+      "/mcp is UNAUTHENTICATED — set MCP_SHARED_SECRET or configure per-user OAuth.",
+  );
+}
+if (oauthProvider) {
+  app.use(
+    mcpAuthRouter({
+      provider: oauthProvider,
+      issuerUrl: new URL(MCP_ORIGIN),
+      resourceName: "Cardstack CRM",
+    }),
+  );
+  app.get("/oauth/salesforce/callback", async (req, res) => {
+    const { code, state, error, error_description } = req.query as Record<string, string | undefined>;
+    try {
+      if (error) throw new Error(error_description ?? error);
+      if (!code || !state) throw new Error("Salesforce callback was missing code or state.");
+      const { redirect } = await oauthProvider.completeSalesforceCallback(state, code);
+      res.redirect(redirect);
+    } catch (err) {
+      res
+        .status(400)
+        .send(
+          `<h3>Cardstack sign-in failed</h3><p>${
+            err instanceof Error ? err.message : String(err)
+          }</p><p>Close this tab and try connecting again from your chat app.</p>`,
+        );
+    }
+  });
+  const bearer = requireBearerAuth({ verifier: oauthProvider });
+  app.use("/mcp", (req, res, next) => bearer(req, res, next));
+  console.log("Per-user OAuth is ON — /mcp requires a Cardstack bearer token (Salesforce sign-in).");
 }
 
 // Fixed-window in-memory rate limit per IP (no new deps). Env-tunable; a
@@ -101,7 +195,9 @@ function rateLimited(ip: string): boolean {
 }
 
 app.all("/mcp", async (req, res) => {
-  if (!authorized(req)) {
+  // OAuth mode: requireBearerAuth already validated the user token (the
+  // Authorization header carries it, so the shared-secret check must not run).
+  if (!oauthProvider && !authorized(req)) {
     res.status(401).json({ error: "Unauthorized — missing or wrong x-cardstack-key." });
     return;
   }
@@ -109,14 +205,32 @@ app.all("/mcp", async (req, res) => {
     res.status(429).json({ error: "Rate limit exceeded — retry shortly." });
     return;
   }
-  const userContext = userContextFromHeaders({ get: (name) => req.header(name) });
+  // Identity: the VERIFIED token in OAuth mode; spoofable headers otherwise
+  // (legacy/demo mode only — per-user auth is the production posture).
+  const tokenUser = oauthProvider
+    ? (req.auth?.extra?.user as Parameters<typeof userContextFromStoredUser>[0] | undefined)
+    : undefined;
+  const userContext = tokenUser
+    ? userContextFromStoredUser(tokenUser)
+    : userContextFromHeaders({ get: (name) => req.header(name) });
   const connection = await configStore.getConnection(userContext.tenantId);
-  let adapterSettings = {
+  let adapterSettings: ConnectionSettings = {
     crm: connection.crm,
     ...(connection.credentials ? { credentials: connection.credentials } : {}),
     // Shared with Studio via the store: a refresh bumps changedAt, which busts
     // this process's cached adapter on its next request too.
     cacheNonce: connection.changedAt,
+    // Rotation-enabled orgs: a rotated token that isn't persisted strands a
+    // dead one in the store, killing every other process's next refresh.
+    onCredentialsRefreshed: async (credentials) => {
+      await configStore.setConnection({
+        ...connection,
+        credentials,
+        changedAt: new Date().toISOString(),
+      });
+    },
+    getFreshCredentials: async () =>
+      (await configStore.getConnection(userContext.tenantId)).credentials ?? null,
   };
   let runtimeAuth: Parameters<typeof createCardstackServer>[0]["runtimeAuth"] | undefined;
   if (
@@ -129,21 +243,50 @@ app.all("/mcp", async (req, res) => {
       userContext.userId,
       "salesforce",
     );
-    const sameOauthApp =
-      !!userConnection?.credentials?.clientId &&
-      userConnection.credentials.clientId === connection.credentials?.clientId;
-    if (userConnection?.status === "connected" && userConnection.credentials && sameOauthApp) {
+    // A per-user token can only be refreshed with the secret of the app that
+    // MINTED it. Chat sign-in uses the Cardstack-owned app while a BYO
+    // workspace's admin lane uses its own, so match the stored clientId against
+    // both and carry the matching secret — comparing only against the admin
+    // connection silently ignored every chat-signed-in rep.
+    const loginApp = cardstackSalesforceLoginApp();
+    const userClientId = userConnection?.credentials?.clientId;
+    const userClientSecret = !userClientId
+      ? undefined
+      : userClientId === loginApp?.clientId
+        ? loginApp.clientSecret
+        : userClientId === connection.credentials?.clientId
+          ? connection.credentials?.clientSecret
+          : undefined;
+    if (userConnection?.status === "connected" && userConnection.credentials && userClientSecret) {
+      const liveUserConnection = userConnection;
       adapterSettings = {
         crm: "salesforce",
         credentials: {
           ...userConnection.credentials,
-          // The client secret is stored once on the admin connection, not per
-          // user — merge it in here so the per-user adapter can refresh tokens.
-          ...(connection.credentials?.clientSecret
-            ? { clientSecret: connection.credentials.clientSecret }
-            : {}),
+          // The secret is never stored per user — merge in the one belonging
+          // to the app that minted this token so refresh works.
+          clientSecret: userClientSecret,
         },
         cacheNonce: userConnection.changedAt,
+        // Persist rotated tokens back to the per-user connection (minus the
+        // shared client secret, which is never stored per user).
+        onCredentialsRefreshed: async (credentials) => {
+          const { clientSecret: _omit, ...userCreds } = credentials;
+          await configStore.setUserConnection({
+            ...liveUserConnection,
+            credentials: userCreds,
+            changedAt: new Date().toISOString(),
+          });
+        },
+        getFreshCredentials: async () => {
+          const latest = await configStore.getUserConnection(
+            userContext.tenantId,
+            userContext.userId,
+            "salesforce",
+          );
+          if (latest?.status !== "connected" || !latest.credentials) return null;
+          return { ...latest.credentials, clientSecret: userClientSecret };
+        },
       };
     } else {
       const studioBase = (process.env.CARDSTACK_STUDIO_URL ?? "http://localhost:3002").replace(/\/$/, "");
@@ -157,7 +300,13 @@ app.all("/mcp", async (req, res) => {
       };
     }
   }
-  const adapter = createAdapterForConnection(adapterSettings);
+  // LOCAL DEV: CARDSTACK_DEV_SF_ORG routes every tool call at a real Salesforce
+  // org through the sf CLI's own auth, bypassing the stored connection so no
+  // deployed refresh token is read or rotated. Unset everywhere else.
+  const devOrg = devSalesforceOrg();
+  const adapter = devOrg
+    ? createDevSalesforceAdapter(devOrg)
+    : createAdapterForConnection(adapterSettings);
   const server = await createCardstackServer({
     adapter,
     configStore,

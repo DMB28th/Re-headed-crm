@@ -21,6 +21,9 @@
  * - 2026-07-20: added `flow_render_modes`, `custom_screens`, and
  *   `user_connections` for per-user Salesforce OAuth. Additive tables; missing
  *   rows mean defaults/empty.
+ * - 2026-07-24: demo seeding of view_exposures/home_cards now runs on every
+ *   boot (ON CONFLICT DO NOTHING) instead of only when layout_configs is
+ *   empty — databases seeded before M4 were missing their home_cards row.
  * - 2026-08-10: staging model (docs/studio-staging-model.md). view_exposures,
  *   home_cards and flow_render_modes gain `status` (draft|published|history) +
  *   `revision`, matching layout_configs, so every governed surface can be
@@ -32,11 +35,15 @@
  *   revision so rollback lookups line up. publish_events gains `surface` and
  *   `batch_id` (both nullable — older events render as layout publishes, which
  *   is what they were).
+ *   The demo seeding above keeps its every-boot placement from 2026-07-24; its
+ *   INSERTs now name the partial-index predicate as the conflict target,
+ *   because this migration drops the plain primary keys they used to infer.
  */
 import {
   CustomScreenConfig as CustomScreenSchema,
   FlowRenderModeConfig as FlowRenderModeSchema,
   ViewExposuresConfig as ViewExposuresSchema,
+  type CrmKind,
   type CustomScreenConfig,
   type CustomScreenRecord,
   type CustomList,
@@ -62,6 +69,7 @@ import type {
   UserConnectionState,
   ViewExposuresRecord,
 } from "./types.js";
+import type { Account, Membership, Workspace } from "./identity.js";
 import type { DiffLabels } from "./diff.js";
 import {
   collectStagedChanges,
@@ -70,7 +78,7 @@ import {
   runStagedRollback,
 } from "./staging.js";
 import { defaultConnection, demoDealsLayout, demoHomeCard, demoViewExposures } from "./seed.js";
-import { openConnection, sealConnection } from "./crypto.js";
+import { openConnection, openKvValue, sealConnection, sealKvValue } from "./crypto.js";
 
 /**
  * Single logical SQL session (so BEGIN/COMMIT are safe). Satisfied by a pg
@@ -160,6 +168,48 @@ CREATE TABLE IF NOT EXISTS user_connections (
   PRIMARY KEY (tenant_id, user_id, crm)
 );
 
+-- 2026-07-23: namespaced KV for MCP per-user OAuth (registered clients,
+-- pending authorizations, codes, tokens). Values are sealed jsonb (they hold
+-- bearer secrets) and expires_at drives lazy expiry on read. Additive table.
+-- NOTE: init naively splits this SCHEMA on semicolons — keep them out of comments.
+CREATE TABLE IF NOT EXISTS kv_entries (
+  namespace  text NOT NULL,
+  key        text NOT NULL,
+  value      jsonb NOT NULL,
+  expires_at timestamptz,
+  PRIMARY KEY (namespace, key)
+);
+
+-- 2026-07-27: Cardstack's own accounts. Until these existed, identity was a
+-- self-asserted header and the workspace was an env var, so one deployment
+-- served one customer. A workspace IS a Salesforce org, hence the unique
+-- org_key -- it is what makes same-org auto-join work. org_key/sf_user_key hold
+-- the LOWERCASED 15-char id because Salesforce returns 15 or 18 chars for the
+-- same entity depending on the API, and both must resolve to one row.
+-- Additive: every other table stays keyed by the same opaque tenant_id.
+CREATE TABLE IF NOT EXISTS workspaces (
+  id         text PRIMARY KEY,
+  org_key    text NOT NULL UNIQUE,
+  config     jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS accounts (
+  id          text PRIMARY KEY,
+  sf_user_key text NOT NULL UNIQUE,
+  config      jsonb NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS memberships (
+  account_id   text NOT NULL,
+  workspace_id text NOT NULL,
+  role         text NOT NULL CHECK (role IN ('admin','member')),
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (account_id, workspace_id)
+);
+CREATE INDEX IF NOT EXISTS memberships_workspace_idx ON memberships (workspace_id);
+
 -- Staging model migration (2026-08-10). Idempotent: safe on live databases and
 -- a no-op on freshly created tables above.
 ALTER TABLE view_exposures ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'published';
@@ -192,6 +242,9 @@ ALTER TABLE publish_events ADD COLUMN IF NOT EXISTS surface text;
 ALTER TABLE publish_events ADD COLUMN IF NOT EXISTS batch_id text;
 `;
 
+/** Salesforce returns 15- or 18-char ids for the same entity; key on the 15. */
+const idKey = (salesforceId: string): string => salesforceId.slice(0, 15).toLowerCase();
+
 export class PostgresConfigStore implements AdminConfigStore {
   private ready: Promise<void>;
 
@@ -207,21 +260,12 @@ export class PostgresConfigStore implements AdminConfigStore {
       await this.sql.query(statement);
     }
     if (!seedDemo) return;
-    const { rows } = await this.sql.query(
-      "SELECT 1 FROM layout_configs WHERE tenant_id = $1 LIMIT 1",
-      [demoDealsLayout.tenantId],
-    );
-    if (rows.length > 0) return;
-    await this.sql.query(
-      "INSERT INTO layout_configs (tenant_id, object, audience, status, revision, config) VALUES ($1,$2,$3,'published',$4,$5)",
-      [
-        demoDealsLayout.tenantId,
-        demoDealsLayout.object,
-        demoDealsLayout.audience,
-        demoDealsLayout.revision,
-        JSON.stringify(demoDealsLayout),
-      ],
-    );
+    // These two are ON CONFLICT DO NOTHING, so they run every boot: a database
+    // seeded before one of these tables existed (e.g. pre-M4, no home_cards)
+    // still gets its demo row backfilled without clobbering admin edits.
+    // The staging migration drops these tables' primary keys in favour of
+    // partial unique indexes, so the conflict target must name the same
+    // predicate (WHERE status='published') for inference to match.
     await this.sql.query(
       `INSERT INTO view_exposures (tenant_id, object, status, revision, config)
        VALUES ($1,$2,'published',1,$3)
@@ -237,6 +281,23 @@ export class PostgresConfigStore implements AdminConfigStore {
         demoHomeCard.audience,
         demoHomeCard.revision,
         JSON.stringify(demoHomeCard),
+      ],
+    );
+    // layout_configs has no uniqueness across revisions, so this one stays
+    // guarded by "has this tenant ever been seeded".
+    const { rows } = await this.sql.query(
+      "SELECT 1 FROM layout_configs WHERE tenant_id = $1 LIMIT 1",
+      [demoDealsLayout.tenantId],
+    );
+    if (rows.length > 0) return;
+    await this.sql.query(
+      "INSERT INTO layout_configs (tenant_id, object, audience, status, revision, config) VALUES ($1,$2,$3,'published',$4,$5)",
+      [
+        demoDealsLayout.tenantId,
+        demoDealsLayout.object,
+        demoDealsLayout.audience,
+        demoDealsLayout.revision,
+        JSON.stringify(demoDealsLayout),
       ],
     );
   }
@@ -622,6 +683,152 @@ export class PostgresConfigStore implements AdminConfigStore {
     );
   }
 
+  async listUserConnections(tenantId: string): Promise<UserConnectionState[]> {
+    await this.ready;
+    const { rows } = await this.sql.query(
+      "SELECT config FROM user_connections WHERE tenant_id=$1",
+      [tenantId],
+    );
+    return rows
+      .map((r) => openConnection(this.parse<UserConnectionState>(r.config)))
+      .sort((a, b) => b.changedAt.localeCompare(a.changedAt));
+  }
+
+  async kvGet(namespace: string, key: string): Promise<Record<string, unknown> | undefined> {
+    await this.ready;
+    const { rows } = await this.sql.query(
+      "SELECT value, expires_at FROM kv_entries WHERE namespace=$1 AND key=$2",
+      [namespace, key],
+    );
+    if (!rows[0]) return undefined;
+    const expiresAt = rows[0].expires_at as Date | null;
+    if (expiresAt && expiresAt.getTime() <= Date.now()) {
+      await this.kvDelete(namespace, key);
+      return undefined;
+    }
+    return openKvValue(this.parse<Record<string, unknown>>(rows[0].value));
+  }
+
+  async kvSet(
+    namespace: string,
+    key: string,
+    value: Record<string, unknown>,
+    expiresAt?: string,
+  ): Promise<void> {
+    await this.ready;
+    await this.sql.query(
+      `INSERT INTO kv_entries (namespace, key, value, expires_at) VALUES ($1,$2,$3,$4)
+       ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value, expires_at = EXCLUDED.expires_at`,
+      [namespace, key, JSON.stringify(sealKvValue(value)), expiresAt ?? null],
+    );
+  }
+
+  async kvDelete(namespace: string, key: string): Promise<void> {
+    await this.ready;
+    await this.sql.query("DELETE FROM kv_entries WHERE namespace=$1 AND key=$2", [namespace, key]);
+  }
+
+  // ---- Identity (accounts / workspaces / memberships) ----
+
+  async getWorkspace(id: string): Promise<Workspace | undefined> {
+    await this.ready;
+    const { rows } = await this.sql.query("SELECT config FROM workspaces WHERE id=$1", [id]);
+    return rows[0] ? this.parse<Workspace>(rows[0].config) : undefined;
+  }
+
+  async getWorkspaceByOrgId(salesforceOrgId: string): Promise<Workspace | undefined> {
+    await this.ready;
+    const { rows } = await this.sql.query("SELECT config FROM workspaces WHERE org_key=$1", [
+      idKey(salesforceOrgId),
+    ]);
+    return rows[0] ? this.parse<Workspace>(rows[0].config) : undefined;
+  }
+
+  /**
+   * DO NOTHING on conflict, not DO UPDATE: two people from a new org can sign
+   * in simultaneously, and the loser must adopt the winner's workspace rather
+   * than overwrite it. resolveSignIn re-reads after calling this.
+   */
+  async createWorkspace(workspace: Workspace): Promise<void> {
+    await this.ready;
+    await this.sql.query(
+      `INSERT INTO workspaces (id, org_key, config) VALUES ($1,$2,$3)
+       ON CONFLICT (org_key) DO NOTHING`,
+      [workspace.id, idKey(workspace.salesforceOrgId), JSON.stringify(workspace)],
+    );
+  }
+
+  async getAccount(id: string): Promise<Account | undefined> {
+    await this.ready;
+    const { rows } = await this.sql.query("SELECT config FROM accounts WHERE id=$1", [id]);
+    return rows[0] ? this.parse<Account>(rows[0].config) : undefined;
+  }
+
+  async getAccountBySalesforceUserId(salesforceUserId: string): Promise<Account | undefined> {
+    await this.ready;
+    const { rows } = await this.sql.query("SELECT config FROM accounts WHERE sf_user_key=$1", [
+      idKey(salesforceUserId),
+    ]);
+    return rows[0] ? this.parse<Account>(rows[0].config) : undefined;
+  }
+
+  /** Refreshes name/email on return visits; the id and sf_user_key never move. */
+  async upsertAccount(account: Account): Promise<void> {
+    await this.ready;
+    await this.sql.query(
+      `INSERT INTO accounts (id, sf_user_key, config) VALUES ($1,$2,$3)
+       ON CONFLICT (id) DO UPDATE SET config = EXCLUDED.config, sf_user_key = EXCLUDED.sf_user_key`,
+      [account.id, idKey(account.salesforceUserId), JSON.stringify(account)],
+    );
+  }
+
+  async getMembership(accountId: string, workspaceId: string): Promise<Membership | undefined> {
+    await this.ready;
+    const { rows } = await this.sql.query(
+      "SELECT account_id, workspace_id, role, created_at FROM memberships WHERE account_id=$1 AND workspace_id=$2",
+      [accountId, workspaceId],
+    );
+    return rows[0] ? this.toMembership(rows[0]) : undefined;
+  }
+
+  async listMembershipsForAccount(accountId: string): Promise<Membership[]> {
+    await this.ready;
+    const { rows } = await this.sql.query(
+      "SELECT account_id, workspace_id, role, created_at FROM memberships WHERE account_id=$1",
+      [accountId],
+    );
+    return rows.map((r) => this.toMembership(r));
+  }
+
+  async listMembershipsForWorkspace(workspaceId: string): Promise<Membership[]> {
+    await this.ready;
+    const { rows } = await this.sql.query(
+      "SELECT account_id, workspace_id, role, created_at FROM memberships WHERE workspace_id=$1",
+      [workspaceId],
+    );
+    return rows.map((r) => this.toMembership(r));
+  }
+
+  async setMembership(membership: Membership): Promise<void> {
+    await this.ready;
+    await this.sql.query(
+      `INSERT INTO memberships (account_id, workspace_id, role) VALUES ($1,$2,$3)
+       ON CONFLICT (account_id, workspace_id) DO UPDATE SET role = EXCLUDED.role`,
+      [membership.accountId, membership.workspaceId, membership.role],
+    );
+  }
+
+  private toMembership(row: Record<string, unknown>): Membership {
+    const createdAt = row.created_at;
+    return {
+      accountId: row.account_id as string,
+      workspaceId: row.workspace_id as string,
+      role: row.role as Membership["role"],
+      createdAt:
+        createdAt instanceof Date ? createdAt.toISOString() : String(createdAt ?? ""),
+    };
+  }
+
   async getLayoutRecord(tenantId: string, object: string, audience = "default"): Promise<LayoutRecord> {
     await this.ready;
     const { rows } = await this.sql.query(
@@ -674,6 +881,42 @@ export class PostgresConfigStore implements AdminConfigStore {
         tenantId,
         object,
       ]);
+      await this.sql.query("COMMIT");
+    } catch (error) {
+      await this.sql.query("ROLLBACK");
+      throw error;
+    }
+  }
+
+  async tenantConfigCrm(tenantId: string): Promise<CrmKind | undefined> {
+    await this.ready;
+    const { rows } = await this.sql.query(
+      "SELECT config->>'crm' AS crm FROM layout_configs WHERE tenant_id=$1 LIMIT 1",
+      [tenantId],
+    );
+    const crm = rows[0]?.crm;
+    return crm === "salesforce" || crm === "hubspot" ? crm : undefined;
+  }
+
+  async clearTenantConfig(tenantId: string): Promise<void> {
+    await this.ready;
+    const tables = [
+      "layout_configs",
+      "view_exposures",
+      "home_cards",
+      "flow_render_modes",
+      "custom_screens",
+      "publish_events",
+    ];
+    const run = async (sql: Pick<SqlSession, "query">): Promise<void> => {
+      for (const table of tables) {
+        await sql.query(`DELETE FROM ${table} WHERE tenant_id=$1`, [tenantId]);
+      }
+    };
+    if (this.sql.transaction) return this.sql.transaction(run);
+    await this.sql.query("BEGIN");
+    try {
+      await run(this.sql);
       await this.sql.query("COMMIT");
     } catch (error) {
       await this.sql.query("ROLLBACK");

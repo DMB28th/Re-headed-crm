@@ -413,6 +413,44 @@ describe("pre-customLists rows (live-portal crash regression)", () => {
   });
 });
 
+describe("tenantConfigCrm + clearTenantConfig (CRM switch)", () => {
+  it("reports the seeded config CRM, then wipes config on clear while keeping the connection", async () => {
+    const store = new InMemoryConfigStore();
+
+    // The demo seed ships a deals layout — tenantConfigCrm reads its crm.
+    expect(await store.tenantConfigCrm(DEMO_TENANT_ID)).toBe(demoDealsLayout.crm);
+    expect((await store.listConfiguredObjects(DEMO_TENANT_ID)).length).toBeGreaterThan(0);
+    expect(await store.getHomeCard(DEMO_TENANT_ID)).toBeDefined();
+
+    // A connection (auth) must survive the config wipe.
+    await store.setConnection({
+      tenantId: DEMO_TENANT_ID,
+      status: "connected",
+      crm: "salesforce",
+      label: "admin OAuth",
+      changedAt: new Date(0).toISOString(),
+      credentials: { authType: "oauth", refreshToken: "rt" },
+    });
+
+    await store.clearTenantConfig(DEMO_TENANT_ID);
+
+    expect(await store.tenantConfigCrm(DEMO_TENANT_ID)).toBeUndefined();
+    expect(await store.listConfiguredObjects(DEMO_TENANT_ID)).toEqual([]);
+    expect(await store.getHomeCard(DEMO_TENANT_ID)).toBeUndefined();
+    // Connection (auth) is left intact.
+    const conn = await store.getConnection(DEMO_TENANT_ID);
+    expect(conn.status).toBe("connected");
+    expect(conn.crm).toBe("salesforce");
+  });
+
+  it("leaves an unrelated tenant's config untouched", async () => {
+    const store = new InMemoryConfigStore();
+    await store.clearTenantConfig("t_other");
+    // Demo tenant still has its seeded config.
+    expect((await store.listConfiguredObjects(DEMO_TENANT_ID)).length).toBeGreaterThan(0);
+  });
+});
+
 describe("credentials encryption at rest", () => {
   const KEY = Buffer.alloc(32, 3).toString("base64");
 

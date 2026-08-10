@@ -82,6 +82,21 @@ describe("filterRecord", () => {
     expect(filtered.id).toBe("d-1");
     expect(filtered.fields).toEqual({ dealname: "X", amount: 5 });
   });
+
+  it("refs and refObjects are filtered with their field — a denied lookup leaks nothing", () => {
+    const allowed = new Set(["dealname", "amount"]);
+    const filtered = filterRecord(
+      {
+        id: "d-1",
+        fields: { dealname: "X", amount: 5, commission: 99 },
+        refs: { amount: "a-1", commission: "c-1" },
+        refObjects: { amount: "accounts", commission: "commissions" },
+      },
+      allowed,
+    );
+    expect(filtered.refs).toEqual({ amount: "a-1" });
+    expect(filtered.refObjects).toEqual({ amount: "accounts" });
+  });
 });
 
 describe("buildCapabilities", () => {

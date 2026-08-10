@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import {
   buildRecordCardPayload,
   buildResultsTablePayload,
+  genericLayoutConfig,
   parseLayoutConfig,
+  primaryNameField,
   summarizeCustomFilters,
   type CrmFieldValue,
   type CustomList,
@@ -10,6 +12,8 @@ import {
   type HomeCardConfig,
   type HomeCardPayload,
   type LayoutConfig,
+  type LookupOptionsPayload,
+  type UpdatePreviewPayload,
   type WriteReceiptPayload,
 } from "@cardstack/core";
 import { HomeCardConfig as HomeCardConfigSchema } from "@cardstack/core";
@@ -27,7 +31,15 @@ import { getUserContextFromRequest } from "../../../lib/auth";
  */
 
 interface PreviewBody {
-  kind: "record" | "view" | "home" | "related" | "write" | "complete-task";
+  kind:
+    | "record"
+    | "view"
+    | "home"
+    | "related"
+    | "lookup"
+    | "preview-write"
+    | "write"
+    | "complete-task";
   object?: string;
   config?: unknown;
   recordId?: string;
@@ -36,6 +48,8 @@ interface PreviewBody {
   patch?: Record<string, CrmFieldValue>;
   id?: string;
   limit?: number;
+  /** kind "lookup": typeahead text for the reference-field editor. */
+  query?: string;
 }
 
 async function layoutFor(tenantId: string, object: string, posted?: unknown): Promise<LayoutConfig> {
@@ -48,7 +62,7 @@ async function layoutFor(tenantId: string, object: string, posted?: unknown): Pr
 
 export async function POST(req: Request) {
   try {
-    const user = getUserContextFromRequest(req);
+    const user = await getUserContextFromRequest(req);
     const { tenantId } = user;
     const body = (await req.json()) as PreviewBody;
     const store = await getStore();
@@ -58,7 +72,26 @@ export async function POST(req: Request) {
 
     if (body.kind === "record") {
       if (!body.object) throw new Error("object required");
-      const config = await layoutFor(tenantId, body.object, body.config);
+      // Drill-through in a preview can target an object other than the layout
+      // under edit (a related row, a reference field). Use the posted config
+      // only when it matches; otherwise the stored layout; otherwise the same
+      // generated read-only all-fields fallback the MCP server serves.
+      const posted = body.config ? parseLayoutConfig(body.config) : undefined;
+      let config: LayoutConfig;
+      if (posted && posted.object === body.object) {
+        config = posted;
+      } else {
+        const stored = await store.getLayoutRecord(tenantId, body.object);
+        const storedConfig = stored.published ?? stored.draft;
+        config =
+          storedConfig ??
+          genericLayoutConfig({
+            tenantId,
+            crm: connection.crm,
+            object: body.object,
+            describe: await adapter.describeObject(body.object),
+          });
+      }
       const record = body.recordId
         ? await adapter.getRecord(config.object, body.recordId, [])
         : (await adapter.search(config.object, { limit: 1 })).rows[0];
@@ -192,6 +225,7 @@ export async function POST(req: Request) {
           crmLabel: connection.crm === "salesforce" ? "Salesforce" : "HubSpot",
           layoutRevision: config.revision,
           connectedUser: await adapter.getConnectedUser().catch(() => "—"),
+          fetchedAt: new Date().toISOString(),
         },
       };
       return NextResponse.json({ payload, live });
@@ -211,6 +245,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ payload: { page }, live });
     }
 
+    if (body.kind === "lookup") {
+      if (!body.object || body.query === undefined) throw new Error("object and query required");
+      // Same shape crm_lookup_search serves — the lookup editor in the REAL
+      // widget works identically in the builder preview.
+      const describe = await adapter.describeObject(body.object);
+      const nameField = primaryNameField(describe);
+      const page = await adapter.search(body.object, {
+        text: body.query,
+        columns: [nameField],
+        limit: Math.min(body.limit ?? 7, 10),
+      });
+      const payload: LookupOptionsPayload = {
+        kind: "lookup-options",
+        object: body.object,
+        options: page.rows.map((r) => ({
+          id: r.id,
+          label: String(r.fields[nameField] ?? r.id),
+        })),
+      };
+      return NextResponse.json({ payload, live });
+    }
+
     // --- Write simulation: MOCK PORTAL ONLY ---
     if (live) {
       return NextResponse.json(
@@ -227,6 +283,53 @@ export async function POST(req: Request) {
         text: `Preview: completed "${task.subject}" (simulated — mock portal only).`,
         live,
       });
+    }
+
+    // The confirmation diff the card shows before a write. In chat this is
+    // crm_preview_update, which mints a signed token the audit log verifies;
+    // here there is nothing to attest — builder writes hit the mock portal and
+    // are never audited — so the token is a visible placeholder rather than
+    // something that could be mistaken for a real confirmation.
+    if (body.kind === "preview-write") {
+      if (!body.object || !body.recordId || !body.patch) {
+        throw new Error("object, recordId and patch required");
+      }
+      const config = await layoutFor(tenantId, body.object, body.config);
+      const patch = body.patch;
+      const before = await adapter.getRecord(config.object, body.recordId, Object.keys(patch));
+      const describe = await adapter.describeObject(config.object);
+      const changes = Object.entries(patch)
+        .filter(([field, value]) => (before.fields[field] ?? null) !== (value ?? null))
+        .map(([field, value]) => ({
+          field,
+          label: describe.fields.find((f) => f.api === field)?.label ?? field,
+          before: before.fields[field] ?? null,
+          after: value ?? null,
+        }));
+      if (changes.length === 0) {
+        return NextResponse.json(
+          { error: "Nothing to change — every value matches what's already in the mock portal." },
+          { status: 400 },
+        );
+      }
+      const named = await adapter.getRecord(config.object, body.recordId, [
+        config.recordCard.header.title,
+      ]);
+      const payload: UpdatePreviewPayload = {
+        kind: "update-preview",
+        object: config.object,
+        recordId: body.recordId,
+        recordName: String(named.fields[config.recordCard.header.title] ?? body.recordId),
+        changes,
+        confirmToken: "preview-not-a-real-confirmation",
+        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+        provenance: {
+          crm: config.crm,
+          crmLabel: config.crm === "hubspot" ? "HubSpot" : "Salesforce",
+          layoutRevision: config.revision,
+        },
+      };
+      return NextResponse.json({ payload, live });
     }
 
     if (body.kind === "write") {
@@ -258,6 +361,11 @@ export async function POST(req: Request) {
       }
       const saved = results.filter((r) => r.ok);
       const fresh = await adapter.getRecord(config.object, body.recordId, []);
+      // Saved lookup fields display the referenced record's NAME, not the id
+      // the patch carried — same as the MCP server's receipt.
+      for (const r of results) {
+        if (r.ok && fresh.fields[r.field] !== undefined) r.after = fresh.fields[r.field]!;
+      }
       const receipt: WriteReceiptPayload = {
         kind: "write-receipt",
         object: config.object,

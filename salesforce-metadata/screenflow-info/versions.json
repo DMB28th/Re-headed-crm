@@ -1,0 +1,16 @@
+{
+  "name": "MALFORMED_QUERY",
+  "message": "FlowVersionView: a filter on a reified column is required [FlowDefinitionViewId,DurableId]",
+  "exitCode": 1,
+  "context": "DataSoqlQueryCommand",
+  "data": {
+    "message": "FlowVersionView: a filter on a reified column is required [FlowDefinitionViewId,DurableId]",
+    "errorCode": "MALFORMED_QUERY"
+  },
+  "stack": "MALFORMED_QUERY: FlowVersionView: a filter on a reified column is required [FlowDefinitionViewId,DurableId]\n    at SfCommandError.from (file:///usr/local/lib/sf/node_modules/@salesforce/sf-plugins-core/lib/SfCommandError.js:48:16)\n    at DataSoqlQueryCommand.catch (file:///usr/local/lib/sf/node_modules/@salesforce/sf-plugins-core/lib/sfCommand.js:332:47)\n    at DataSoqlQueryCommand._run (/usr/local/lib/sf/node_modules/@oclif/core/lib/command.js:187:29)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async Config.runCommand (/usr/local/lib/sf/node_modules/@oclif/core/lib/config/config.js:422:25)\n    at async run (/usr/local/lib/sf/node_modules/@oclif/core/lib/main.js:97:16)\n    at async file:///usr/local/lib/sf/bin/run.js:15:1",
+  "cause": "MALFORMED_QUERY: FlowVersionView: a filter on a reified column is required [FlowDefinitionViewId,DurableId]\n    at HttpApi.getError (/usr/local/lib/sf/node_modules/@jsforce/jsforce-node/lib/http-api.js:315:15)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async /usr/local/lib/sf/node_modules/@jsforce/jsforce-node/lib/http-api.js:127:33\n    at async Query._execute (/usr/local/lib/sf/node_modules/@jsforce/jsforce-node/lib/query.js:373:22)\n    at async /usr/local/lib/sf/node_modules/@jsforce/jsforce-node/lib/query.js:305:17 {\n  data: {\n    message: 'FlowVersionView: a filter on a reified column is required [FlowDefinitionViewId,DurableId]',\n    errorCode: 'MALFORMED_QUERY'\n  },\n  errorCode: 'MALFORMED_QUERY'\n}",
+  "warnings": [],
+  "code": "1",
+  "status": 1,
+  "commandName": "DataSoqlQueryCommand"
+}

@@ -41,9 +41,65 @@ export interface PayloadSource {
   getRelated(parentId: string, rel: RelatedListConfig): Promise<RecordPage>;
   getActivity(objectApi: string, id: string, limit: number): Promise<ActivityEntry[]>;
   getConnectedUser(): Promise<string>;
+  /** Deep link to a record in the CRM's own UI, when the adapter can build one. */
+  recordUrl?(objectApi: string, id: string): string | undefined;
 }
 
 const CRM_LABELS = { salesforce: "Salesforce", hubspot: "HubSpot" } as const;
+
+/**
+ * Runtime all-fields layout for drill-through into an object no admin has
+ * configured (a related list's line item, a reference field's target).
+ * Strictly read-only — writes stay layout-gated — and flagged so the widget
+ * renders a field-name filter instead of curated sections. Shared by the MCP
+ * server and Studio's preview (one codepath).
+ */
+/** The field that best names a record of this object — shared by the generic
+ *  fallback layout and lookup-search options ("what do we show for a row?"). */
+export function primaryNameField(describe: ObjectDescribe): string {
+  return (
+    describe.fields.find((f) => f.api === "Name")?.api ??
+    describe.fields.find((f) => f.api === "CaseNumber")?.api ??
+    describe.fields.find((f) => f.type === "string")?.api ??
+    "Id"
+  );
+}
+
+export function genericLayoutConfig(args: {
+  tenantId: string;
+  crm: LayoutConfig["crm"];
+  object: string;
+  describe: ObjectDescribe;
+}): LayoutConfig {
+  const { tenantId, crm, object, describe } = args;
+  const nameField = primaryNameField(describe);
+  return {
+    version: 1,
+    tenantId,
+    crm,
+    object,
+    audience: "default",
+    name: `${describe.label} · all fields`,
+    revision: 1,
+    generatedFallback: true,
+    listView: { columns: [nameField], rowActions: [] },
+    recordCard: {
+      header: { title: nameField },
+      actions: [],
+      sections: [
+        {
+          label: "All fields",
+          columns: 2,
+          fields: describe.fields
+            .filter((f) => f.api !== "Id")
+            .map((f) => ({ api: f.api, editable: false })),
+        },
+      ],
+      relatedLists: [],
+    },
+    permissions: { writeEnabled: false, fieldDenylist: [], requireConfirmation: true },
+  };
+}
 
 export function provenanceFor(config: LayoutConfig): WidgetProvenance {
   return {
@@ -51,6 +107,7 @@ export function provenanceFor(config: LayoutConfig): WidgetProvenance {
     crmLabel: CRM_LABELS[config.crm],
     ...(config.name ? { layoutName: config.name } : {}),
     layoutRevision: config.revision,
+    fetchedAt: new Date().toISOString(),
   };
 }
 
@@ -91,7 +148,22 @@ export async function buildRecordCardPayload(args: {
   record: CrmRecord;
 }): Promise<RecordCardPayload> {
   const { source } = args;
-  const config = applyDenylist(args.config);
+  const denied = applyDenylist(args.config);
+  // Render-side hygiene: "Id" and the FK back to the parent are useful for
+  // fetching but noise as columns (the FK repeats the parent's own name on
+  // every row) — strip them from the layout the widget receives.
+  const config = {
+    ...denied,
+    recordCard: {
+      ...denied.recordCard,
+      relatedLists: denied.recordCard.relatedLists.map((rel) => ({
+        ...rel,
+        columns: rel.columns.filter(
+          (c) => c !== "Id" && c !== (rel.foreignKey ?? rel.relationship),
+        ),
+      })),
+    },
+  };
   const describe = await source.describeObject(config.object);
   const allowed = new Set(recordCardFieldPaths(config));
 
@@ -110,6 +182,7 @@ export async function buildRecordCardPayload(args: {
     describe.fields.map((f) => [f.api, f]),
   );
 
+  const crmUrl = source.recordUrl?.(config.object, args.record.id);
   return {
     kind: "record-card",
     layout: config,
@@ -122,6 +195,7 @@ export async function buildRecordCardPayload(args: {
       ...provenanceFor(config),
       connectedUser: await source.getConnectedUser(),
     },
+    ...(crmUrl ? { crmUrl } : {}),
   };
 }
 

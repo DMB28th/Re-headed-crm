@@ -9,11 +9,6 @@ import { classifyCrmError } from "../lib/crm-error";
 
 export const dynamic = "force-dynamic";
 
-function greeting(): string {
-  const hour = new Date().getHours();
-  return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-}
-
 export default async function HomePage() {
   const { tenantId } = await getUserContext();
   const store = await getStore();
@@ -42,18 +37,31 @@ export default async function HomePage() {
   const available = [];
   try {
     const crmObjects = await adapter.listObjects();
-    for (const summary of crmObjects) {
-      const record = await store.getLayoutRecord(tenantId, summary.api);
-      if (record.draft || record.published) {
-        let missingDescriptions = 0;
-        let fieldCount = 0;
+    const records = await Promise.all(
+      crmObjects.map(async (summary) => ({
+        summary,
+        record: await store.getLayoutRecord(tenantId, summary.api),
+      })),
+    );
+    const described = await Promise.all(
+      records.map(async ({ summary, record }) => {
+        if (!record.draft && !record.published) return { summary, record };
         try {
           const describe = await adapter.describeObject(summary.api);
-          missingDescriptions = describe.fields.filter((f) => !f.description).length;
-          fieldCount = describe.fields.length;
+          return {
+            summary,
+            record,
+            missingDescriptions: describe.fields.filter((field) => !field.description).length,
+            fieldCount: describe.fields.length,
+          };
         } catch (error) {
           crmError ??= String(error);
+          return { summary, record, missingDescriptions: 0, fieldCount: 0 };
         }
+      }),
+    );
+    for (const { summary, record, missingDescriptions = 0, fieldCount = 0 } of described) {
+      if (record.draft || record.published) {
         objects.push({
           api: summary.api,
           labelPlural: summary.labelPlural,
@@ -76,13 +84,13 @@ export default async function HomePage() {
   const drafted = objects.filter((o) => o.record.draft);
 
   return (
-    <div className="max-w-[860px]">
-      <h1 className="text-[16px] font-semibold">{greeting()}</h1>
-      <p className="mt-1 text-[12.5px] text-ink-55">
+    <div className="max-w-[980px]">
+      <h1 className="text-[22px] font-semibold tracking-[-0.025em]">Your CRM in chat</h1>
+      <p className="mt-1 max-w-[680px] text-[14px] text-ink-55">
         {userCount !== null
           ? `${userCount} reps use these cards in chat.`
           : "Reps use these cards in chat."}{" "}
-        Everything here is scoped to one object at a time.
+        Design what they see, control what they can change, and publish when it is ready.
       </p>
 
       {crmError && <ErrorNotice error={classifyCrmError(crmError)} className="mt-5" />}
@@ -103,18 +111,12 @@ export default async function HomePage() {
         </div>
       ))}
 
-      <div className="mt-6 grid grid-cols-2 gap-4">
+      <h2 className="mt-8 text-[16px] font-semibold">Cards</h2>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
         {objects.map((object) => (
-          // Stretched-link card: the title link covers the card; the amber
-          // metadata row is its own link (nested anchors are invalid HTML).
-          <div key={object.api} className="st-card relative p-4 hover:shadow-sm">
+          <div key={object.api} className="st-card p-4">
             <div className="flex items-center justify-between">
-              <Link
-                href={`/objects/${object.api}/layouts`}
-                className="text-[13.5px] font-semibold capitalize after:absolute after:inset-0"
-              >
-                {object.labelPlural}
-              </Link>
+              <span className="text-[15px] font-semibold capitalize">{object.labelPlural}</span>
               <span className="flex gap-1.5">
                 {object.record.draft && (
                   <span className="st-chip-mono bg-draft text-draft-ink">draft</span>
@@ -126,7 +128,7 @@ export default async function HomePage() {
                 )}
               </span>
             </div>
-            <div className="mt-2 space-y-1 text-[12px] text-ink-55">
+            <div className="mt-2 space-y-1 text-[13px] text-ink-55">
               <div>
                 Layout “{(object.record.published ?? object.record.draft)?.name ?? "—"}” ·{" "}
                 {(object.record.published ?? object.record.draft)?.recordCard.sections.length ?? 0}{" "}
@@ -135,12 +137,23 @@ export default async function HomePage() {
               {object.missingDescriptions > 0 && (
                 <Link
                   href={`/objects/${object.api}/layouts`}
-                  className="relative z-10 block text-draft-ink underline-offset-2 hover:underline"
+                  className="block text-draft-ink underline-offset-2 hover:underline"
                 >
                   {object.missingDescriptions} of {object.fieldCount} fields lack descriptions →
                   review in the builder
                 </Link>
               )}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link href={`/objects/${object.api}/layouts`} className="st-btn st-btn--primary">
+                Edit card
+              </Link>
+              <Link href={`/objects/${object.api}/lists`} className="st-btn">
+                Lists & views
+              </Link>
+              <Link href={`/objects/${object.api}/permissions`} className="st-btn">
+                Write access
+              </Link>
             </div>
           </div>
         ))}

@@ -5,7 +5,7 @@ import { getUserContextFromRequest } from "../../../../lib/auth";
 
 export async function POST(req: Request) {
   try {
-    const { tenantId } = getUserContextFromRequest(req);
+    const { tenantId } = await getUserContextFromRequest(req);
     const published = await (await getStore()).publishHomeCard(tenantId);
     return NextResponse.json({ published });
   } catch (error) {

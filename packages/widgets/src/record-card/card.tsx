@@ -13,13 +13,17 @@ import type {
   CardAction,
   CrmFieldValue,
   FieldWriteResult,
+  HomeCardPayload,
   LayoutSection,
   RecordCardPayload,
   RecordPage,
   RelatedListConfig,
+  UpdatePreviewPayload,
   WriteReceiptPayload,
 } from "@cardstack/core";
+import { selectRenderableActions } from "@cardstack/core";
 import {
+  AsOfChip,
   FieldInfo,
   LayoutChip,
   MakerChip,
@@ -28,6 +32,8 @@ import {
   StagePill,
 } from "../shared/components.tsx";
 import { formatRelative, formatValue, initials, stageTone } from "../shared/format.ts";
+import { HomeCard } from "../home-card/card.tsx";
+import "../home-card/home-card.css";
 import { dirtyCount, type CardMode, type Draft } from "./edit-machine.ts";
 import { FieldInput } from "./editors.tsx";
 import { DiffTable, PartialFailureView, ReceiptView } from "./write-states.tsx";
@@ -62,10 +68,84 @@ export function RecordCard({
   const [mode, setMode] = useState<CardMode>({ kind: "ready" });
   // Attempted values survive a partial failure so "Edit & retry" can restore them.
   const [lastDraft, setLastDraft] = useState<Draft>({});
+  // Lookup picks store an ID in the draft but the rep chose a NAME — keep the
+  // names so the editor, diff, and confirm views never show a raw id.
+  const [draftLabels, setDraftLabels] = useState<Record<string, string>>({});
+  // Drill-through: a clicked reference field or related row opens ITS card in
+  // place of this one (recursive RecordCard = unlimited depth, one screen).
+  const [drill, setDrill] = useState<RecordCardPayload | null>(null);
+  const [drillLoading, setDrillLoading] = useState<string | null>(null);
+  const [drillError, setDrillError] = useState<string | null>(null);
+  // "Your lists" — the home card rendered in place (one screen, no chat turn).
+  const [homeView, setHomeView] = useState<HomeCardPayload | null>(null);
+  const [homeLoading, setHomeLoading] = useState(false);
+  // Field-name filter for big/generated all-fields cards.
+  const [fieldQuery, setFieldQuery] = useState("");
+  useEffect(() => {
+    setDrill(null);
+    setDrillError(null);
+    setHomeView(null);
+    setFieldQuery("");
+    setDraftLabels({});
+  }, [payload]);
 
   const { layout, meta, record, provenance, capabilities } = payload;
   const { header, sections, relatedLists } = layout.recordCard;
   const objectLabel = layout.object.charAt(0).toUpperCase() + layout.object.slice(1);
+
+  const openDrill = async (object: string, id: string) => {
+    if (!host || drillLoading) return;
+    setDrillLoading(id);
+    setDrillError(null);
+    try {
+      // Through the host as a tool call — the server decides layout vs
+      // generated all-fields fallback; the widget never fetches directly.
+      const result = await host.callTool("crm_get_record", { object, id });
+      const data = result.structuredContent as RecordCardPayload | undefined;
+      if (!result.isError && data?.kind === "record-card") {
+        setDrill(data);
+      } else {
+        const text = result.content?.find((c) => c.type === "text")?.text;
+        setDrillError(text ?? `Couldn't open that ${object} record.`);
+      }
+    } catch (error) {
+      // Transport-level failure — surface it; never an unhandled rejection.
+      setDrillError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDrillLoading(null);
+    }
+  };
+  // A reference field is drillable when we have the target record's id and a
+  // concrete target object — either resolved per record by the adapter
+  // (refObjects covers polymorphic refs like Owner/What) or unambiguous from
+  // describe metadata.
+  const drillTargetFor = (api: string): { object: string; id: string } | null => {
+    const id = record.refs?.[api];
+    if (!id) return null;
+    const targets = meta[api]?.referenceTo;
+    const object = record.refObjects?.[api] ?? (targets?.length === 1 ? targets[0] : undefined);
+    return object ? { object, id } : null;
+  };
+
+  const openHome = async () => {
+    if (!host || homeLoading) return;
+    setHomeLoading(true);
+    setDrillError(null);
+    try {
+      const result = await host.callTool("crm_home", {});
+      const data = result.structuredContent as HomeCardPayload | undefined;
+      if (!result.isError && data?.kind === "home-card") {
+        setHomeView(data);
+      } else {
+        const text = result.content?.find((c) => c.type === "text")?.text;
+        setDrillError(text ?? "Couldn't open your lists.");
+      }
+    } catch (error) {
+      setDrillError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setHomeLoading(false);
+    }
+  };
 
   if (sections.length === 0) {
     return (
@@ -85,22 +165,32 @@ export function RecordCard({
   const editableSet = new Set(capabilities.editableFields);
   const canEdit = capabilities.writeEnabled && editableSet.size > 0;
 
-  const setDraftValue = (api: string, value: CrmFieldValue) => {
+  const setDraftValue = (api: string, value: CrmFieldValue, label?: string) => {
     if (mode.kind !== "editing") return;
     const draft = { ...mode.draft };
     const original = record.fields[api] ?? null;
-    if (value === original) delete draft[api];
-    else draft[api] = value;
+    // A lookup's original "value" displays as a NAME while the draft carries
+    // an ID — re-picking the same record (id === refs[api]) is not a change.
+    const originalRefId = record.refs?.[api];
+    if (value === original || (originalRefId !== undefined && value === originalRefId)) {
+      delete draft[api];
+    } else {
+      draft[api] = value;
+    }
+    if (label !== undefined) setDraftLabels((prev) => ({ ...prev, [api]: label }));
     setMode({ kind: "editing", draft });
   };
 
-  const confirmWrite = async (draft: Draft) => {
+  // editing → confirming goes through the SERVER: it re-reads the current values,
+  // applies the same write gauntlet, and returns the diff plus a token bound to
+  // it. A diff computed here in the browser could never be proven to the audit
+  // log, so the rep confirms what the server will actually write, not what the
+  // card happens to be holding.
+  const reviewChanges = async (draft: Draft) => {
     if (!host) return;
-    setMode({ kind: "writing", draft });
-    setLastDraft(draft);
+    setMode({ kind: "reviewing", draft });
     try {
-      // The write goes through the HOST as a tool call — auditable, never direct.
-      const result = await host.callTool("crm_update_record", {
+      const result = await host.callTool("crm_preview_update", {
         object: layout.object,
         id: record.id,
         patch: draft,
@@ -108,17 +198,60 @@ export function RecordCard({
       if (result.isError) {
         const text = result.content?.find((c) => c.type === "text");
         setMode({
+          kind: "editing",
+          draft,
+          previewError: text?.text ?? "Couldn't prepare these changes for review.",
+        });
+        return;
+      }
+      setMode({
+        kind: "confirming",
+        draft,
+        preview: result.structuredContent as UpdatePreviewPayload,
+      });
+    } catch (error) {
+      setMode({ kind: "editing", draft, previewError: String(error) });
+    }
+  };
+
+  const confirmWrite = async (draft: Draft, preview: UpdatePreviewPayload) => {
+    if (!host) return;
+    setMode({ kind: "writing", draft, preview });
+    setLastDraft(draft);
+    try {
+      // The write goes through the HOST as a tool call — auditable, never direct.
+      // The token is what makes the audit entry say "rep confirmed this diff".
+      const result = await host.callTool("crm_update_record", {
+        object: layout.object,
+        id: record.id,
+        patch: draft,
+        confirmToken: preview.confirmToken,
+      });
+      if (result.isError) {
+        const text = result.content?.find((c) => c.type === "text");
+        setMode({
           kind: "confirming",
           draft,
+          preview,
           writeError: text?.text ?? "The write failed. Nothing was saved.",
         });
         return;
       }
       const receipt = result.structuredContent as WriteReceiptPayload;
-      // Fresh values into the card; the model gets the same summary the receipt shows.
+      // Fresh values into the card; the model gets the same summary the receipt
+      // shows. refs merge alongside fields so drill targets track the write.
       setPayload({
         ...payload,
-        record: { ...record, fields: { ...record.fields, ...receipt.record.fields } },
+        record: {
+          ...record,
+          fields: { ...record.fields, ...receipt.record.fields },
+          ...(record.refs || receipt.record.refs
+            ? { refs: { ...record.refs, ...receipt.record.refs } }
+            : {}),
+          ...(record.refObjects || receipt.record.refObjects
+            ? { refObjects: { ...record.refObjects, ...receipt.record.refObjects } }
+            : {}),
+        },
       });
       const summary = result.content?.find((c) => c.type === "text");
       if (summary?.text) host.updateModelContext(summary.text);
@@ -126,7 +259,7 @@ export function RecordCard({
         receipt.failedCount > 0 ? { kind: "partial", receipt } : { kind: "receipt", receipt },
       );
     } catch (error) {
-      setMode({ kind: "confirming", draft, writeError: String(error) });
+      setMode({ kind: "confirming", draft, preview, writeError: String(error) });
     }
   };
 
@@ -162,30 +295,100 @@ export function RecordCard({
   const subtitle = header.subtitle ? fmt(header.subtitle, record.fields[header.subtitle]) : null;
   const badgeLabel = header.badge ? fmt(header.badge, record.fields[header.badge]) : null;
 
-  // Configured layout actions (design 1a/3a): update_record names the primary
-  // edit button; create_related actions post a followup so the model drives
-  // crm_create_record (upgrades to the inline create form when 10b lands).
+  // Configured layout actions (design 1a/3a). Order is the admin's control over
+  // which action is primary; `selectRenderableActions` drops disabled ones and
+  // skips update_record when nothing is editable. Flow and quick actions hand
+  // off to the host so the model starts them and flow-run renders the screens.
   const actions = layout.recordCard.actions;
   const titleText = title ?? record.id;
   const runCreateRelated = (action: Extract<CardAction, { type: "create_related" }>) =>
     host?.sendFollowup?.(
       `Create a new ${action.object} related to "${titleText}" (id ${record.id})`,
     );
-  const logNote = () =>
-    host?.sendFollowup?.(`Log a note on the ${layout.object} "${titleText}" (id ${record.id})`);
+  const runFlowAction = (action: Extract<CardAction, { type: "screen_flow" }>) =>
+    host?.sendFollowup?.(`Run the "${action.label}" flow on "${titleText}" (id ${record.id})`);
+
+  const runQuickAction = (action: Extract<CardAction, { type: "quick_action" }>) =>
+    host?.sendFollowup?.(`Run the "${action.label}" action on "${titleText}" (id ${record.id})`);
+
+  // "Your lists" replaces the card with the real home card until Back.
+  if (homeView) {
+    return (
+      <div className="rc-drill">
+        <button type="button" className="rc-back" onClick={() => setHomeView(null)}>
+          ← Back to {titleText}
+        </button>
+        <HomeCard payload={homeView} locale={locale} host={host} />
+      </div>
+    );
+  }
+
+  // Drill-through view replaces this card until "Back" (recursive: the nested
+  // card has its own drill, related lists, even edit flow if its layout allows).
+  if (drill) {
+    return (
+      <div className="rc-drill">
+        <button type="button" className="rc-back" onClick={() => setDrill(null)}>
+          ← Back to {titleText}
+        </button>
+        <RecordCard payload={drill} setPayload={(p) => setDrill(p)} locale={locale} host={host} />
+      </div>
+    );
+  }
+
+  const totalFieldCount = sections.reduce((n, s) => n + s.fields.length, 0);
+  // Ready mode only: while EDITING, every field stays visible — a filter that
+  // hides a dirty field mid-edit would still write it, invisibly.
+  const showFieldFilter =
+    (layout.generatedFallback || totalFieldCount > 12) && mode.kind === "ready";
+  const fieldMatches = (api: string): boolean => {
+    if (mode.kind !== "ready" || !fieldQuery.trim()) return true;
+    const q = fieldQuery.trim().toLowerCase();
+    return (
+      api.toLowerCase().includes(q) || (meta[api]?.label ?? "").toLowerCase().includes(q)
+    );
+  };
 
   const collapsed = mode.kind === "receipt" || mode.kind === "partial";
+  // The rows come from the SERVER's preview — same values the confirm token is
+  // bound to, so what the rep reads and what gets written cannot drift apart.
+  // Lookup writes carry an ID, so the picked record's name (which only the
+  // browser knows) still supplies the display label.
   const diffRows =
     mode.kind === "confirming" || mode.kind === "writing"
-      ? Object.entries(mode.draft).map(([api, value]) => ({
-          label: meta[api]?.label ?? api,
-          before: fmt(api, record.fields[api] ?? null),
-          after: fmt(api, value),
+      ? mode.preview.changes.map(({ field, label, before, after }) => ({
+          label,
+          before: fmt(field, before),
+          after:
+            after !== null && draftLabels[field] !== undefined && meta[field]?.type === "reference"
+              ? draftLabels[field]!
+              : fmt(field, after),
         }))
       : [];
 
   return (
     <div className="cs-card">
+      {host && mode.kind === "ready" && (
+        <nav className="rc-nav" aria-label="Card navigation">
+          <button
+            type="button"
+            className="rc-nav-link"
+            onClick={() => void openHome()}
+            disabled={homeLoading}
+          >
+            {homeLoading ? "Opening…" : "⌂ Your lists"}
+          </button>
+          {payload.crmUrl && host.openLink && (
+            <button
+              type="button"
+              className="rc-nav-link"
+              onClick={() => host.openLink!(payload.crmUrl!)}
+            >
+              View in {provenance.crmLabel} ↗
+            </button>
+          )}
+        </nav>
+      )}
       <header className="rc-header">
         <div className="rc-header-main">
           <h1 className="rc-title">{title ?? <NullValue />}</h1>
@@ -222,19 +425,62 @@ export function RecordCard({
         </section>
       )}
 
-      {(mode.kind === "ready" || mode.kind === "editing") &&
-        sections.map((section) => (
-          <Section
-            key={section.label}
-            section={section}
-            payload={payload}
-            locale={locale}
-            editing={mode.kind === "editing"}
-            draft={mode.kind === "editing" ? mode.draft : undefined}
-            editableSet={editableSet}
-            onChange={setDraftValue}
+      {drillError && (
+        <div className="wd-write-error" role="alert">
+          {drillError}
+        </div>
+      )}
+
+      {showFieldFilter && (
+        <div className="rc-field-filter">
+          <input
+            type="search"
+            className="rc-field-filter-input"
+            placeholder={`Filter ${totalFieldCount} fields…`}
+            value={fieldQuery}
+            onChange={(e) => setFieldQuery(e.target.value)}
+            aria-label="Filter fields by name"
           />
-        ))}
+        </div>
+      )}
+
+      {mode.kind === "editing" && mode.previewError && (
+        <div className="wd-write-error" role="alert">
+          {mode.previewError} <span className="cs-muted">Nothing was written.</span>
+        </div>
+      )}
+
+      {(mode.kind === "ready" || mode.kind === "editing" || mode.kind === "reviewing") &&
+        sections
+          .map((section) => ({
+            ...section,
+            fields: section.fields.filter((f) => fieldMatches(f.api)),
+          }))
+          .filter((section) => section.fields.length > 0)
+          .map((section) => (
+            <Section
+              key={section.label}
+              section={section}
+              payload={payload}
+              locale={locale}
+              editing={mode.kind === "editing" || mode.kind === "reviewing"}
+              draft={
+                mode.kind === "editing" || mode.kind === "reviewing" ? mode.draft : undefined
+              }
+              draftLabels={draftLabels}
+              editableSet={editableSet}
+              host={host}
+              onChange={setDraftValue}
+              drillTargetFor={drillTargetFor}
+              onOpenRef={(object, id) => void openDrill(object, id)}
+              drillLoadingId={drillLoading}
+            />
+          ))}
+      {showFieldFilter &&
+        fieldQuery.trim() !== "" &&
+        sections.every((s) => s.fields.every((f) => !fieldMatches(f.api))) && (
+          <div className="cs-muted rc-filter-empty">No fields match “{fieldQuery.trim()}”.</div>
+        )}
 
       {!collapsed &&
         mode.kind === "ready" &&
@@ -247,6 +493,8 @@ export function RecordCard({
                 page={payload.related[rel.relationship] ?? { rows: [], hasMore: false }}
                 payload={payload}
                 host={host}
+                {...(host ? { onOpenRow: (object: string, id: string) => void openDrill(object, id) } : {})}
+                drillLoadingId={drillLoading}
               />
             ))}
             {payload.activity.length > 0 && (
@@ -264,16 +512,15 @@ export function RecordCard({
           connectedUser={provenance.connectedUser}
           onEdit={() => setMode({ kind: "editing", draft: {} })}
           onCreateRelated={runCreateRelated}
-          onLogNote={logNote}
+          onFlowAction={runFlowAction}
+          onQuickAction={runQuickAction}
           onDiscard={() => setMode({ kind: "ready" })}
-          onReview={() =>
-            mode.kind === "editing" && setMode({ kind: "confirming", draft: mode.draft })
-          }
+          onReview={() => mode.kind === "editing" && void reviewChanges(mode.draft)}
           onBack={() =>
             mode.kind === "confirming" && setMode({ kind: "editing", draft: mode.draft })
           }
           onConfirm={() =>
-            (mode.kind === "confirming" || mode.kind === "writing") && confirmWrite(mode.draft)
+            mode.kind === "confirming" && void confirmWrite(mode.draft, mode.preview)
           }
         />
         <span className="rc-footer-right">
@@ -281,6 +528,7 @@ export function RecordCard({
           {mode.kind === "ready" && canEdit && (
             <span className="cs-muted rc-trust">Writes require confirmation</span>
           )}
+          <AsOfChip provenance={provenance} locale={locale} />
           <LayoutChip provenance={provenance} />
           <MakerChip provenance={provenance} />
         </span>
@@ -297,7 +545,8 @@ function FooterControls({
   connectedUser,
   onEdit,
   onCreateRelated,
-  onLogNote,
+  onFlowAction,
+  onQuickAction,
   onDiscard,
   onReview,
   onBack,
@@ -310,7 +559,8 @@ function FooterControls({
   connectedUser?: string | undefined;
   onEdit: () => void;
   onCreateRelated: (action: Extract<CardAction, { type: "create_related" }>) => void;
-  onLogNote: () => void;
+  onFlowAction: (action: Extract<CardAction, { type: "screen_flow" }>) => void;
+  onQuickAction: (action: Extract<CardAction, { type: "quick_action" }>) => void;
   onDiscard: () => void;
   onReview: () => void;
   onBack: () => void;
@@ -318,52 +568,94 @@ function FooterControls({
 }) {
   switch (mode.kind) {
     case "ready": {
-      const editLabel =
-        actions.find((a): a is Extract<CardAction, { type: "update_record" }> => a.type === "update_record")
-          ?.label ?? "Edit fields";
-      const createActions = actions.filter(
-        (a): a is Extract<CardAction, { type: "create_related" }> => a.type === "create_related",
-      );
+      const rendered = selectRenderableActions(actions, { canEdit });
+      // An empty CONFIGURATION keeps the legacy button — every layout predating
+      // the actions editor has `actions: []` and must not silently lose its edit
+      // affordance. An empty RESULT (everything disabled) correctly renders none.
+      if (actions.length === 0) {
+        return (
+          <span className="rc-footer-left">
+            {canEdit && (
+              <button type="button" className="cs-btn cs-btn--primary" onClick={onEdit}>
+                Edit fields
+              </button>
+            )}
+          </span>
+        );
+      }
       return (
         <span className="rc-footer-left">
-          {canEdit && (
-            <button type="button" className="cs-btn cs-btn--primary" onClick={onEdit}>
-              {editLabel}
-            </button>
-          )}
-          {createActions.map((action) => (
-            <button
-              key={`${action.object}:${action.label}`}
-              type="button"
-              className="cs-btn"
-              onClick={() => onCreateRelated(action)}
-            >
-              {action.label}
-            </button>
-          ))}
-          <button type="button" className="cs-btn" onClick={onLogNote}>
-            Log a note
-          </button>
+          {rendered.map((action, i) => {
+            const className = i === 0 ? "cs-btn cs-btn--primary" : "cs-btn";
+            switch (action.type) {
+              case "update_record":
+                return (
+                  <button key="update_record" type="button" className={className} onClick={onEdit}>
+                    {action.label}
+                  </button>
+                );
+              case "create_related":
+                return (
+                  <button
+                    key={`create_related:${action.object}`}
+                    type="button"
+                    className={className}
+                    onClick={() => onCreateRelated(action)}
+                  >
+                    {action.label}
+                  </button>
+                );
+              case "quick_action":
+                return (
+                  <button
+                    key={`quick_action:${action.actionApiName}`}
+                    type="button"
+                    className={className}
+                    onClick={() => onQuickAction(action)}
+                  >
+                    {action.label}
+                  </button>
+                );
+              case "screen_flow":
+                return (
+                  <button
+                    key={`screen_flow:${action.flowApiName}`}
+                    type="button"
+                    className={className}
+                    onClick={() => onFlowAction(action)}
+                  >
+                    {action.label}
+                  </button>
+                );
+            }
+          })}
         </span>
       );
     }
-    case "editing": {
+    case "editing":
+    case "reviewing": {
+      const reviewing = mode.kind === "reviewing";
       const count = dirtyCount(mode.draft);
       return (
         <span className="rc-footer-left">
           <span className={`rc-dirty-count${count > 0 ? " rc-dirty-count--active" : ""}`}>
             {count} unsaved {count === 1 ? "change" : "changes"}
           </span>
-          <button type="button" className="cs-btn cs-btn--ghost" onClick={onDiscard}>
+          <button
+            type="button"
+            className="cs-btn cs-btn--ghost"
+            onClick={onDiscard}
+            disabled={reviewing}
+          >
             Discard
           </button>
           <button
             type="button"
             className="cs-btn cs-btn--primary"
             onClick={onReview}
-            disabled={count === 0}
+            disabled={count === 0 || reviewing}
           >
-            Review &amp; save…
+            {reviewing ? "Preparing…" : "Review & save…"}
           </button>
         </span>
       );
@@ -408,16 +700,28 @@ function Section({
   locale,
   editing,
   draft,
+  draftLabels,
   editableSet,
+  host,
   onChange,
+  drillTargetFor,
+  onOpenRef,
+  drillLoadingId,
 }: {
   section: LayoutSection;
   payload: RecordCardPayload;
   locale: string;
   editing: boolean;
   draft: Draft | undefined;
+  /** Field api → human label for lookup drafts (the draft value is an id). */
+  draftLabels?: Record<string, string>;
   editableSet: Set<string>;
-  onChange: (api: string, value: CrmFieldValue) => void;
+  host?: WidgetHost | null;
+  onChange: (api: string, value: CrmFieldValue, displayLabel?: string) => void;
+  /** Unambiguous drill target for a reference field, or null. */
+  drillTargetFor?: (api: string) => { object: string; id: string } | null;
+  onOpenRef?: (object: string, id: string) => void;
+  drillLoadingId?: string | null;
 }) {
   const { record } = payload;
   return (
@@ -432,11 +736,29 @@ function Section({
           const editableHere = editing && editableSet.has(field.api);
           const flsBlocked = editing && field.editable && !editableSet.has(field.api);
           const formatted = formatValue(currentValue, fieldMeta, locale);
+          // Lookup fields: the input shows the record's NAME — the picked
+          // option's label when dirty, else the original resolved name.
+          const lookupLabel =
+            fieldMeta?.type === "reference"
+              ? isDirty
+                ? currentValue === null
+                  ? ""
+                  : (draftLabels?.[field.api] ?? String(currentValue))
+                : (formatValue(original, fieldMeta, locale) ?? "")
+              : undefined;
           return (
             <div key={field.api} className="rc-field">
               <div className="rc-field-label">
                 {isDirty && <span className="wd-dirty-dot" aria-label="unsaved change" />}
                 {fieldMeta?.label ?? field.api}
+                {/* At-rest affordance: a rep can glance and know what they can
+                    act on — without it, editable and read-only fields look
+                    identical until they hit "Edit fields" (design 1b). */}
+                {!editing && editableSet.has(field.api) && (
+                  <span className="rc-editable-mark" title="Editable from chat" aria-label="Editable from chat">
+                    ✎
+                  </span>
+                )}
                 {fieldMeta && (
                   <FieldInfo
                     {...(fieldMeta.description ? { description: fieldMeta.description } : {})}
@@ -457,7 +779,9 @@ function Section({
                   meta={fieldMeta}
                   value={currentValue}
                   dirty={isDirty}
-                  onChange={(value) => onChange(field.api, value)}
+                  displayLabel={lookupLabel}
+                  host={host}
+                  onChange={(value, label) => onChange(field.api, value, label)}
                 />
               ) : (
                 <div className="rc-field-value">
@@ -465,6 +789,27 @@ function Section({
                     <NullValue />
                   ) : fieldMeta?.type === "textarea" ? (
                     <ClampedText text={formatted} />
+                  ) : fieldMeta?.type === "reference" &&
+                    !editing &&
+                    drillTargetFor?.(field.api) &&
+                    onOpenRef ? (
+                    // Drill-through: open the referenced record's card in place.
+                    (() => {
+                      const target = drillTargetFor(field.api)!;
+                      return (
+                        <button
+                          type="button"
+                          className="rc-ref-link"
+                          onClick={() => onOpenRef(target.object, target.id)}
+                          disabled={drillLoadingId != null}
+                        >
+                          {formatted}
+                          <span aria-hidden="true">
+                            {drillLoadingId === target.id ? " …" : " ↗"}
+                          </span>
+                        </button>
+                      );
+                    })()
                   ) : (
                     formatted
                   )}
@@ -488,11 +833,16 @@ function RelatedList({
   page,
   payload,
   host,
+  onOpenRow,
+  drillLoadingId,
 }: {
   rel: RelatedListConfig;
   page: RecordPage;
   payload: RecordCardPayload;
   host: WidgetHost | null;
+  /** Drill-through: open a related record's card in place of this one. */
+  onOpenRow?: (object: string, id: string) => void;
+  drillLoadingId?: string | null;
 }) {
   const [rows, setRows] = useState(page.rows);
   const [hasMore, setHasMore] = useState(page.hasMore);
@@ -522,7 +872,10 @@ function RelatedList({
 
   return (
     <section className="rc-related">
-      <h2 className="rc-section-label">{rel.relationship.replace(/_/g, " ")}</h2>
+      {/* "OpportunityLineItems" / "deal_contacts" → "Opportunity Line Items" / "deal contacts" */}
+      <h2 className="rc-section-label">
+        {rel.relationship.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2")}
+      </h2>
       {rows.length === 0 && (
         <div className="cs-muted" style={{ fontSize: 12.5 }}>
           <NullValue /> none linked
@@ -531,8 +884,8 @@ function RelatedList({
       {rows.map((row) => {
         const name = String(row.fields[rel.columns[0] ?? "name"] ?? "");
         const detailCols = rel.columns.slice(1);
-        return (
-          <div key={row.id} className="rc-contact">
+        const body = (
+          <>
             <span className="rc-avatar" aria-hidden="true">
               {initials(name)}
             </span>
@@ -545,6 +898,25 @@ function RelatedList({
                   .join(" · ") || " "}
               </span>
             </span>
+          </>
+        );
+        // Clickable when the host can drill; static in hostless previews.
+        return onOpenRow ? (
+          <button
+            key={row.id}
+            type="button"
+            className="rc-contact rc-contact--clickable"
+            onClick={() => onOpenRow(rel.object, row.id)}
+            disabled={drillLoadingId != null}
+          >
+            {body}
+            <span className="rc-contact-open" aria-hidden="true">
+              {drillLoadingId === row.id ? "Opening…" : "Open ↗"}
+            </span>
+          </button>
+        ) : (
+          <div key={row.id} className="rc-contact">
+            {body}
           </div>
         );
       })}
@@ -612,6 +984,8 @@ function ActivityTimeline({ entries, locale }: { entries: ActivityEntry[]; local
     call: "☎",
     note: "✎",
     meeting: "◷",
+    task: "☑",
+    update: "Δ",
   };
   return (
     <section className="rc-related">
