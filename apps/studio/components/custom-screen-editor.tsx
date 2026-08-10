@@ -73,9 +73,10 @@ export function CustomScreenEditor({ screenId }: { screenId: string }) {
   const updateDraft = (patch: Partial<CustomScreenConfig>) =>
     setDraft((current) => (current ? { ...current, ...patch, status: "draft" } : current));
 
-  const saveDraft = async () => {
-    if (!draft) return;
-    await track(async () => {
+  /** Returns whether the draft actually persisted — publish depends on it. */
+  const saveDraft = async (): Promise<boolean> => {
+    if (!draft) return false;
+    const ok = await track(async () => {
       const res = await fetch(`/api/custom-screens/${draft.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -84,15 +85,23 @@ export function CustomScreenEditor({ screenId }: { screenId: string }) {
       if (!res.ok) {
         throw new Error(((await res.json()) as { error?: string }).error ?? "Save failed.");
       }
+      return true;
     });
+    return ok === true;
   };
 
   const publish = async () => {
     if (!draft) return;
     setPublishError(null);
     // Save first so the published revision is what's on screen, not the last
-    // thing that happened to be autosaved.
-    await saveDraft();
+    // thing that happened to be autosaved. `track` swallows the throw, so the
+    // result has to be CHECKED — otherwise an invalid draft (say, a cleared
+    // label) fails to save and we publish the older stored one, then reload
+    // and lose the edits on screen.
+    if (!(await saveDraft())) {
+      setPublishError("Couldn't save this screen, so it wasn't published. Fix the draft and retry.");
+      return;
+    }
     const ok = await track(
       async () => {
         const res = await fetch(`/api/custom-screens/${draft.id}`, { method: "POST" });

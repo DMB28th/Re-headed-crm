@@ -147,32 +147,45 @@ export function HomeCardBuilder() {
    * Publish was the first write, so closing the tab lost the work outright
    * (docs/studio-staging-model.md).
    */
+  const saveNow = async (next: HomeCardConfig): Promise<boolean> => {
+    const ok = await track(
+      async () => {
+        const res = await fetch("/api/home-card", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(next),
+        });
+        if (!res.ok) throw new Error("save failed");
+        setStaged(true);
+        return true;
+      },
+      { done: "saved", settleTo: "staged" },
+    );
+    return ok === true;
+  };
+
   useEffect(() => {
     if (!config) return;
     if (skipNextSave.current) {
       skipNextSave.current = false;
       return;
     }
-    const timer = setTimeout(() => {
-      void track(
-        async () => {
-          const res = await fetch("/api/home-card", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(config),
-          });
-          if (!res.ok) throw new Error("save failed");
-          setStaged(true);
-        },
-        { done: "saved", settleTo: "staged" },
-      );
-    }, 500);
+    const timer = setTimeout(() => void saveNow(config), 500);
     return () => clearTimeout(timer);
     // `track`/`setStatus` are stable enough for this debounce; config drives it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config]);
 
   const publish = async () => {
+    // Flush first. An edit made inside the 500ms debounce window is not on the
+    // server yet; publishing without saving it would promote the PREVIOUS
+    // draft, and applying the response then cancels the pending save — losing
+    // the edit silently. Saving here makes the published revision the one on
+    // screen.
+    if (config && !(await saveNow(config))) {
+      setLoadError("Couldn't save the latest change, so nothing was published. Retry.");
+      return;
+    }
     const published = await track(
       async () => {
         const res = await fetch("/api/home-card/publish", { method: "POST" });

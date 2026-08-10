@@ -61,6 +61,62 @@ describe("backfillFlowActive", () => {
     expect(modes.find((m) => m.flowApiName === "Kept_Off")!.active).toBe(false);
   });
 
+  it("activates a PRE-UPGRADE policy and keeps its render mode", async () => {
+    // The regression this exists to prevent: a row written before `active`
+    // existed parses with active absent. Skipping it would darken exactly the
+    // flows an admin configured most deliberately.
+    const store = new InMemoryConfigStore();
+    await layoutWithFlows(store, ["Customized"]);
+    await store.setFlowRenderMode({
+      version: 1,
+      revision: 1,
+      tenantId: DEMO_TENANT_ID,
+      flowApiName: "Customized",
+      // No `active` — this is what a pre-upgrade row looks like.
+      mode: "embedded",
+      fallback: "open-in-salesforce",
+    });
+    await store.publishFlowRenderMode(DEMO_TENANT_ID, "Customized");
+
+    const result = await backfillFlowActive(store, DEMO_TENANT_ID, { apply: true });
+    expect(result.activated).toEqual(["Customized"]);
+
+    const live = await store.getFlowRenderModes(DEMO_TENANT_ID);
+    expect(live).toMatchObject([{ flowApiName: "Customized", active: true, mode: "embedded" }]);
+  });
+
+  it("distinguishes an explicit off from a pre-upgrade row", async () => {
+    const store = new InMemoryConfigStore();
+    await layoutWithFlows(store, ["Explicit_Off", "Legacy"]);
+    await store.setFlowRenderMode({
+      version: 1,
+      revision: 1,
+      tenantId: DEMO_TENANT_ID,
+      flowApiName: "Explicit_Off",
+      active: false, // a decision, not an absence
+      mode: "auto",
+      fallback: "open-in-salesforce",
+    });
+    await store.publishFlowRenderMode(DEMO_TENANT_ID, "Explicit_Off");
+    await store.setFlowRenderMode({
+      version: 1,
+      revision: 1,
+      tenantId: DEMO_TENANT_ID,
+      flowApiName: "Legacy",
+      mode: "native",
+      fallback: "open-in-salesforce",
+    });
+    await store.publishFlowRenderMode(DEMO_TENANT_ID, "Legacy");
+
+    const result = await backfillFlowActive(store, DEMO_TENANT_ID, { apply: true });
+    expect(result.activated).toEqual(["Legacy"]);
+    expect(result.skipped.map((s) => s.flow)).toEqual(["Explicit_Off"]);
+
+    const modes = await store.getFlowRenderModes(DEMO_TENANT_ID);
+    expect(modes.find((m) => m.flowApiName === "Explicit_Off")!.active).toBe(false);
+    expect(modes.find((m) => m.flowApiName === "Legacy")!.active).toBe(true);
+  });
+
   it("is safe to re-run — a second pass activates nothing", async () => {
     const store = new InMemoryConfigStore();
     await layoutWithFlows(store, ["Renewal_Playbook"]);

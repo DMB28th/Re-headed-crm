@@ -9,7 +9,10 @@ import { getUserContextFromRequest } from "../../../lib/auth";
  * Filters: object, actor, q (record id or field), from, to, limit, offset.
  * `?format=csv` flattens to one row per field change and applies THE SAME
  * filters — an export you can't scope to what you're looking at isn't much use
- * to whoever asked for it.
+ * to whoever asked for it. It is also COMPLETE: the export streams page by
+ * page until the query is exhausted rather than taking the newest N. A
+ * compliance export that silently drops the oldest rows is worse than one that
+ * refuses, because it looks finished.
  */
 function queryFromUrl(url: URL): AuditQuery {
   const get = (key: string) => url.searchParams.get(key)?.trim() || undefined;
@@ -32,30 +35,49 @@ export async function GET(req: Request) {
     const filters = queryFromUrl(url);
 
     if (url.searchParams.get("format") === "csv") {
-      // Export every matching row, not just the page on screen.
-      const { entries } = await log.query(tenantId, { ...filters, limit: 10_000, offset: 0 });
-      const rows = [
-        ["timestamp", "actor", "actorEmail", "writtenAs", "object", "recordId", "field", "before", "after"],
+      const header = [
+        "timestamp", "actor", "actorEmail", "writtenAs", "object", "recordId", "field", "before", "after",
       ];
-      for (const e of entries) {
-        for (const c of e.changes) {
-          rows.push([
-            e.timestamp,
-            e.actor?.name ?? "",
-            e.actor?.email ?? "",
-            e.user,
-            e.object,
-            e.recordId,
-            c.field,
-            String(c.before ?? ""),
-            String(c.after ?? ""),
-          ]);
-        }
-      }
-      const csv = rows
-        .map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-        .join("\n");
-      return new NextResponse(csv, {
+      const cell = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+      const PAGE = 1000;
+
+      // Streamed and paged: memory stays bounded by one page, and there is no
+      // cap to silently hit. The client sees rows as they're produced.
+      const stream = new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          const encoder = new TextEncoder();
+          controller.enqueue(encoder.encode(`${header.map(cell).join(",")}\n`));
+          for (let offset = 0; ; offset += PAGE) {
+            const page = await log.query(tenantId, { ...filters, limit: PAGE, offset });
+            for (const entry of page.entries) {
+              for (const change of entry.changes) {
+                controller.enqueue(
+                  encoder.encode(
+                    [
+                      entry.timestamp,
+                      entry.actor?.name ?? "",
+                      entry.actor?.email ?? "",
+                      entry.user,
+                      entry.object,
+                      entry.recordId,
+                      change.field,
+                      change.before,
+                      change.after,
+                    ]
+                      .map(cell)
+                      .join(",") + "\n",
+                  ),
+                );
+              }
+            }
+            // Stop when the page came back short — the query is exhausted.
+            if (page.entries.length < PAGE) break;
+          }
+          controller.close();
+        },
+      });
+
+      return new NextResponse(stream, {
         headers: {
           "Content-Type": "text/csv",
           "Content-Disposition": 'attachment; filename="cardstack-audit.csv"',

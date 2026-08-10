@@ -4,11 +4,18 @@
  * Migration notes:
  * - v1: initial flow render-mode config and custom-screen config. Both are
  *   tenant-scoped shared resources, not object-scoped layout blocks.
- * - 2026-08-10c: FlowRenderModeConfig gains `active` (default FALSE) — an
- *   explicit per-flow switch for "reps can use this in chat". Nothing is
- *   offered until an admin turns it on, matching how list exposure works: a
- *   synced flow is not a published one. BEHAVIOR CHANGE: before this, every
- *   synced flow was startable from chat whether or not it had a stored policy.
+ * - 2026-08-10c: FlowRenderModeConfig gains `active` — an explicit per-flow
+ *   switch for "reps can use this in chat". Nothing is offered until an admin
+ *   turns it on, matching how list exposure works: a synced flow is not a
+ *   published one. BEHAVIOR CHANGE: before this, every synced flow was
+ *   startable from chat whether or not it had a stored policy.
+ *   `active` is OPTIONAL WITH NO DEFAULT, deliberately. A default of false
+ *   would make a pre-upgrade row (written before the field existed) parse
+ *   identically to one an admin explicitly switched off, and the deploy
+ *   backfill has to tell those apart — the pre-upgrade rows are the flows
+ *   admins configured most deliberately. Absent = never decided; false =
+ *   explicitly off. Readers treat both as off (`!policy?.active`), so the
+ *   safe default is unchanged; only the migration reads the difference.
  *   `handoff` also stays in the FlowRenderMode enum for storage tolerance of
  *   rows written earlier, but Studio no longer OFFERS it — opening Salesforce
  *   in a browser tab is a fallback the runtime may still do, not a render mode
@@ -47,11 +54,14 @@ export const FlowRenderModeConfig = z.object({
   /** Publish revision — bumps on publish, indexes rollback history. */
   revision: z.number().int().positive().default(1),
   /**
-   * Whether reps can run this flow from chat at all. Defaults to false: a flow
-   * synced from the CRM is a candidate, not an offering. Enforced server-side
-   * in crm_flow_start, so the toggle is a real gate and not decoration.
+   * Whether reps can run this flow from chat at all. Enforced server-side in
+   * crm_flow_start, so the toggle is a real gate and not decoration.
+   *
+   * Optional with NO default: absent means "written before this field existed"
+   * and false means "an admin switched it off". Every reader treats both as
+   * off; only the deploy backfill distinguishes them (see the migration note).
    */
-  active: z.boolean().default(false),
+  active: z.boolean().optional(),
   mode: FlowRenderMode.default("auto"),
   /** Required fallback for hosts that block embedded Salesforce screens. */
   fallback: z.literal("open-in-salesforce").default("open-in-salesforce"),

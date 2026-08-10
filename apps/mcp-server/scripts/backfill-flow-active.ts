@@ -15,11 +15,18 @@
  * layout attaches it as a `screen_flow` card action — that is the exact set
  * that works today, so that is the exact set this activates.
  *
+ * WHAT IT TOUCHES
+ * Two cases activate:
+ *   1. no stored policy at all — the flow ran on the implicit default;
+ *   2. a PRE-UPGRADE policy, i.e. one whose `active` is absent because the
+ *      field didn't exist when it was written. These are the flows admins
+ *      configured most deliberately (they picked a render mode), so skipping
+ *      them would darken exactly the wrong set.
+ *
  * SAFE TO RE-RUN
- * It only creates a policy for a flow that has NO stored record at all
- * (neither draft nor published). An admin who deliberately switches a flow off
- * leaves a stored record behind, and this never touches it. So a second run
- * cannot resurrect a flow someone turned off on purpose.
+ * A policy with an explicit `active: false` is an admin opt-out and is never
+ * touched; `active: true` is already on. Since this run writes an explicit
+ * boolean, a second pass activates nothing.
  *
  * The new policy is PUBLISHED, not staged: a staged one wouldn't be live and
  * the flow would stay dark, which is the thing we're preventing.
@@ -68,23 +75,28 @@ export async function backfillFlowActive(
 
   for (const flowApiName of await runnableFlows(store, tenantId)) {
     const record = await store.getFlowRenderModeRecord(tenantId, flowApiName);
-    if (record.published || record.draft) {
-      // An admin has already expressed intent for this flow, whatever it is.
-      const state = record.published?.active ?? record.draft?.active ?? false;
+    const existing = record.published ?? record.draft;
+
+    if (existing && existing.active !== undefined) {
+      // An explicit boolean is a decision someone made. Never override it.
       skipped.push({
         flow: flowApiName,
-        because: `already configured (active: ${state}) — admin intent, left alone`,
+        because: `explicitly set (active: ${existing.active}) — admin intent, left alone`,
       });
       continue;
     }
+
     if (apply) {
       await store.setFlowRenderMode({
         version: 1,
-        revision: 1,
+        // Keep whatever render mode was already configured — a pre-upgrade
+        // policy exists precisely because someone chose one.
+        ...(existing ?? {}),
+        revision: existing?.revision ?? 1,
         tenantId,
         flowApiName,
         active: true,
-        mode: "auto",
+        mode: existing?.mode ?? "auto",
         fallback: "open-in-salesforce",
         updatedAt: new Date().toISOString(),
       });
