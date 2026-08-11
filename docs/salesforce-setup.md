@@ -4,6 +4,14 @@ How to connect a Salesforce org to Cardstack and let reps use live, permission-s
 record cards inside their chat app. For deeper reference and troubleshooting, see
 [salesforce-oauth-support.md](./salesforce-oauth-support.md).
 
+> **Most workspaces don't need this document.** On deployments with the
+> Cardstack connected app configured, Connections → **Connect Salesforce** is
+> one click — you approve Cardstack's access on Salesforce and you're done; no
+> app to create, nothing to paste. The steps below are for the
+> bring-your-own-app path: self-hosted deployments without a Cardstack app, or
+> orgs whose policies block third-party connected apps. In Studio, the same
+> steps are guided at Connections → "Set up your own connected app".
+
 ## How it works (two OAuth lanes)
 
 Cardstack uses the Salesforce **OAuth 2.0 web-server (authorization-code) flow** with two

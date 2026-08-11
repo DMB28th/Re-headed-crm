@@ -22,6 +22,7 @@ interface RedactedConnection {
 interface ConnectionsData {
   connection: RedactedConnection;
   connectedUser: string | null;
+  cardstackAppAvailable?: boolean;
 }
 
 interface UserConnectionData {
@@ -56,12 +57,7 @@ export default function ConnectionsPage() {
   const [error, setError] = useState<string | null>(null);
   const [hsToken, setHsToken] = useState("");
   const [hsFormOpen, setHsFormOpen] = useState(false);
-  const [sf, setSf] = useState({
-    loginUrl: "https://login.salesforce.com",
-    clientId: "",
-    clientSecret: "",
-  });
-  const [origin, setOrigin] = useState("");
+  const [host, setHost] = useState<"production" | "sandbox">("production");
   const [userData, setUserData] = useState<UserConnectionData | null>(null);
   const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -92,7 +88,6 @@ export default function ConnectionsPage() {
 
   useEffect(() => {
     void (async () => {
-      setOrigin(window.location.origin);
       const params = new URLSearchParams(window.location.search);
       const callbackError = params.get("error");
       if (callbackError) setError(callbackError);
@@ -112,7 +107,7 @@ export default function ConnectionsPage() {
       const res = await fetch("/api/connections/salesforce/oauth/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(sf),
+        body: JSON.stringify({ app: "cardstack", host }),
       });
       const json = (await res.json()) as { authorizationUrl?: string; error?: string };
       if (!res.ok || !json.authorizationUrl) {
@@ -190,7 +185,6 @@ export default function ConnectionsPage() {
       setConfirming(false);
       setHsFormOpen(false);
       setHsToken("");
-      setSf({ loginUrl: "https://login.salesforce.com", clientId: "", clientSecret: "" });
       // Successful LIVE connect (2c): offer starter-card generation for the
       // portal's unconfigured objects instead of dead-ending here.
       if (body.action === "connect" && body.kind !== "mock") {
@@ -511,58 +505,62 @@ export default function ConnectionsPage() {
                 one CRM per workspace. Disconnect it first to switch.
               </p>
             ) : (
-              <div className="mt-3 space-y-2">
-                <p className="text-[11.5px] text-ink-55">
-                  Create a Connected App (or External Client App) with the web-server OAuth flow.
-                  The admin authorizes once for setup and metadata; each product user authorizes
-                  separately for their own records, list views, and writes.
-                </p>
-                <div className="rounded-[8px] border border-line-soft bg-paper p-2.5 text-[11px] text-ink-55">
-                  <div className="font-medium text-ink">Callback URLs</div>
-                  <div className="mt-1 space-y-1">
-                    <code className="block break-all rounded-[6px] bg-white px-2 py-1">
-                      {(origin || "http://localhost:3002")}/api/connections/salesforce/oauth/callback
-                    </code>
-                    <code className="block break-all rounded-[6px] bg-white px-2 py-1">
-                      {(origin || "http://localhost:3002")}/api/user-connections/salesforce/oauth/callback
-                    </code>
-                  </div>
-                  <div className="mt-1.5">
-                    OAuth scopes: <code className="st-chip-mono">api</code> and{" "}
-                    <code className="st-chip-mono">refresh_token/offline_access</code>.
-                  </div>
-                </div>
-                <input
-                  className="st-input w-full"
-                  placeholder="Login URL — https://login.salesforce.com"
-                  value={sf.loginUrl}
-                  onChange={(e) => setSf({ ...sf, loginUrl: e.target.value })}
-                />
-                <div className="flex gap-2">
-                  <input
-                    className="st-input flex-1"
-                    placeholder="Consumer key"
-                    value={sf.clientId}
-                    onChange={(e) => setSf({ ...sf, clientId: e.target.value })}
-                  />
-                  <input
-                    type="password"
-                    className="st-input flex-1"
-                    placeholder="Consumer secret"
-                    value={sf.clientSecret}
-                    onChange={(e) => setSf({ ...sf, clientSecret: e.target.value })}
-                  />
-                </div>
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    className="st-btn st-btn--primary"
-                    disabled={busy || !sf.loginUrl.trim() || !sf.clientId.trim() || !sf.clientSecret.trim()}
-                    onClick={startSalesforceAdminOAuth}
-                  >
-                    {busy ? "Starting…" : "Authorize admin"}
-                  </button>
-                </div>
+              <div className="mt-3 space-y-3">
+                {data.cardstackAppAvailable ? (
+                  <>
+                    <p className="text-[11.5px] text-ink-55">
+                      Connect your Salesforce org. You&apos;ll approve Cardstack&apos;s
+                      access on Salesforce — nothing to install or configure.
+                    </p>
+                    <div className="flex items-center justify-between gap-3">
+                      <div
+                        className="flex rounded-[8px] border border-line-soft p-0.5"
+                        role="radiogroup"
+                        aria-label="Salesforce environment"
+                      >
+                        {(["production", "sandbox"] as const).map((h) => (
+                          <button
+                            key={h}
+                            type="button"
+                            role="radio"
+                            aria-checked={host === h}
+                            className={`rounded-[6px] px-2.5 py-1 text-[12px] capitalize ${
+                              host === h ? "bg-paper font-semibold" : "text-ink-55"
+                            }`}
+                            onClick={() => setHost(h)}
+                          >
+                            {h}
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        className="st-btn st-btn--primary"
+                        disabled={busy}
+                        onClick={startSalesforceAdminOAuth}
+                      >
+                        {busy ? "Starting…" : "Connect Salesforce"}
+                      </button>
+                    </div>
+                    <p className="text-[11.5px] text-ink-45">
+                      Can&apos;t use the Cardstack app?{" "}
+                      <Link href="/connections/salesforce/setup" className="underline">
+                        Set up your own connected app →
+                      </Link>
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[11.5px] text-ink-55">
+                      This deployment connects with your own Salesforce Connected App.
+                    </p>
+                    <div className="flex justify-end">
+                      <Link href="/connections/salesforce/setup" className="st-btn st-btn--primary">
+                        Set up a connected app →
+                      </Link>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </>
