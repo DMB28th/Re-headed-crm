@@ -3,7 +3,10 @@ import type { ConnectionState } from "@cardstack/config-store";
 import {
   HubSpotAdapter,
   SalesforceAdapter,
+  cardstackSalesforceLoginApp,
+  hydrateSalesforceClientSecret,
   invalidateAdapterCache,
+  stripCardstackClientSecret,
   type CrmAdapter,
   type HubSpotCredentials,
   type SalesforceCredentials,
@@ -27,15 +30,40 @@ export async function GET(req: Request) {
   const { tenantId } = await getUserContextFromRequest(req);
   const store = await getStore();
   const connection = await store.getConnection(tenantId);
+  const cardstackAppAvailable = Boolean(cardstackSalesforceLoginApp());
   if (connection.status !== "connected") {
-    return NextResponse.json({ connection: redact(connection), connectedUser: null, scopeGaps: [] });
+    return NextResponse.json({
+      connection: redact(connection),
+      connectedUser: null,
+      scopeGaps: [],
+      cardstackAppAvailable,
+    });
   }
-  const adapter = await getAdapter(tenantId);
-  const [connectedUser, scopeGaps] = await Promise.all([
-    adapter.getConnectedUser().catch(() => null),
-    scopeGapsFor(adapter),
-  ]);
-  return NextResponse.json({ connection: redact(connection), connectedUser, scopeGaps });
+  try {
+    const adapter = await getAdapter(tenantId);
+    const [connectedUser, scopeGaps] = await Promise.all([
+      adapter.getConnectedUser().catch(() => null),
+      scopeGapsFor(adapter),
+    ]);
+    return NextResponse.json({
+      connection: redact(connection),
+      connectedUser,
+      scopeGaps,
+      cardstackAppAvailable,
+    });
+  } catch (error) {
+    // This page IS where the admin goes to reconnect, so a live connection
+    // whose adapter can't be built (e.g. a one-click connection whose env app
+    // is gone or changed) must still render — degrade the adapter-dependent
+    // extras and surface the reason instead of 500ing the whole page.
+    return NextResponse.json({
+      connection: redact(connection),
+      connectedUser: null,
+      scopeGaps: [],
+      cardstackAppAvailable,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 interface ConnectBody {
@@ -65,25 +93,37 @@ export async function POST(req: Request) {
     // request and the whole connection dies.
     let rotated: Record<string, string> | null = null;
     try {
+      // One-click (Cardstack-app) Salesforce rows are stored WITHOUT a client
+      // secret; hydrate with the env app's secret before building the probe,
+      // same as getAdapter's pattern in lib/backend.ts. BYO credentials pass
+      // through untouched. Throws a CrmAuthError (caught below, surfaced as a
+      // JSON error) when the env app is missing or has changed.
+      const credentials =
+        current.crm === "salesforce"
+          ? (hydrateSalesforceClientSecret(
+              current.credentials as unknown as SalesforceCredentials,
+            ) as unknown as Record<string, string>)
+          : current.credentials;
       const probe =
         current.crm === "salesforce"
           ? new SalesforceAdapter(
-              current.credentials as unknown as SalesforceCredentials,
+              credentials as unknown as SalesforceCredentials,
               undefined,
-              (credentials) => {
-                rotated = credentials as unknown as Record<string, string>;
+              (creds) => {
+                rotated = creds as unknown as Record<string, string>;
               },
             )
-          : new HubSpotAdapter(current.credentials as unknown as HubSpotCredentials);
+          : new HubSpotAdapter(credentials as unknown as HubSpotCredentials);
       connectedUser = await probe.validateConnection();
       scopeGaps = await scopeGapsFor(probe);
     } catch (error) {
       // Even on failure, a rotation that DID happen must be persisted — the
-      // old token is already invalid.
+      // old token is already invalid. Strip the hydrated env secret before it
+      // ever reaches the store (no store row may hold the env secret).
       if (rotated) {
         await store.setConnection({
           ...current,
-          credentials: rotated,
+          credentials: stripCardstackClientSecret(rotated),
           changedAt: new Date().toISOString(),
         });
       }
@@ -92,7 +132,7 @@ export async function POST(req: Request) {
     }
     const state: ConnectionState = {
       ...current,
-      ...(rotated ? { credentials: rotated } : {}),
+      ...(rotated ? { credentials: stripCardstackClientSecret(rotated) } : {}),
       changedAt: new Date().toISOString(),
     };
     await store.setConnection(state);

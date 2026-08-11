@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import {
   SalesforceAdapter,
+  cardstackSalesforceLoginApp,
   exchangeSalesforceAuthorizationCode,
   fetchSalesforceSignerIdentity,
   invalidateAdapterCache,
+  stripCardstackClientSecret,
   type SalesforceCredentials,
 } from "@cardstack/crm-adapters";
 import type { ConnectionState } from "@cardstack/config-store";
@@ -25,7 +27,22 @@ export async function GET(req: Request) {
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const error = url.searchParams.get("error_description") ?? url.searchParams.get("error");
-  if (error) return done(req, { error });
+  if (error) {
+    let hint = "";
+    try {
+      const { tenantId } = await getUserContextFromRequest(req);
+      const store = await getStore();
+      const pendingAuth = (await store.getConnection(tenantId)).pendingAuth as
+        | Record<string, string>
+        | undefined;
+      if (pendingAuth?.clientApp === "cardstack") {
+        hint = " If your org blocks third-party apps, set up your own connected app instead.";
+      }
+    } catch {
+      // No session/store — surface the raw Salesforce error alone.
+    }
+    return done(req, { error: error + hint });
+  }
   if (!code || !state) return done(req, { error: "Salesforce callback was missing code or state." });
 
   try {
@@ -33,21 +50,33 @@ export async function GET(req: Request) {
     const store = await getStore();
     const pending = await store.getConnection(tenantId);
     const pendingAuth = pending.pendingAuth as
-      | (SalesforceCredentials & { state?: string; codeVerifier?: string })
+      | (Partial<SalesforceCredentials> & { state?: string; codeVerifier?: string })
       | undefined;
     if (
       pending.crm !== "salesforce" ||
       pendingAuth?.authType !== "oauth_pending" ||
       pendingAuth.state !== state ||
-      !pendingAuth.redirectUri
+      !pendingAuth.redirectUri ||
+      !pendingAuth.clientId
     ) {
       return done(req, { error: "Salesforce OAuth state did not match. Start the admin connection again." });
+    }
+
+    const clientSecret =
+      pendingAuth.clientSecret ??
+      (pendingAuth.clientApp === "cardstack"
+        ? cardstackSalesforceLoginApp()?.clientSecret
+        : undefined);
+    if (!clientSecret) {
+      return done(req, {
+        error: "The deployment's Salesforce app changed mid-authorization — start again.",
+      });
     }
 
     const credentials = await exchangeSalesforceAuthorizationCode({
       loginUrl: pendingAuth.loginUrl,
       clientId: pendingAuth.clientId,
-      clientSecret: pendingAuth.clientSecret,
+      clientSecret,
       redirectUri: pendingAuth.redirectUri,
       code,
       codeVerifier: pendingAuth.codeVerifier,
@@ -86,13 +115,19 @@ export async function GET(req: Request) {
     // CRM's config) must not leave stale layouts/lists/home cards behind.
     const existingCrm = await store.tenantConfigCrm(tenantId);
     if (existingCrm && existingCrm !== "salesforce") await store.clearTenantConfig(tenantId);
+    // Probe/validation above ran on the FULL credentials (secret included —
+    // refresh during validation must work); only the stored row is stripped.
+    const persisted =
+      pendingAuth.clientApp === "cardstack"
+        ? stripCardstackClientSecret({ ...credentials, clientApp: "cardstack" })
+        : credentials;
     const connection: ConnectionState = {
       tenantId,
       status: "connected",
       crm: "salesforce",
       label: "admin OAuth",
       changedAt: new Date().toISOString(),
-      credentials: credentials as unknown as Record<string, string>,
+      credentials: persisted as unknown as Record<string, string>,
     };
     await store.setConnection(connection);
     return done(req, { salesforce: "connected", connectedUser });

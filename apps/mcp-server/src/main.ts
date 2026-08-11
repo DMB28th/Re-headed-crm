@@ -20,7 +20,9 @@ import {
   createAdapterForConnection,
   createDevSalesforceAdapter,
   devSalesforceOrg,
+  hydrateSalesforceClientSecret,
   salesforceUsesOAuth,
+  stripCardstackClientSecret,
   type ConnectionSettings,
 } from "@cardstack/crm-adapters";
 import {
@@ -299,9 +301,28 @@ app.all("/mcp", async (req, res) => {
     ? userContextFromStoredUser(tokenUser)
     : userContextFromHeaders({ get: (name) => req.header(name) });
   const connection = await configStore.getConnection(userContext.tenantId);
+  // One-click (Cardstack-app) Salesforce connections are stored WITHOUT a
+  // client secret; the env app supplies it at use time. BYO credentials pass
+  // through untouched (stored secret wins).
+  const hydrateAdmin = (credentials: Record<string, string> | undefined) =>
+    connection.crm === "salesforce" && credentials
+      ? (hydrateSalesforceClientSecret(credentials) as Record<string, string>)
+      : credentials;
+  // Hydration throws (CrmAuthError) when a one-click connection's env app is
+  // gone or changed. This runs before any tool call, outside the per-tool
+  // asToolError handling in server.ts, and Express 4 does not catch async
+  // rejections — left unguarded, this becomes an unhandled rejection that
+  // never sends a response, hanging the chat host until its own timeout.
+  let adminCredentials: Record<string, string> | undefined;
+  try {
+    adminCredentials = connection.credentials ? hydrateAdmin(connection.credentials) : undefined;
+  } catch (err) {
+    res.status(401).json({ error: err instanceof Error ? err.message : String(err) });
+    return;
+  }
   let adapterSettings: ConnectionSettings = {
     crm: connection.crm,
-    ...(connection.credentials ? { credentials: connection.credentials } : {}),
+    ...(adminCredentials ? { credentials: adminCredentials } : {}),
     // Shared with Studio via the store: a refresh bumps changedAt, which busts
     // this process's cached adapter on its next request too.
     cacheNonce: connection.changedAt,
@@ -310,12 +331,15 @@ app.all("/mcp", async (req, res) => {
     onCredentialsRefreshed: async (credentials) => {
       await configStore.setConnection({
         ...connection,
-        credentials,
+        // Rotated refreshToken persists exactly as before — only the env
+        // secret is stripped from the stored row.
+        credentials: stripCardstackClientSecret(credentials),
         changedAt: new Date().toISOString(),
       });
     },
     getFreshCredentials: async () =>
-      (await configStore.getConnection(userContext.tenantId)).credentials ?? null,
+      hydrateAdmin((await configStore.getConnection(userContext.tenantId)).credentials ?? undefined) ??
+      null,
   };
   let runtimeAuth: Parameters<typeof createCardstackServer>[0]["runtimeAuth"] | undefined;
   if (

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   SalesforceAdapter,
   exchangeSalesforceAuthorizationCode,
+  hydrateSalesforceClientSecret,
   invalidateAdapterCache,
   type SalesforceCredentials,
 } from "@cardstack/crm-adapters";
@@ -45,7 +46,12 @@ export async function GET(req: Request) {
 
     // The client secret is not stored per user; source it from the admin connection.
     const workspace = await store.getConnection(tenantId);
-    const clientSecret = (workspace.credentials as SalesforceCredentials | undefined)?.clientSecret;
+    const adminCredentials = workspace.credentials as SalesforceCredentials | undefined;
+    // One-click admin connections store no secret — hydrate from the env app
+    // (throws a typed CrmAuthError when the deployment app is gone).
+    const clientSecret = adminCredentials
+      ? hydrateSalesforceClientSecret(adminCredentials).clientSecret
+      : undefined;
     if (!clientSecret) {
       return done(req, {
         error: "The admin Salesforce connection is missing its client secret. Reconnect admin OAuth, then try again.",

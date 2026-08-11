@@ -22,6 +22,13 @@ export async function GET(req: Request) {
   if (connection.status !== "connected") {
     return NextResponse.json(UNKNOWN);
   }
-  const info = await (await getAdapter(tenantId)).getPortalInfo().catch(() => UNKNOWN);
-  return NextResponse.json(info);
+  // getAdapter itself can throw (e.g. a one-click connection whose env app is
+  // gone) — the `.catch()` below only covers getPortalInfo(), so an adapter
+  // build failure needs its own guard rather than an HTML 500.
+  try {
+    const info = await (await getAdapter(tenantId)).getPortalInfo().catch(() => UNKNOWN);
+    return NextResponse.json(info);
+  } catch {
+    return NextResponse.json(UNKNOWN);
+  }
 }
