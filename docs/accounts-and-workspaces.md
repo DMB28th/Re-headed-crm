@@ -297,10 +297,14 @@ re-onboarding reps.
 **Chat host (MCP) — find-or-refuse.** claude.ai registers dynamically →
 `/authorize` → Salesforce → `/oauth/salesforce/callback` →
 `resolveSignIn` (`packages/config-store/src/sign-in.ts`) calls
-`getWorkspaceByOrgId`; no match throws `UnclaimedOrgError`, which the MCP
-server renders as a typed page — "No Cardstack workspace is connected to this
-Salesforce org yet; sign up at Studio or ask whoever runs Cardstack for your
-org" — instead of creating one. A match resolves the account (keeping the
+`getWorkspaceByOrgId`; no match throws `UnclaimedOrgError`
+("No Cardstack workspace is connected to this Salesforce org yet.", plus the
+org's display name when one is known), instead of creating one.
+`renderSignInFailure` (`apps/mcp-server/src/main.ts`) catches it and renders a
+typed page instead of a raw error: "This Salesforce org isn't connected to
+Cardstack yet" as the heading, that same error message, then "Ask whoever
+administers Cardstack for your team to connect the org in Studio — or create
+your own Cardstack account and connect it yourself." A match resolves the account (keeping the
 original id across profile changes) and writes a `Membership` with
 `role: "member"` — always, even for the workspace's owner, whose Studio
 authority comes from `ownerAccountId`, not this row. Everything after that —
