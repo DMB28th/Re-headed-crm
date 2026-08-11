@@ -2,9 +2,9 @@
 
 /**
  * The five auth forms, one client module. Each follows the exact
- * fetch-then-`router.replace` shape of the deleted `login/access-key-form.tsx`
+ * fetch-then-`router.replace` shape of the deleted `login` access-key form
  * (busy/error state, `st-input`/`st-btn` classes, `router.replace` +
- * `router.refresh` on success) — see that file's git history for the pattern
+ * `router.refresh` on success) — see the repo's git history for the pattern
  * this was copied from.
  */
 import { useState, type FormEvent } from "react";
