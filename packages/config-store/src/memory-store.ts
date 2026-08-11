@@ -318,7 +318,12 @@ export abstract class BaseConfigStore implements AdminConfigStore {
   /** Idempotent on the org id — a workspace created with a `salesforceOrgId`
    *  that's already claimed is silently dropped; `claimOrg` is where a claim
    *  race actually gets decided (spec §7/§8), not here. Org-less workspaces
-   *  (the self-serve signup path) have no clash to check. */
+   *  (the self-serve signup path) have no clash to check.
+   *
+   *  Also idempotent on ownerAccountId (spec §6: one owned workspace per
+   *  account) — a signup double-submit for the same account is silently
+   *  dropped the same way, so the second call never forks a workspace; the
+   *  caller re-reads via getWorkspaceByOwner to find the one that won. */
   async createWorkspace(workspace: Workspace): Promise<void> {
     const state = await this.load();
     if (workspace.salesforceOrgId) {
@@ -327,6 +332,12 @@ export abstract class BaseConfigStore implements AdminConfigStore {
         (w) => w.salesforceOrgId && salesforceIdKey(w.salesforceOrgId) === key,
       );
       if (clash) return;
+    }
+    if (workspace.ownerAccountId) {
+      const ownerClash = Object.values(state.workspaces ?? {}).some(
+        (w) => w.ownerAccountId === workspace.ownerAccountId,
+      );
+      if (ownerClash) return;
     }
     state.workspaces = { ...(state.workspaces ?? {}), [workspace.id]: workspace };
     await this.save(state);

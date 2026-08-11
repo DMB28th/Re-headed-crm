@@ -345,4 +345,21 @@ describe("PostgresConfigStore", () => {
       "Unknown workspace",
     );
   });
+
+  it("one owned workspace per account (spec §6): a signup double-submit is dropped, not forked", async () => {
+    const first = workspace("ws_a", { ownerAccountId: "dana@acme.example" });
+    const second = workspace("ws_b", { ownerAccountId: "dana@acme.example" });
+    await store.createWorkspace(first);
+    // Same shape a double-submitted signup produces: two INSERTs racing for
+    // one owner. The second must not throw — workspaces_owner_uq's 23505 is
+    // caught and swallowed, matching org_key's DO-NOTHING philosophy.
+    await store.createWorkspace(second);
+
+    expect((await store.getWorkspaceByOwner("dana@acme.example"))?.id).toBe("ws_a");
+    expect(await store.getWorkspace("ws_b")).toBeUndefined();
+
+    // Distinct owners are unaffected — both still insert.
+    await store.createWorkspace(workspace("ws_c", { ownerAccountId: "evan@acme.example" }));
+    expect((await store.getWorkspaceByOwner("evan@acme.example"))?.id).toBe("ws_c");
+  });
 });

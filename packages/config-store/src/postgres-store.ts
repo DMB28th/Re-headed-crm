@@ -255,6 +255,17 @@ ALTER TABLE publish_events ADD COLUMN IF NOT EXISTS batch_id text;
 -- * sf_user_key becomes NULLABLE: email-created accounts have no SF user yet.
 ALTER TABLE workspaces ALTER COLUMN org_key DROP NOT NULL;
 ALTER TABLE accounts ALTER COLUMN sf_user_key DROP NOT NULL;
+
+-- 2026-08-11: spec §6 requires one owned workspace per account. Enforced here,
+-- not just in application code, because createWorkspace's DO-NOTHING-on-race
+-- philosophy (see its comment) needs the database to be the one deciding a
+-- concurrent double-submit -- app-level "check then insert" has a race window
+-- a signup double-submit can land in. Partial + on the jsonb expression (not
+-- a real column, unlike org_key/sf_user_key) because ownerAccountId lives only
+-- in config -- WHERE ... IS NOT NULL keeps legacy/owner-less rows unconstrained,
+-- matching how org_key's NULLs are unconstrained under its own UNIQUE.
+CREATE UNIQUE INDEX IF NOT EXISTS workspaces_owner_uq
+  ON workspaces ((config->>'ownerAccountId')) WHERE config->>'ownerAccountId' IS NOT NULL;
 `;
 
 export class PostgresConfigStore implements AdminConfigStore {
@@ -756,10 +767,12 @@ export class PostgresConfigStore implements AdminConfigStore {
     return rows[0] ? this.parse<Workspace>(rows[0].config) : undefined;
   }
 
+  /** ORDER BY created_at so a legacy pre-uq duplicate resolves deterministically
+   *  (oldest wins) instead of whichever row Postgres happens to scan first. */
   async getWorkspaceByOwner(ownerAccountId: string): Promise<Workspace | undefined> {
     await this.ready;
     const { rows } = await this.sql.query(
-      "SELECT config FROM workspaces WHERE config->>'ownerAccountId' = $1 LIMIT 1",
+      "SELECT config FROM workspaces WHERE config->>'ownerAccountId' = $1 ORDER BY created_at ASC LIMIT 1",
       [ownerAccountId],
     );
     return rows[0] ? this.parse<Workspace>(rows[0].config) : undefined;
@@ -771,18 +784,30 @@ export class PostgresConfigStore implements AdminConfigStore {
    * than overwrite it. resolveSignIn re-reads after calling this. org_key may
    * be NULL — a self-serve signup creates a workspace before claiming an org
    * (spec §1), and Postgres allows many NULLs under the UNIQUE constraint.
+   *
+   * Same DO-NOTHING philosophy applies to a double-submitted signup for one
+   * owner: ON CONFLICT can't name the partial `workspaces_owner_uq` index (its
+   * predicate isn't inferrable the way org_key's plain UNIQUE is), so the
+   * catch below does the same job by hand — 23505 means the owner already has
+   * a workspace, the caller re-reads via getWorkspaceByOwner, and the loser's
+   * row is simply never inserted. Any other error rethrows.
    */
   async createWorkspace(workspace: Workspace): Promise<void> {
     await this.ready;
-    await this.sql.query(
-      `INSERT INTO workspaces (id, org_key, config) VALUES ($1,$2,$3)
-       ON CONFLICT (org_key) DO NOTHING`,
-      [
-        workspace.id,
-        workspace.salesforceOrgId ? salesforceIdKey(workspace.salesforceOrgId) : null,
-        JSON.stringify(workspace),
-      ],
-    );
+    try {
+      await this.sql.query(
+        `INSERT INTO workspaces (id, org_key, config) VALUES ($1,$2,$3)
+         ON CONFLICT (org_key) DO NOTHING`,
+        [
+          workspace.id,
+          workspace.salesforceOrgId ? salesforceIdKey(workspace.salesforceOrgId) : null,
+          JSON.stringify(workspace),
+        ],
+      );
+    } catch (error) {
+      if ((error as { code?: string }).code === "23505") return;
+      throw error;
+    }
   }
 
   /** Operational enumeration — never call from a request path. */

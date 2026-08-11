@@ -76,4 +76,22 @@ describe("identity model", () => {
     await store.setWorkspaceOwner("t_demo", "dana@acme.example");
     expect((await store.getWorkspaceByOwner("dana@acme.example"))?.id).toBe("t_demo");
   });
+
+  it("one owned workspace per account (spec §6): a signup double-submit is dropped, not forked", async () => {
+    const store = new InMemoryConfigStore();
+    const first = ownedWorkspace(newWorkspaceId(), "dana@acme.example");
+    const second = ownedWorkspace(newWorkspaceId(), "dana@acme.example");
+    await store.createWorkspace(first);
+    await store.createWorkspace(second); // double-submit — silently dropped
+
+    expect((await store.getWorkspaceByOwner("dana@acme.example"))?.id).toBe(first.id);
+    expect(await store.getWorkspace(second.id)).toBeUndefined();
+    expect(await store.listWorkspaces()).toHaveLength(1);
+
+    // Distinct owners are unaffected — both still insert.
+    const other = ownedWorkspace(newWorkspaceId(), "evan@acme.example");
+    await store.createWorkspace(other);
+    expect((await store.getWorkspaceByOwner("evan@acme.example"))?.id).toBe(other.id);
+    expect(await store.listWorkspaces()).toHaveLength(2);
+  });
 });
