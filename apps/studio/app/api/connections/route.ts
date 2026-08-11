@@ -4,7 +4,9 @@ import {
   HubSpotAdapter,
   SalesforceAdapter,
   cardstackSalesforceLoginApp,
+  hydrateSalesforceClientSecret,
   invalidateAdapterCache,
+  stripCardstackClientSecret,
   type CrmAdapter,
   type HubSpotCredentials,
   type SalesforceCredentials,
@@ -91,25 +93,37 @@ export async function POST(req: Request) {
     // request and the whole connection dies.
     let rotated: Record<string, string> | null = null;
     try {
+      // One-click (Cardstack-app) Salesforce rows are stored WITHOUT a client
+      // secret; hydrate with the env app's secret before building the probe,
+      // same as getAdapter's pattern in lib/backend.ts. BYO credentials pass
+      // through untouched. Throws a CrmAuthError (caught below, surfaced as a
+      // JSON error) when the env app is missing or has changed.
+      const credentials =
+        current.crm === "salesforce"
+          ? (hydrateSalesforceClientSecret(
+              current.credentials as unknown as SalesforceCredentials,
+            ) as unknown as Record<string, string>)
+          : current.credentials;
       const probe =
         current.crm === "salesforce"
           ? new SalesforceAdapter(
-              current.credentials as unknown as SalesforceCredentials,
+              credentials as unknown as SalesforceCredentials,
               undefined,
-              (credentials) => {
-                rotated = credentials as unknown as Record<string, string>;
+              (creds) => {
+                rotated = creds as unknown as Record<string, string>;
               },
             )
-          : new HubSpotAdapter(current.credentials as unknown as HubSpotCredentials);
+          : new HubSpotAdapter(credentials as unknown as HubSpotCredentials);
       connectedUser = await probe.validateConnection();
       scopeGaps = await scopeGapsFor(probe);
     } catch (error) {
       // Even on failure, a rotation that DID happen must be persisted — the
-      // old token is already invalid.
+      // old token is already invalid. Strip the hydrated env secret before it
+      // ever reaches the store (no store row may hold the env secret).
       if (rotated) {
         await store.setConnection({
           ...current,
-          credentials: rotated,
+          credentials: stripCardstackClientSecret(rotated),
           changedAt: new Date().toISOString(),
         });
       }
@@ -118,7 +132,7 @@ export async function POST(req: Request) {
     }
     const state: ConnectionState = {
       ...current,
-      ...(rotated ? { credentials: rotated } : {}),
+      ...(rotated ? { credentials: stripCardstackClientSecret(rotated) } : {}),
       changedAt: new Date().toISOString(),
     };
     await store.setConnection(state);

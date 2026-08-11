@@ -23,6 +23,10 @@ interface ConnectionsData {
   connection: RedactedConnection;
   connectedUser: string | null;
   cardstackAppAvailable?: boolean;
+  /** Set when the stored connection's adapter couldn't be built (e.g. a
+   * one-click connection whose env app is gone or changed) — connectedUser
+   * and scopeGaps degrade to empty/null rather than the route 500ing. */
+  error?: string;
 }
 
 interface UserConnectionData {
@@ -95,7 +99,12 @@ export default function ConnectionsPage() {
         fetch("/api/connections"),
         fetch("/api/user-connections/salesforce"),
       ]);
-      setData((await res.json()) as ConnectionsData);
+      const json = (await res.json()) as ConnectionsData;
+      setData(json);
+      // A degraded connection (adapter couldn't be built) explains why
+      // connectedUser is empty below — surface it without requiring a click
+      // on Refresh. A ?error= from an OAuth callback takes priority.
+      if (json.error && !callbackError) setError(json.error);
       setUserData((await userRes.json()) as UserConnectionData);
     })();
   }, []);
