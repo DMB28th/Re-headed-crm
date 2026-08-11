@@ -192,6 +192,9 @@ describe("CardstackOAuthProvider", () => {
     expect(url.origin).toBe("https://claude.ai");
     expect(url.searchParams.get("error")).toBe("server_error");
     expect(url.searchParams.get("state")).toBe("s");
+    // User-facing surfaces never print env var names (self-serve accounts
+    // spec §5) — misconfiguration details belong in server logs only.
+    expect(url.searchParams.get("error_description")).not.toMatch(/CARDSTACK_SF/);
   });
 
   it("keeps an existing tenant on its encrypted admin connected app during migration", async () => {

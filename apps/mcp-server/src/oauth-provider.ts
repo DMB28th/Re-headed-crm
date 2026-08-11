@@ -294,9 +294,10 @@ export class CardstackOAuthProvider implements OAuthServerProvider {
     // connection so this migration doesn't break already-connected chat hosts.
     const login = await this.loginConfig();
     if (!login) {
-      fail(
-        "Cardstack sign-in is not configured on this server: CARDSTACK_SF_CLIENT_ID and CARDSTACK_SF_CLIENT_SECRET are unset.",
+      console.error(
+        "authorize refused: CARDSTACK_SF_CLIENT_ID / CARDSTACK_SF_CLIENT_SECRET are unset and no legacy admin connection applies.",
       );
+      fail("Sign-in is unavailable on this deployment. Ask your Cardstack admin.");
       return;
     }
     const sfState = rand("sfs");
