@@ -28,6 +28,8 @@ import {
   createAdapterForConnection,
   createDevSalesforceAdapter,
   devSalesforceOrg,
+  hydrateSalesforceClientSecret,
+  stripCardstackClientSecret,
   type CrmAdapter,
 } from "@cardstack/crm-adapters";
 
@@ -72,9 +74,16 @@ export async function getAdapter(tenantId: string): Promise<CrmAdapter> {
   if (devOrg) return createDevSalesforceAdapter(devOrg);
   const store = await getStore();
   const connection = await store.getConnection(tenantId);
+  // One-click (Cardstack-app) Salesforce connections are stored WITHOUT a
+  // client secret; the env app supplies it at use time. BYO credentials pass
+  // through untouched (stored secret wins).
+  const hydrate = (credentials: Record<string, string> | undefined) =>
+    connection.crm === "salesforce" && credentials
+      ? (hydrateSalesforceClientSecret(credentials) as Record<string, string>)
+      : credentials;
   return createAdapterForConnection({
     crm: connection.crm,
-    ...(connection.credentials ? { credentials: connection.credentials } : {}),
+    ...(connection.credentials ? { credentials: hydrate(connection.credentials) } : {}),
     // Busts the cache (in every process) whenever the connection is written —
     // connect, disconnect, or an explicit refresh.
     cacheNonce: connection.changedAt,
@@ -83,12 +92,15 @@ export async function getAdapter(tenantId: string): Promise<CrmAdapter> {
     onCredentialsRefreshed: async (credentials) => {
       await store.setConnection({
         ...connection,
-        credentials,
+        // Rotated refreshToken persists exactly as before — only the env
+        // secret is stripped from the stored row.
+        credentials: stripCardstackClientSecret(credentials),
         changedAt: new Date().toISOString(),
       });
     },
     // If the MCP server (separate process, same store) rotated the token first,
     // pick up its persisted copy instead of dying on our stale one.
-    getFreshCredentials: async () => (await store.getConnection(tenantId)).credentials ?? null,
+    getFreshCredentials: async () =>
+      hydrate((await store.getConnection(tenantId)).credentials ?? undefined) ?? null,
   });
 }

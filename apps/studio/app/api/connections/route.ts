@@ -3,6 +3,7 @@ import type { ConnectionState } from "@cardstack/config-store";
 import {
   HubSpotAdapter,
   SalesforceAdapter,
+  cardstackSalesforceLoginApp,
   invalidateAdapterCache,
   type CrmAdapter,
   type HubSpotCredentials,
@@ -27,15 +28,26 @@ export async function GET(req: Request) {
   const { tenantId } = await getUserContextFromRequest(req);
   const store = await getStore();
   const connection = await store.getConnection(tenantId);
+  const cardstackAppAvailable = Boolean(cardstackSalesforceLoginApp());
   if (connection.status !== "connected") {
-    return NextResponse.json({ connection: redact(connection), connectedUser: null, scopeGaps: [] });
+    return NextResponse.json({
+      connection: redact(connection),
+      connectedUser: null,
+      scopeGaps: [],
+      cardstackAppAvailable,
+    });
   }
   const adapter = await getAdapter(tenantId);
   const [connectedUser, scopeGaps] = await Promise.all([
     adapter.getConnectedUser().catch(() => null),
     scopeGapsFor(adapter),
   ]);
-  return NextResponse.json({ connection: redact(connection), connectedUser, scopeGaps });
+  return NextResponse.json({
+    connection: redact(connection),
+    connectedUser,
+    scopeGaps,
+    cardstackAppAvailable,
+  });
 }
 
 interface ConnectBody {
