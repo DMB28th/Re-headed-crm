@@ -67,6 +67,9 @@ export interface SalesforceCredentials {
   loginUrl?: string;
   clientId: string;
   clientSecret: string;
+  /** "cardstack" = minted by the Cardstack-owned app; the secret is NOT stored
+   *  — hydrateSalesforceClientSecret sources it from env at use time. */
+  clientApp?: string;
   /** OAuth web-server flow refresh token. */
   refreshToken?: string;
   /** Optional warm access token from a fresh OAuth callback. */

@@ -10,6 +10,8 @@
  * access — that is a separate, later choice — but the login lane is always the
  * Cardstack app.
  */
+import { CrmAuthError } from "../adapter.js";
+
 type FetchLike = typeof fetch;
 
 /** The two ids Salesforce puts in the identity URL. */
@@ -64,6 +66,41 @@ export function cardstackSalesforceLoginApp(
   const clientSecret = env.CARDSTACK_SF_CLIENT_SECRET?.trim();
   if (!clientId || !clientSecret) return undefined;
   return { clientId, clientSecret };
+}
+
+/**
+ * Resolve the client secret for credentials minted by the Cardstack-owned
+ * connected app (`clientApp: "cardstack"`). Such credentials are persisted
+ * WITHOUT a secret — the env-configured app supplies it at use time, so
+ * rotating CARDSTACK_SF_CLIENT_SECRET heals every one-click workspace at once.
+ * A stored secret always wins (BYO connections pass through untouched). Throws
+ * rather than proceeding secretless when a cardstack-app credential set has no
+ * matching env app.
+ */
+export function hydrateSalesforceClientSecret<
+  T extends { clientId?: string; clientSecret?: string; clientApp?: string },
+>(
+  credentials: T,
+  loginApp: SalesforceLoginApp | undefined = cardstackSalesforceLoginApp(),
+): T {
+  if (credentials.clientSecret) return credentials;
+  if (credentials.clientApp !== "cardstack") return credentials;
+  if (!loginApp || loginApp.clientId !== credentials.clientId) {
+    throw new CrmAuthError(
+      "Salesforce",
+      "This workspace connected through Cardstack's Salesforce app, but this deployment's app is missing or changed. Reconnect Salesforce from Studio.",
+    );
+  }
+  return { ...credentials, clientSecret: loginApp.clientSecret };
+}
+
+/** Never persist the Cardstack app's env secret into a store row. */
+export function stripCardstackClientSecret<
+  T extends { clientSecret?: string; clientApp?: string },
+>(credentials: T): T {
+  if (credentials.clientApp !== "cardstack") return credentials;
+  const { clientSecret: _omit, ...rest } = credentials;
+  return rest as T;
 }
 
 /** Everything a completed sign-in knows about the signer and their org. */

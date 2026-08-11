@@ -19,7 +19,9 @@ export { readSalesforceCliToken, type SalesforceCliToken } from "./salesforce/cl
 export {
   cardstackSalesforceLoginApp,
   fetchSalesforceSignerIdentity,
+  hydrateSalesforceClientSecret,
   parseSalesforceIdentityUrl,
+  stripCardstackClientSecret,
   type SalesforceIdentityUrlParts,
   type SalesforceLoginApp,
   type SalesforceSignerIdentity,
