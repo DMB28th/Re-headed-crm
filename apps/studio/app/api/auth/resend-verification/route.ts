@@ -5,8 +5,14 @@ import { sendMail } from "../../../../lib/mail";
 import { buildAuthLinks, verificationEmail } from "../../../../lib/auth-links";
 import { studioOrigin } from "../../../../lib/oauth";
 import { EMAIL_VERIFY_NS, issueToken, VERIFY_TTL_MS } from "../../../../lib/auth-tokens";
+import { clientKey, rateLimited } from "../../../../lib/request-guard";
+
+const MAX_RESEND_PER_MINUTE = 5;
 
 export async function POST(req: Request) {
+  if (rateLimited(`auth-resend:${clientKey(req)}`, { max: MAX_RESEND_PER_MINUTE })) {
+    return NextResponse.json({ error: "Too many attempts. Wait a minute and try again." }, { status: 429 });
+  }
   const identity = await getStudioIdentity();
   if (!identity) {
     return NextResponse.json({ error: "Sign in to resend a verification email." }, { status: 401 });

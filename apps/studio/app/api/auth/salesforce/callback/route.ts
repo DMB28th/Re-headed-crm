@@ -97,6 +97,7 @@ export async function GET(req: Request) {
       link.searchParams.set("email", resolution.email);
       return NextResponse.redirect(link);
     }
+    if (resolution.kind === "unlinkable") return fail(resolution.message);
     const cookie = await mintStudioSession(store, resolution.account.id, resolution.workspace.id);
     if (!cookie) return fail("Sign-in is unavailable on this deployment.");
 

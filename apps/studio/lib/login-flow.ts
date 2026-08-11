@@ -51,13 +51,21 @@ export function safeNext(candidate: string | null | undefined): string {
 export type SalesforceLoginResolution =
   | { kind: "signed-in"; account: Account; workspace: Workspace }
   | { kind: "link-required"; linkToken: string; email: string }
+  | { kind: "unlinkable"; email: string; message: string }
   | { kind: "created"; account: Account; workspace: Workspace };
 
 /**
- * The three-way resolution of spec §3 "Continue with Salesforce". Order
+ * The four-way resolution of spec §3 "Continue with Salesforce". Order
  * matters: the Salesforce user id is proof (Salesforce authenticated it);
  * a matching email alone is NOT — org admins can set a user's email without
  * the inbox confirming, so that case exits to the password-once link step.
+ *
+ * That link step needs a password to verify against. An email-matched
+ * account with no `passwordHash` (a passwordless rep identity, or one
+ * already linked to a DIFFERENT Salesforce user) has nothing for
+ * `/api/auth/link` to check, so routing it there would only surface a
+ * misleading "link expired" once the caller POSTs — this is caught here,
+ * before a link token is ever minted, as `unlinkable`.
  */
 export async function resolveSalesforceStudioLogin(
   store: AccountFlowStore & Pick<AdminConfigStore, "getAccountBySalesforceUserId">,
@@ -71,13 +79,22 @@ export async function resolveSalesforceStudioLogin(
 
   const byEmail = identity.email ? await store.getAccountByEmail(identity.email) : undefined;
   if (byEmail) {
+    const email = byEmail.email ?? identity.email!;
+    if (!byEmail.passwordHash) {
+      return {
+        kind: "unlinkable",
+        email,
+        message:
+          "This email's Cardstack account can't be linked from here. Sign up with this email to set a password first, then link Salesforce.",
+      };
+    }
     const linkToken = await issueToken(
       store,
       PENDING_LINK_NS,
       { accountId: byEmail.id, salesforceUserId: identity.salesforceUserId, name: identity.name },
       LINK_TTL_MS,
     );
-    return { kind: "link-required", linkToken, email: byEmail.email ?? identity.email! };
+    return { kind: "link-required", linkToken, email };
   }
 
   const now = new Date().toISOString();
