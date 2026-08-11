@@ -1,10 +1,16 @@
 /**
- * Complete "Sign in with Salesforce": exchange the code, resolve who signed in,
- * find-or-create their workspace, and mint the Studio session.
+ * Complete "Continue with Salesforce": exchange the code, then resolve the
+ * signer against Cardstack accounts as a PEER sign-in/signup lane (spec §3),
+ * not a chat-lane membership grant — that's `resolveSignIn`, which this route
+ * no longer calls.
  *
- * This is the only place a Studio session is created. Everything it trusts comes
- * from a token exchange against Salesforce plus a `state` we minted ourselves —
- * nothing from the query string except the opaque code and state.
+ * This is the only place a Studio session is created for this lane. Everything
+ * it trusts comes from a token exchange against Salesforce plus a `state` we
+ * minted ourselves — nothing from the query string except the opaque code and
+ * state.
+ *
+ * Migration note (2026-08-10): resolveSignIn no longer creates workspaces;
+ * this lane resolves accounts itself.
  */
 import { NextResponse } from "next/server";
 import {
@@ -13,20 +19,19 @@ import {
   cardstackSalesforceLoginApp,
   fetchSalesforceSignerIdentity,
 } from "@cardstack/crm-adapters";
-import { resolveSignIn } from "@cardstack/config-store";
 import { getStore } from "../../../../../lib/backend";
 import { studioOrigin } from "../../../../../lib/oauth";
-import { LOGIN_PENDING_NS, safeNext, type PendingLogin } from "../../../../../lib/login-flow";
-import { describeAdmins, workspaceAdmins } from "../../../../../lib/admins";
 import {
-  createStudioSession,
-  newSessionId,
-  SESSION_TTL_SECONDS,
+  LOGIN_PENDING_NS,
+  resolveSalesforceStudioLogin,
+  safeNext,
+  type PendingLogin,
+} from "../../../../../lib/login-flow";
+import { mintStudioSession } from "../../../../../lib/session-mint";
+import {
   sessionSigningSecrets,
   STUDIO_SESSION_COOKIE,
-  STUDIO_SESSION_NS,
   studioSessionCookieOptions,
-  type StudioSessionRecord,
 } from "../../../../../lib/studio-session";
 
 export async function GET(req: Request) {
@@ -56,7 +61,10 @@ export async function GET(req: Request) {
   const secrets = sessionSigningSecrets();
   const signingSecret = secrets[0];
   if (!signingSecret) {
-    return fail("Sign-in is not configured on this deployment: CARDSTACK_SESSION_SECRET is unset.");
+    // Specifics to the server log only — the redirect lands on /login, and
+    // AuthShell renders `error` verbatim (spec: never render env var names).
+    console.error("[auth] Salesforce sign-in unavailable: CARDSTACK_SESSION_SECRET is unset.");
+    return fail("Sign-in is not available on this deployment.");
   }
   const app = cardstackSalesforceLoginApp();
   if (!app) return fail("Sign-in is not configured on this deployment.");
@@ -82,37 +90,16 @@ export async function GET(req: Request) {
     }
 
     const identity = await fetchSalesforceSignerIdentity(credentials);
-    const { account, workspace, role } = await resolveSignIn(store, identity);
-    if (role !== "admin") {
-      // Naming the admin is what turns this from a dead end into a path. Admin
-      // is granted exactly once — to the first person from the org to sign in
-      // through either lane — so the person who needs to act is often not the
-      // person who expected to, and "ask an admin" tells them nothing. The
-      // People page gives whoever is named a button that actually works.
-      const admins = await workspaceAdmins(store, workspace.id).catch(() => []);
-      const who = describeAdmins(admins.filter((a) => a.id !== account.id));
-      return fail(
-        who
-          ? `You've joined ${workspace.name}, but Studio is for workspace admins. Ask ${who} to add you on the People page.`
-          : `You've joined ${workspace.name}, but Studio is for workspace admins, and this workspace has none yet. Contact Cardstack support.`,
-      );
+    const resolution = await resolveSalesforceStudioLogin(store, identity);
+    if (resolution.kind === "link-required") {
+      const link = new URL("/link", origin);
+      link.searchParams.set("token", resolution.linkToken);
+      link.searchParams.set("email", resolution.email);
+      return NextResponse.redirect(link);
     }
-
-    const sessionId = newSessionId();
-    const startedAt = new Date().toISOString();
-    const record: StudioSessionRecord = {
-      accountId: account.id,
-      workspaceId: workspace.id,
-      role,
-      createdAt: startedAt,
-      lastSeenAt: startedAt,
-    };
-    await store.kvSet(
-      STUDIO_SESSION_NS,
-      sessionId,
-      record as unknown as Record<string, unknown>,
-      new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString(),
-    );
+    if (resolution.kind === "unlinkable") return fail(resolution.message);
+    const cookie = await mintStudioSession(store, resolution.account.id, resolution.workspace.id);
+    if (!cookie) return fail("Sign-in is unavailable on this deployment.");
 
     // Belt and braces on A6: safeNext rejects the authority-introducing
     // prefixes, and this re-checks the RESOLVED origin so a future encoding
@@ -121,11 +108,7 @@ export async function GET(req: Request) {
     const response = NextResponse.redirect(
       target.origin === new URL(origin).origin ? target : new URL("/", origin),
     );
-    response.cookies.set(
-      STUDIO_SESSION_COOKIE,
-      await createStudioSession(sessionId, signingSecret),
-      studioSessionCookieOptions(),
-    );
+    response.cookies.set(STUDIO_SESSION_COOKIE, cookie, studioSessionCookieOptions());
     return response;
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error));

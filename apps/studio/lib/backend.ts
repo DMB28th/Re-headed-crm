@@ -18,7 +18,6 @@ import {
   createPostgresConfigStore,
   encryptionEnabled,
   FileConfigStore,
-  DEMO_TENANT_ID,
   FileAuditLog,
   createPostgresAuditLog,
   defaultAuditPath,
@@ -31,13 +30,6 @@ import {
   devSalesforceOrg,
   type CrmAdapter,
 } from "@cardstack/crm-adapters";
-
-/**
- * Workspace id for the pre-accounts access-key bridge in /api/session only.
- * NOT a request-scoped default: everything else resolves the workspace from the
- * signed-in session, because a deployment now serves many workspaces.
- */
-export const LEGACY_TENANT_ID = process.env.CARDSTACK_TENANT_ID ?? DEMO_TENANT_ID;
 
 const configPath =
   process.env.CARDSTACK_CONFIG_PATH ??

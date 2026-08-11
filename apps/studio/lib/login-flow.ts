@@ -1,4 +1,8 @@
 /** Shared bits of the Salesforce sign-in lane (start ↔ callback). */
+import { normalizeUserId } from "@cardstack/core";
+import type { Account, AdminConfigStore, SalesforceIdentity, Workspace } from "@cardstack/config-store";
+import { issueToken, LINK_TTL_MS, PENDING_LINK_NS } from "./auth-tokens";
+import { ensureOwnedWorkspace, type AccountFlowStore } from "./account-flows";
 
 /** KV namespace for pending sign-ins, keyed by the OAuth `state`. */
 export const LOGIN_PENDING_NS = "studio-login-pending";
@@ -41,4 +45,67 @@ export function safeNext(candidate: string | null | undefined): string {
   const cleaned = [...candidate].filter((ch) => !ignorable(ch)).join("");
   if (!cleaned.startsWith("/") || /^[/\\]/.test(cleaned.slice(1))) return "/";
   return cleaned;
+}
+
+/** Result of resolving "Continue with Salesforce" against Cardstack accounts. */
+export type SalesforceLoginResolution =
+  | { kind: "signed-in"; account: Account; workspace: Workspace }
+  | { kind: "link-required"; linkToken: string; email: string }
+  | { kind: "unlinkable"; email: string; message: string }
+  | { kind: "created"; account: Account; workspace: Workspace };
+
+/**
+ * The four-way resolution of spec §3 "Continue with Salesforce". Order
+ * matters: the Salesforce user id is proof (Salesforce authenticated it);
+ * a matching email alone is NOT — org admins can set a user's email without
+ * the inbox confirming, so that case exits to the password-once link step.
+ *
+ * That link step needs a password to verify against. An email-matched
+ * account with no `passwordHash` (a passwordless rep identity, or one
+ * already linked to a DIFFERENT Salesforce user) has nothing for
+ * `/api/auth/link` to check, so routing it there would only surface a
+ * misleading "link expired" once the caller POSTs — this is caught here,
+ * before a link token is ever minted, as `unlinkable`.
+ */
+export async function resolveSalesforceStudioLogin(
+  store: AccountFlowStore & Pick<AdminConfigStore, "getAccountBySalesforceUserId">,
+  identity: SalesforceIdentity,
+): Promise<SalesforceLoginResolution> {
+  const byId = await store.getAccountBySalesforceUserId(identity.salesforceUserId);
+  if (byId) {
+    const workspace = await ensureOwnedWorkspace(store, byId.id);
+    return { kind: "signed-in", account: byId, workspace };
+  }
+
+  const byEmail = identity.email ? await store.getAccountByEmail(identity.email) : undefined;
+  if (byEmail) {
+    const email = byEmail.email ?? identity.email!;
+    if (!byEmail.passwordHash) {
+      return {
+        kind: "unlinkable",
+        email,
+        message:
+          "This email's Cardstack account can't be linked from here. Sign up with this email to set a password first, then link Salesforce.",
+      };
+    }
+    const linkToken = await issueToken(
+      store,
+      PENDING_LINK_NS,
+      { accountId: byEmail.id, salesforceUserId: identity.salesforceUserId, name: identity.name },
+      LINK_TTL_MS,
+    );
+    return { kind: "link-required", linkToken, email };
+  }
+
+  const now = new Date().toISOString();
+  const account: Account = {
+    id: normalizeUserId(identity.email ?? identity.username ?? identity.salesforceUserId),
+    salesforceUserId: identity.salesforceUserId,
+    name: identity.name,
+    ...(identity.email ? { email: identity.email, emailVerifiedAt: now } : {}),
+    createdAt: now,
+  };
+  await store.upsertAccount(account);
+  const workspace = await ensureOwnedWorkspace(store, account.id);
+  return { kind: "created", account, workspace };
 }

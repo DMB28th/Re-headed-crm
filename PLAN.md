@@ -513,8 +513,11 @@ dump the full record into `content` — the widget carries the detail.
 
 ## Non-goals (v1 — do not build these, even if they seem helpful)
 
-- No custom auth/user management in Studio beyond OAuth-based login (use a library;
-  no password flows).
+- ~~No custom auth/user management in Studio beyond OAuth-based login (use a library;
+  no password flows).~~ **Superseded 2026-08-10:** Cardstack now owns self-serve
+  email+password accounts — the Salesforce-as-IdP model made sign-in structurally
+  dependent on a connected app existing, which failed in production. See
+  docs/superpowers/specs/2026-08-10-self-serve-accounts-design.md.
 - No caching layer for CRM data (render-time freshness > speed at MVP; revisit
   with evidence).
 - No GraphQL, no message queue, no microservices — one server, one DB.

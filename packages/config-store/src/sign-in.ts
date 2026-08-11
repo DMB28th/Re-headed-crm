@@ -1,22 +1,42 @@
 /**
- * The one place a verified Salesforce identity becomes a Cardstack identity.
- * Both sign-in lanes call this — Studio's browser login and the MCP server's
- * OAuth callback — so a rep who first appears through a chat host and an admin
- * who first appears through Studio land in the same workspace with the same
- * account id, whichever happens first.
+ * The one place a verified Salesforce identity becomes a Cardstack identity —
+ * for the MCP lane. Both lanes used to call this; now Studio's Salesforce
+ * lane resolves accounts itself (Task 9, self-serve signup/connect), and this
+ * resolver is the MCP server's OAuth callback path only: a rep or admin
+ * signing into chat.
+ *
+ * A workspace exists only because an account owner claimed this org in
+ * Studio (`claimOrg`, spec §1/§2). This resolver never creates a workspace
+ * and never grants admin — chat-lane sign-in only ever populates membership,
+ * always as `"member"`. A signer whose org nobody has claimed gets a typed
+ * `UnclaimedOrgError`, not a silent empty workspace they'd be admin of.
  *
  * Callers MUST have completed a real OAuth code exchange before calling this.
  * Everything here is trusted; nothing in this module verifies anything.
  */
 import { normalizeUserId } from "@cardstack/core";
 import {
-  workspaceIdForOrg,
   type Account,
   type Membership,
   type SignInStore,
   type SignedInIdentity,
   type Workspace,
 } from "./identity.js";
+
+/** Thrown when no workspace has claimed the signer's Salesforce org. The MCP
+ *  server (Task 13) catches this and renders guidance instead of a tool error. */
+export class UnclaimedOrgError extends Error {
+  readonly orgId: string;
+  constructor(orgId: string, orgName?: string) {
+    super(
+      `No Cardstack workspace is connected to this Salesforce org${
+        orgName ? ` (${orgName})` : ""
+      } yet.`,
+    );
+    this.name = "UnclaimedOrgError";
+    this.orgId = orgId;
+  }
+}
 
 /** What a completed Salesforce OAuth exchange tells us about the signer. */
 export interface SalesforceIdentity {
@@ -32,42 +52,33 @@ export interface SalesforceIdentity {
 }
 
 /**
- * Find-or-create the workspace, account, and membership for a verified signer.
- *
- * Concurrency: two people from a brand-new org can sign in at the same instant
- * and both find no workspace. `createWorkspace` is therefore required to be
- * idempotent on `salesforceOrgId` (ON CONFLICT DO NOTHING), and we re-read
- * after creating rather than trusting our own write — so the loser of the race
- * adopts the winner's workspace instead of erroring or forking a duplicate.
+ * Find-the-claimed-workspace-or-refuse, then resolve the account and
+ * membership for a verified signer.
  */
 export async function resolveSignIn(
   store: SignInStore,
   identity: SalesforceIdentity,
   now: () => string = () => new Date().toISOString(),
 ): Promise<SignedInIdentity> {
-  const workspace = await findOrCreateWorkspace(store, identity, now);
+  const workspace = await findClaimedWorkspace(store, identity);
   const account = await upsertAccount(store, identity, now);
   const role = await ensureMembership(store, account.id, workspace.id, now);
   return { account, workspace, role };
 }
 
-async function findOrCreateWorkspace(
+/**
+ * Find-or-REFUSE (spec §2). A workspace exists only because an account owner
+ * claimed this org in Studio; a rep whose org is unclaimed gets a typed error
+ * their chat host can render with guidance, never a silent empty workspace
+ * they would be admin of.
+ */
+async function findClaimedWorkspace(
   store: SignInStore,
   identity: SalesforceIdentity,
-  now: () => string,
 ): Promise<Workspace> {
   const existing = await store.getWorkspaceByOrgId(identity.orgId);
-  if (existing) return existing;
-
-  const created: Workspace = {
-    id: workspaceIdForOrg(identity.orgId),
-    salesforceOrgId: identity.orgId,
-    name: identity.orgName?.trim() || "My workspace",
-    createdAt: now(),
-  };
-  await store.createWorkspace(created);
-  // Re-read: if we lost a creation race, the stored row is the winner's.
-  return (await store.getWorkspaceByOrgId(identity.orgId)) ?? created;
+  if (!existing) throw new UnclaimedOrgError(identity.orgId, identity.orgName);
+  return existing;
 }
 
 async function upsertAccount(
@@ -98,13 +109,15 @@ async function ensureMembership(
   workspaceId: string,
   now: () => string,
 ): Promise<Membership["role"]> {
+  // Keep returning the pre-existing role: legacy admin rows are harmless,
+  // and nothing reads role for authority after Task 6 (Studio's choke point
+  // checks ownership, not membership role).
   const existing = await store.getMembership(accountId, workspaceId);
   if (existing) return existing.role;
 
-  // First person into an org's workspace administers it. Someone must be able
-  // to configure it, and there is no one else to grant the role.
-  const members = await store.listMembershipsForWorkspace(workspaceId);
-  const role: Membership["role"] = members.length === 0 ? "admin" : "member";
+  // Chat-lane population: always a member. Studio authority is ownership,
+  // checked at the Studio choke point — membership grants chat access only.
+  const role: Membership["role"] = "member";
   await store.setMembership({ accountId, workspaceId, role, createdAt: now() });
   return role;
 }

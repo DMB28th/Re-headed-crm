@@ -6,7 +6,16 @@ import {
 } from "./lib/studio-session";
 import { sameOriginRequest } from "./lib/request-guard";
 
-const PUBLIC_PATHS = new Set(["/login", "/api/session", "/healthz"]);
+const PUBLIC_PATHS = new Set([
+  "/login",
+  "/signup",
+  "/forgot",
+  "/reset",
+  "/verify",
+  "/link",
+  "/api/session", // DELETE = sign-out; the POST bridge dies with the governance layer
+  "/healthz",
+]);
 
 /**
  * CRM OAuth callbacks. These resolve identity themselves (and fail closed in
@@ -18,13 +27,6 @@ const PUBLIC_PATHS = new Set(["/login", "/api/session", "/healthz"]);
  * coerced into matching today, but that was a property of the route table, not
  * of this gate, and the route table changes every milestone.
  */
-/**
- * Reachable by any signed-in member, not just admins. The edge gate still
- * requires a valid session cookie; the page itself resolves identity through
- * `getSelfServiceIdentity` and touches only the reader's own connection.
- */
-export const MEMBER_PATHS = new Set(["/me/connection"]);
-
 const PUBLIC_CALLBACKS = new Set([
   "/api/connections/salesforce/oauth/callback",
   "/api/user-connections/salesforce/oauth/callback",

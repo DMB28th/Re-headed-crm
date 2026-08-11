@@ -343,9 +343,6 @@ export function NavRail() {
           <RailLink href="/audit" active={pathname === "/audit"}>
             Audit log
           </RailLink>
-          <RailLink href="/people" active={pathname === "/people"}>
-            People
-          </RailLink>
         </div>
       )}
 

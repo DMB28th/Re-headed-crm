@@ -111,6 +111,11 @@ export async function POST(req: Request) {
       changedAt: new Date().toISOString(),
     };
     await store.setConnection(state);
+    // Releasing the claim frees the org for another account. Rep memberships and
+    // user connections under THIS workspace id stay: reconnecting the same org
+    // restores service without re-onboarding, and nothing here is reachable by a
+    // future claimant, whose claim lands in their own workspace (spec §4, §7).
+    if (current.crm === "salesforce") await store.releaseOrg(tenantId);
     return NextResponse.json({ connection: redact(state), connectedUser: null, scopeGaps: [] });
   }
   if (body.action !== "connect") {

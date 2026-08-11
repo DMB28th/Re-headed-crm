@@ -9,8 +9,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "seed:salesforce": "CARDSTACK_DEV_IDENTITY=1 tsx scripts/seed-from-salesforce.ts",
-    "dev:sf": "CARDSTACK_DEV_IDENTITY=1 CARDSTACK_DEV_SF_ORG=${CARDSTACK_DEV_SF_ORG:-screenflow-org} CARDSTACK_CONFIG_PATH=${CARDSTACK_CONFIG_PATH:-../../data/cardstack-salesforce.json} next dev -p ${PORT:-3002}",
-    "backfill:admins": "CARDSTACK_DEV_IDENTITY=1 tsx scripts/backfill-workspace-admins.ts"
+    "attach:workspace": "tsx scripts/attach-workspace.ts",
+    "dev:sf": "CARDSTACK_DEV_IDENTITY=1 CARDSTACK_DEV_SF_ORG=${CARDSTACK_DEV_SF_ORG:-screenflow-org} CARDSTACK_CONFIG_PATH=${CARDSTACK_CONFIG_PATH:-../../data/cardstack-salesforce.json} next dev -p ${PORT:-3002}"
   },
   "dependencies": {
     "@cardstack/config-store": "workspace:*",
@@ -21,6 +21,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@fontsource-variable/instrument-sans": "^5.1.0",
+    "@node-rs/argon2": "^2.0.2",
     "next": "^15.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
@@ -30,8 +31,8 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "tailwindcss": "^4.0.0",
-    "typescript": "^5.7.2",
     "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
     "vitest": "^3.0.0"
   }
 }

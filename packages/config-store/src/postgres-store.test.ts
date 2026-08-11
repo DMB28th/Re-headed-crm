@@ -8,6 +8,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { DEFAULT_CUSTOM_SCREEN_SOURCE } from "@cardstack/core";
 import { PostgresConfigStore, type SqlSession } from "./postgres-store.js";
 import { DEMO_TENANT_ID, demoDealsLayout } from "./seed.js";
+import { newWorkspaceId, type Account, type Workspace } from "./identity.js";
 
 let store: PostgresConfigStore;
 
@@ -27,6 +28,20 @@ const editedDraft = () => {
   );
   return draft;
 };
+
+const workspace = (id: string, overrides: Partial<Workspace> = {}): Workspace => ({
+  id,
+  name: "My workspace",
+  createdAt: new Date().toISOString(),
+  ...overrides,
+});
+
+const account = (id: string, email: string): Account => ({
+  id,
+  email,
+  name: id,
+  createdAt: new Date().toISOString(),
+});
 
 describe("PostgresConfigStore", () => {
   it("seeds the demo tenant on first boot", async () => {
@@ -248,5 +263,103 @@ describe("PostgresConfigStore", () => {
     const published = await store.publishCustomScreen(DEMO_TENANT_ID, "cs-onsite");
     expect(published).toMatchObject({ status: "published", revision: 1 });
     expect((await store.getCustomScreens(DEMO_TENANT_ID))[0]?.id).toBe("cs-onsite");
+  });
+
+  // ---- Identity (accounts / workspaces / memberships) ----
+
+  it("creates an org-less workspace and an SF-less account (nullable org_key/sf_user_key)", async () => {
+    const id = newWorkspaceId();
+    await store.createWorkspace(workspace(id));
+    expect((await store.getWorkspace(id))?.salesforceOrgId).toBeUndefined();
+
+    await store.upsertAccount(account("dana@acme.example", "dana@acme.example"));
+    expect((await store.getAccount("dana@acme.example"))?.salesforceUserId).toBeUndefined();
+  });
+
+  it("getAccountByEmail matches case-insensitively", async () => {
+    await store.upsertAccount(account("dana@acme.example", "Dana@Acme.example"));
+    expect((await store.getAccountByEmail("dana@acme.EXAMPLE"))?.id).toBe("dana@acme.example");
+    expect(await store.getAccountByEmail("nobody@acme.example")).toBeUndefined();
+  });
+
+  it("claimOrg is exclusive: a second workspace claiming the same org gets a typed conflict", async () => {
+    await store.createWorkspace(workspace("ws_a", { ownerAccountId: "dana@acme.example" }));
+    await store.createWorkspace(workspace("ws_b", { ownerAccountId: "evan@acme.example" }));
+
+    const first = await store.claimOrg("ws_a", "00D8Z000001aBcDEFG", "Acme Corp");
+    expect(first).toMatchObject({ ok: true, workspace: { salesforceOrgId: "00D8Z000001aBcDEFG", name: "Acme Corp" } });
+
+    // The DB's UNIQUE constraint on org_key (23505) is what decides the race,
+    // not application logic — this is the loser's typed result, never a throw.
+    const second = await store.claimOrg("ws_b", "00D8Z000001aBcD");
+    expect(second).toEqual({ ok: false, reason: "org-already-claimed" });
+    // The loser's own workspace is untouched.
+    expect((await store.getWorkspace("ws_b"))?.salesforceOrgId).toBeUndefined();
+  });
+
+  it("claimOrg collapses the 15- and 18-char Salesforce id for the same org", async () => {
+    await store.createWorkspace(workspace("ws_a"));
+    await store.claimOrg("ws_a", "00D8Z000001aBcDEFG"); // 18-char
+    expect((await store.getWorkspaceByOrgId("00D8Z000001aBcD"))?.id).toBe("ws_a"); // 15-char lookup
+
+    await store.createWorkspace(workspace("ws_b"));
+    // A second workspace claiming via the 15-char form of the SAME org still
+    // collapses onto the same key and conflicts.
+    const conflict = await store.claimOrg("ws_b", "00D8Z000001aBcD");
+    expect(conflict).toEqual({ ok: false, reason: "org-already-claimed" });
+  });
+
+  it("claimOrg is idempotent for the current holder (self-re-claim never conflicts)", async () => {
+    await store.createWorkspace(workspace("ws_a"));
+    await store.claimOrg("ws_a", "00D8Z000001aBcDEFG");
+    const again = await store.claimOrg("ws_a", "00D8Z000001aBcDEFG");
+    expect(again.ok).toBe(true);
+  });
+
+  it("claimOrg throws for an unknown workspace (not a conflict result)", async () => {
+    await expect(store.claimOrg("ws_missing", "00D8Z000001aBcDEFG")).rejects.toThrow(
+      "Unknown workspace",
+    );
+  });
+
+  it("releaseOrg clears both org_key and the config field, freeing the org to be reclaimed", async () => {
+    await store.createWorkspace(workspace("ws_a"));
+    await store.createWorkspace(workspace("ws_b"));
+    await store.claimOrg("ws_a", "00D8Z000001aBcDEFG");
+
+    await store.releaseOrg("ws_a");
+    // config field cleared...
+    expect((await store.getWorkspace("ws_a"))?.salesforceOrgId).toBeUndefined();
+    // ...and org_key cleared too, not just shadowed — the org is claimable again.
+    expect(await store.getWorkspaceByOrgId("00D8Z000001aBcDEFG")).toBeUndefined();
+    const reclaimed = await store.claimOrg("ws_b", "00D8Z000001aBcDEFG");
+    expect(reclaimed.ok).toBe(true);
+  });
+
+  it("setWorkspaceOwner stamps ownerAccountId; throws for an unknown workspace", async () => {
+    await store.createWorkspace(workspace("ws_a"));
+    await store.setWorkspaceOwner("ws_a", "dana@acme.example");
+    expect((await store.getWorkspaceByOwner("dana@acme.example"))?.id).toBe("ws_a");
+
+    await expect(store.setWorkspaceOwner("ws_missing", "dana@acme.example")).rejects.toThrow(
+      "Unknown workspace",
+    );
+  });
+
+  it("one owned workspace per account (spec §6): a signup double-submit is dropped, not forked", async () => {
+    const first = workspace("ws_a", { ownerAccountId: "dana@acme.example" });
+    const second = workspace("ws_b", { ownerAccountId: "dana@acme.example" });
+    await store.createWorkspace(first);
+    // Same shape a double-submitted signup produces: two INSERTs racing for
+    // one owner. The second must not throw — workspaces_owner_uq's 23505 is
+    // caught and swallowed, matching org_key's DO-NOTHING philosophy.
+    await store.createWorkspace(second);
+
+    expect((await store.getWorkspaceByOwner("dana@acme.example"))?.id).toBe("ws_a");
+    expect(await store.getWorkspace("ws_b")).toBeUndefined();
+
+    // Distinct owners are unaffected — both still insert.
+    await store.createWorkspace(workspace("ws_c", { ownerAccountId: "evan@acme.example" }));
+    expect((await store.getWorkspaceByOwner("evan@acme.example"))?.id).toBe("ws_c");
   });
 });

@@ -85,24 +85,30 @@ audience picker (3e), stale-card strip and re-auth widget states. Audit log +
 preferences move to Postgres alongside multi-tenant auth (M7).
 PostgresConfigStore ships behind DATABASE_URL (Railway two-service deploys).
 
-**Cardstack accounts and multi-workspace tenancy are in.** Sign-in is
-Salesforce OAuth against a Cardstack-owned connected app
-(`CARDSTACK_SF_CLIENT_ID/SECRET`); a workspace IS a Salesforce org, so the
-first signer from an org creates it and becomes admin and later signers
-auto-join as members. Studio identity is a session cookie backed by the
-store's KV — the `x-cardstack-*` headers are no longer trusted, and
-`CARDSTACK_TENANT_ID` is only a migration fallback, not a request default.
-Full model, env vars, and migration notes: **docs/accounts-and-workspaces.md**.
-Cross-tenant isolation is asserted in
+**Cardstack accounts and multi-workspace tenancy are in — self-serve, not
+Salesforce-gated.** Sign-up is email + password (`POST /api/auth/signup`),
+creating the account and its one owned workspace in the same step; "Continue
+with Salesforce" (`CARDSTACK_SF_CLIENT_ID/SECRET`) is a peer sign-in/signup
+lane, not a requirement. A workspace starts unconnected — connecting a
+Salesforce org at `/connections` is a later, exclusive claim
+(`workspace.org_key`, unique when set), and reps arriving from a chat host are
+routed by that claimed org id and refused with a typed error when nobody has
+claimed it yet (`resolveSignIn`'s find-or-refuse). Studio identity is a
+session cookie backed by the store's KV — the `x-cardstack-*` headers are
+still not trusted, and `CARDSTACK_TENANT_ID` is still only a migration
+fallback, not a request default. Full model, env vars, and migration notes:
+**docs/accounts-and-workspaces.md**. Cross-tenant isolation is asserted in
 `packages/config-store/src/tenant-isolation.test.ts` — keep it passing.
 
 **The two lanes are separated, and each has ONE authorization choke point.**
-Studio: `resolveStudioSession` (`apps/studio/lib/auth.ts`) refuses a non-admin
-or idle session, so members hold no Studio session at all and a demotion takes
-effect on the next request. The single exception is `/me/connection`, reached
-via `getSelfServiceIdentity` — grep that name to find every place a member is
-admitted. MCP: `verifyAccessToken` re-reads the membership on every call, so
-removal takes effect on the next tool call rather than in 30 days. Do not add a
+Studio: `resolveStudioSession` (`apps/studio/lib/auth.ts`) admits only the
+workspace's OWNER (`workspace.ownerAccountId === account.id`) — not a role,
+and not any membership — so a rep or any non-owning account holds no Studio
+session at all. There is no exception route anymore: `/me/connection` and
+`getSelfServiceIdentity` are gone: a rep's re-auth path is their chat host's
+own reconnect flow, which the re-auth card deep-links, never a Studio URL.
+MCP: `verifyAccessToken` re-reads the membership on every call, so removal
+takes effect on the next tool call rather than in 30 days. Do not add a
 `requireAdmin()` helper alongside these; per-route checks are the failure mode
 the choke points exist to prevent.
 

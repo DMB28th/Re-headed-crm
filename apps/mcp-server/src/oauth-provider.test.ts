@@ -5,7 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Response } from "express";
-import { InMemoryConfigStore, workspaceIdForOrg } from "@cardstack/config-store";
+import { InMemoryConfigStore, UnclaimedOrgError, workspaceIdForOrg } from "@cardstack/config-store";
 import { normalizeUserId } from "@cardstack/core";
 import { CardstackOAuthProvider, userContextFromStoredUser } from "./oauth-provider.js";
 
@@ -42,12 +42,43 @@ const sfFetchStub: typeof fetch = async (input) => {
 };
 
 /**
- * Deliberately NO admin connection and no configured tenant: signing in has to
- * work against a brand-new org, because signing in is what creates the
- * workspace. This is the case the old single-tenant provider could not serve.
+ * Claim-a-workspace-for-an-owner, the way Studio's self-serve signup does it
+ * (same shape as Task 4's `claimedWorkspace` in tenant-isolation.test.ts):
+ * create the workspace, then claim the org exclusively. `resolveSignIn` only
+ * ROUTES a signer to the workspace that already claimed their org now — it
+ * never creates one — so every fixture that signs in through `sfFetchStub`'s
+ * org (`00D000000000001AAA`) needs this done first. `workspaceIdForOrg` gives
+ * back the same id the old auto-created workspace used, so `WORKSPACE` below
+ * still lines up with what these tests assert against.
  */
-function newProvider(trustedClientOrigins: string[] = ["https://claude.ai"]) {
+async function claimedWorkspace(
+  store: InMemoryConfigStore,
+  orgId = "00D000000000001AAA",
+  orgName = "Acme Corp",
+): Promise<string> {
+  const id = workspaceIdForOrg(orgId);
+  await store.createWorkspace({
+    id,
+    ownerAccountId: "owner@acme.example",
+    name: "My workspace",
+    createdAt: new Date().toISOString(),
+  });
+  const claim = await store.claimOrg(id, orgId, orgName);
+  if (!claim.ok) throw new Error("setup claim failed");
+  return id;
+}
+
+/**
+ * No admin connection and no configured tenant: the LOGIN itself has to work
+ * with no legacy per-tenant Salesforce app configured, because Cardstack's
+ * own connected app is what the login lane always uses. The org `sfFetchStub`
+ * resolves to is pre-claimed here — an owner claimed it in Studio first, spec
+ * §1/§2 — so sign-in can route a rep into it; the refusal case for an
+ * unclaimed org gets its own test below, built without this helper.
+ */
+async function newProvider(trustedClientOrigins: string[] = ["https://claude.ai"]) {
   const store = new InMemoryConfigStore();
+  await claimedWorkspace(store);
   const provider = new CardstackOAuthProvider({
     store,
     mcpOrigin: MCP_ORIGIN,
@@ -91,7 +122,7 @@ describe("CardstackOAuthProvider", () => {
   afterEach(() => vi.unstubAllEnvs());
 
   it("runs the full flow: register → authorize → SF callback → token → verify", async () => {
-    const { store, provider } = newProvider();
+    const { store, provider } = await newProvider();
 
     // Dynamic client registration (what claude.ai does on connect).
     const client = await provider.clientsStore.registerClient!({
@@ -167,6 +198,38 @@ describe("CardstackOAuthProvider", () => {
     // Revocation kills the token.
     await provider.revokeToken(client, { token: refreshed.access_token });
     await expect(provider.verifyAccessToken(refreshed.access_token)).rejects.toThrow();
+  });
+
+  /**
+   * Before Task 3, `resolveSignIn` auto-created a workspace for any org that
+   * signed in — a rep whose org nobody had claimed still got in, silently, as
+   * the admin of a brand-new empty workspace. Now it only ROUTES to a
+   * workspace an owner already claimed in Studio; deliberately built WITHOUT
+   * `newProvider()`'s pre-claimed workspace and with no `legacyTenantId`
+   * configured, so this exercises the refusal itself.
+   */
+  it("refuses a signer whose org no workspace has claimed", async () => {
+    const store = new InMemoryConfigStore();
+    const provider = new CardstackOAuthProvider({
+      store,
+      mcpOrigin: MCP_ORIGIN,
+      fetchImpl: sfFetchStub,
+      loginApp: LOGIN_APP,
+      trustedClientOrigins: ["https://claude.ai"],
+    });
+    const client = await provider.clientsStore.registerClient!({
+      redirect_uris: ["https://claude.ai/cb"],
+    });
+    const sfState = await authorizeTo(provider, client, "https://claude.ai/cb");
+
+    const attempt = provider.completeSalesforceCallback(sfState, "sf-code");
+
+    await expect(attempt).rejects.toBeInstanceOf(UnclaimedOrgError);
+    await expect(attempt).rejects.toMatchObject({ orgId: "00D000000000001AAA" });
+    await expect(attempt).rejects.toThrow(/00D000000000001AAA|Acme Corp/);
+    // The find-or-refuse guarantee: refusing must not have a side effect of
+    // silently creating the very workspace it refused to route into.
+    expect(await store.getWorkspaceByOrgId("00D000000000001AAA")).toBeUndefined();
   });
 
   it("authorize refuses (via redirect error) when no admin Salesforce OAuth exists", async () => {
@@ -245,7 +308,7 @@ describe("CardstackOAuthProvider", () => {
   });
 
   it("rejects tokens and codes presented by a different client", async () => {
-    const { provider } = newProvider(["https://a", "https://b"]);
+    const { provider } = await newProvider(["https://a", "https://b"]);
     const clientA = await provider.clientsStore.registerClient!({ redirect_uris: ["https://a/cb"] });
     const clientB = await provider.clientsStore.registerClient!({ redirect_uris: ["https://b/cb"] });
     const { res, captured } = fakeRes();
@@ -274,7 +337,7 @@ describe("CardstackOAuthProvider", () => {
     const EVIL = "https://evil.example/cb";
 
     async function throughSalesforce(trusted: string[] = ["https://claude.ai"]) {
-      const { store, provider } = newProvider(trusted);
+      const { store, provider } = await newProvider(trusted);
       const client = await provider.clientsStore.registerClient!({
         redirect_uris: [EVIL],
         client_name: "Notes Helper",
@@ -359,7 +422,7 @@ describe("CardstackOAuthProvider", () => {
     });
 
     it("skips the prompt entirely for a first-party client", async () => {
-      const { provider } = newProvider(["https://claude.ai"]);
+      const { provider } = await newProvider(["https://claude.ai"]);
       const client = await provider.clientsStore.registerClient!({
         redirect_uris: ["https://claude.ai/cb"],
         client_name: "Claude",
@@ -370,7 +433,7 @@ describe("CardstackOAuthProvider", () => {
     });
 
     it("prompts when NOTHING is configured as first party", async () => {
-      const { provider } = newProvider([]);
+      const { provider } = await newProvider([]);
       const client = await provider.clientsStore.registerClient!({
         redirect_uris: ["https://claude.ai/cb"],
       });
@@ -398,7 +461,7 @@ describe("CardstackOAuthProvider", () => {
   describe("production vs sandbox (C2)", () => {
     it("asks which Salesforce when the deployment has not pinned one", async () => {
       vi.stubEnv("CARDSTACK_SF_LOGIN_URL", "");
-      const { provider } = newProvider();
+      const { provider } = await newProvider();
       const client = await provider.clientsStore.registerClient!({
         redirect_uris: ["https://claude.ai/cb"],
       });
@@ -415,7 +478,7 @@ describe("CardstackOAuthProvider", () => {
 
     it("sends a sandbox choice to test.salesforce.com", async () => {
       vi.stubEnv("CARDSTACK_SF_LOGIN_URL", "");
-      const { provider } = newProvider();
+      const { provider } = await newProvider();
       const client = await provider.clientsStore.registerClient!({
         redirect_uris: ["https://claude.ai/cb"],
       });
@@ -433,7 +496,7 @@ describe("CardstackOAuthProvider", () => {
 
     it("sends a production choice to login.salesforce.com", async () => {
       vi.stubEnv("CARDSTACK_SF_LOGIN_URL", "");
-      const { provider } = newProvider();
+      const { provider } = await newProvider();
       const client = await provider.clientsStore.registerClient!({
         redirect_uris: ["https://claude.ai/cb"],
       });
@@ -449,11 +512,12 @@ describe("CardstackOAuthProvider", () => {
     });
 
     it("refuses a forged host-choice token", async () => {
-      expect(await provider0().chooseLoginHost("sfs_nope.deadbeef", "sandbox")).toBeUndefined();
+      const provider = await provider0();
+      expect(await provider.chooseLoginHost("sfs_nope.deadbeef", "sandbox")).toBeUndefined();
     });
 
     it("skips the question entirely when the deployment pinned a login host", async () => {
-      const { provider } = newProvider();
+      const { provider } = await newProvider();
       const client = await provider.clientsStore.registerClient!({
         redirect_uris: ["https://claude.ai/cb"],
       });
@@ -474,7 +538,7 @@ describe("CardstackOAuthProvider", () => {
    */
   describe("revocation takes effect on the next call (A4)", () => {
     async function connected() {
-      const { store, provider } = newProvider();
+      const { store, provider } = await newProvider();
       const client = await provider.clientsStore.registerClient!({
         redirect_uris: ["https://claude.ai/cb"],
         client_name: "Claude",
@@ -532,7 +596,7 @@ describe("CardstackOAuthProvider", () => {
    */
   describe("refresh-token rotation (B5)", () => {
     async function connected() {
-      const { store, provider } = newProvider();
+      const { store, provider } = await newProvider();
       const client = await provider.clientsStore.registerClient!({
         redirect_uris: ["https://claude.ai/cb"],
         client_name: "Claude",
@@ -620,6 +684,6 @@ describe("CardstackOAuthProvider", () => {
   });
 });
 
-function provider0() {
-  return newProvider().provider;
+async function provider0() {
+  return (await newProvider()).provider;
 }
