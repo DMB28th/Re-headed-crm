@@ -1974,6 +1974,742 @@ git commit -m "docs: rewrite accounts model for self-serve accounts; amend PLAN.
 
 ---
 
+### Task 16: One-click Salesforce connect — server lane
+
+Spec: `docs/superpowers/specs/2026-08-11-one-click-salesforce-connection-design.md`
+(§1, §3). Execute after Task 10 (shares the claim-bearing callback); independent
+of Tasks 11–15.
+
+Admin data connections can now be made through the Cardstack-owned connected app
+(`CARDSTACK_SF_CLIENT_ID/SECRET` — the sign-in lane's app) with zero pasted
+credentials. Such connections are persisted **without** a client secret, marked
+`clientApp: "cardstack"`; the env-configured app supplies the secret at use
+time, so rotating it heals every one-click workspace at once. BYO connections
+(stored secret) are untouched everywhere.
+
+**Refresh-token hazard note (global constraint):** this task changes how the
+*client secret* is sourced and persisted, never the refresh token. Rotated
+`refreshToken` values must keep persisting exactly as today — only the secret is
+stripped from store rows.
+
+**Files:**
+- Modify: `packages/crm-adapters/src/salesforce/identity.ts`
+- Modify: `packages/crm-adapters/src/salesforce/identity.test.ts`
+- Modify: `packages/crm-adapters/src/salesforce/salesforce-adapter.ts` (one field on `SalesforceCredentials`)
+- Modify: `packages/crm-adapters/src/index.ts` (exports)
+- Create: `apps/studio/lib/salesforce-connect.ts`
+- Create: `apps/studio/lib/salesforce-connect.test.ts`
+- Modify: `apps/studio/app/api/connections/salesforce/oauth/start/route.ts`
+- Modify: `apps/studio/app/api/connections/salesforce/oauth/callback/route.ts`
+- Modify: `apps/studio/app/api/user-connections/salesforce/oauth/callback/route.ts:48-58`
+- Modify: `apps/studio/app/api/connections/route.ts` (GET responses)
+- Modify: `apps/studio/lib/backend.ts:75-102` (`getAdapter`)
+- Modify: `apps/mcp-server/src/main.ts:289-306` (admin adapter settings)
+
+**Interfaces:**
+- Consumes: `cardstackSalesforceLoginApp()`, `buildSalesforceAuthorizationUrl`, `createPkcePair`/`studioOrigin` (`apps/studio/lib/oauth.ts`), `CrmAuthError` (`packages/crm-adapters/src/adapter.ts`).
+- Produces: `hydrateSalesforceClientSecret(credentials, loginApp?)` and `stripCardstackClientSecret(credentials)` exported from `@cardstack/crm-adapters`; `buildCardstackConnectStart(args)` in `apps/studio/lib/salesforce-connect.ts`; `POST /api/connections/salesforce/oauth/start` accepting `{ app: "cardstack", host: "production" | "sandbox" }`; `GET /api/connections` gaining `cardstackAppAvailable: boolean` (Task 17's UI reads all of these).
+
+- [ ] **Step 1: Write the failing helper tests**
+
+Append to `packages/crm-adapters/src/salesforce/identity.test.ts` (match the file's existing vitest import idiom):
+
+```ts
+describe("hydrateSalesforceClientSecret", () => {
+  const app = { clientId: "cardstack-app", clientSecret: "env-secret" };
+
+  it("returns BYO credentials unchanged — a stored secret always wins", () => {
+    const creds = { clientId: "byo", clientSecret: "stored" };
+    expect(hydrateSalesforceClientSecret(creds, app)).toBe(creds);
+  });
+
+  it("merges the env secret into cardstack-app credentials", () => {
+    const creds = { clientId: "cardstack-app", clientApp: "cardstack" };
+    expect(hydrateSalesforceClientSecret(creds, app)).toEqual({
+      ...creds,
+      clientSecret: "env-secret",
+    });
+  });
+
+  it("leaves secretless non-cardstack credentials alone", () => {
+    const creds = { clientId: "legacy" };
+    expect(hydrateSalesforceClientSecret(creds, app)).toBe(creds);
+  });
+
+  it("throws when the deployment has no app", () => {
+    expect(() =>
+      hydrateSalesforceClientSecret({ clientId: "cardstack-app", clientApp: "cardstack" }, undefined),
+    ).toThrow(/reconnect/i);
+  });
+
+  it("throws when the deployment app id no longer matches", () => {
+    expect(() =>
+      hydrateSalesforceClientSecret({ clientId: "old-app", clientApp: "cardstack" }, app),
+    ).toThrow(/reconnect/i);
+  });
+});
+
+describe("stripCardstackClientSecret", () => {
+  it("drops the secret from cardstack-app credentials, keeping everything else", () => {
+    expect(
+      stripCardstackClientSecret({
+        clientApp: "cardstack",
+        clientId: "cardstack-app",
+        clientSecret: "env-secret",
+        refreshToken: "r",
+      }),
+    ).toEqual({ clientApp: "cardstack", clientId: "cardstack-app", refreshToken: "r" });
+  });
+
+  it("returns BYO credentials unchanged", () => {
+    const byo = { clientId: "byo", clientSecret: "stored" };
+    expect(stripCardstackClientSecret(byo)).toBe(byo);
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failure**
+
+Run: `pnpm --filter @cardstack/crm-adapters test -- identity`
+Expected: FAIL — `hydrateSalesforceClientSecret` / `stripCardstackClientSecret` are not exported.
+
+- [ ] **Step 3: Implement the helpers**
+
+In `packages/crm-adapters/src/salesforce/identity.ts`, add
+`import { CrmAuthError } from "../adapter.js";` at the top (identity.ts has no
+imports from salesforce-adapter.ts, so no cycle), then below
+`cardstackSalesforceLoginApp`:
+
+```ts
+/**
+ * Resolve the client secret for credentials minted by the Cardstack-owned
+ * connected app (`clientApp: "cardstack"`). Such credentials are persisted
+ * WITHOUT a secret — the env-configured app supplies it at use time, so
+ * rotating CARDSTACK_SF_CLIENT_SECRET heals every one-click workspace at once.
+ * A stored secret always wins (BYO connections pass through untouched). Throws
+ * rather than proceeding secretless when a cardstack-app credential set has no
+ * matching env app.
+ */
+export function hydrateSalesforceClientSecret<
+  T extends { clientId?: string; clientSecret?: string; clientApp?: string },
+>(
+  credentials: T,
+  loginApp: SalesforceLoginApp | undefined = cardstackSalesforceLoginApp(),
+): T {
+  if (credentials.clientSecret) return credentials;
+  if (credentials.clientApp !== "cardstack") return credentials;
+  if (!loginApp || loginApp.clientId !== credentials.clientId) {
+    throw new CrmAuthError(
+      "Salesforce",
+      "This workspace connected through Cardstack's Salesforce app, but this deployment's app is missing or changed. Reconnect Salesforce from Studio.",
+    );
+  }
+  return { ...credentials, clientSecret: loginApp.clientSecret };
+}
+
+/** Never persist the Cardstack app's env secret into a store row. */
+export function stripCardstackClientSecret<
+  T extends { clientSecret?: string; clientApp?: string },
+>(credentials: T): T {
+  if (credentials.clientApp !== "cardstack") return credentials;
+  const { clientSecret: _omit, ...rest } = credentials;
+  return rest as T;
+}
+```
+
+In `packages/crm-adapters/src/salesforce/salesforce-adapter.ts`, add one field to
+`SalesforceCredentials` (after `clientSecret`):
+
+```ts
+  /** "cardstack" = minted by the Cardstack-owned app; the secret is NOT stored
+   *  — hydrateSalesforceClientSecret sources it from env at use time. */
+  clientApp?: string;
+```
+
+In `packages/crm-adapters/src/index.ts`, add `hydrateSalesforceClientSecret` and
+`stripCardstackClientSecret` to the existing `./salesforce/identity.js` export
+block.
+
+- [ ] **Step 4: Run to verify pass**
+
+Run: `pnpm --filter @cardstack/crm-adapters test -- identity`
+Expected: PASS (all new tests, nothing else broken).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add packages/crm-adapters/src
+git commit -m "feat(crm-adapters): client-secret hydration for Cardstack-app Salesforce credentials"
+```
+
+- [ ] **Step 6: Write the failing start-builder test**
+
+Create `apps/studio/lib/salesforce-connect.test.ts` (match sibling tests'
+vitest import idiom, e.g. `login-flow.test.ts`):
+
+```ts
+import { describe, expect, it } from "vitest";
+import { buildCardstackConnectStart } from "./salesforce-connect";
+
+const args = {
+  app: { clientId: "cardstack-app", clientSecret: "env-secret" },
+  redirectUri: "https://studio.example/api/connections/salesforce/oauth/callback",
+  state: "state-1",
+  codeVerifier: "verifier-1",
+  codeChallenge: "challenge-1",
+} as const;
+
+describe("buildCardstackConnectStart", () => {
+  it("stages pendingAuth with the cardstack marker and NO client secret", () => {
+    const { pendingAuth } = buildCardstackConnectStart({ ...args, host: "production" });
+    expect(pendingAuth).toMatchObject({
+      authType: "oauth_pending",
+      clientId: "cardstack-app",
+      clientApp: "cardstack",
+      loginUrl: "https://login.salesforce.com",
+      state: "state-1",
+      codeVerifier: "verifier-1",
+    });
+    expect("clientSecret" in pendingAuth).toBe(false);
+  });
+
+  it("maps the sandbox host", () => {
+    const { pendingAuth, authorizationUrl } = buildCardstackConnectStart({
+      ...args,
+      host: "sandbox",
+    });
+    expect(pendingAuth.loginUrl).toBe("https://test.salesforce.com");
+    expect(authorizationUrl).toContain("https://test.salesforce.com");
+    expect(authorizationUrl).toContain("client_id=cardstack-app");
+  });
+
+  it("refuses when the deployment has no Cardstack app — without printing env names", () => {
+    expect(() => buildCardstackConnectStart({ ...args, app: undefined, host: "production" })).toThrow(
+      /use your own connected app/i,
+    );
+    try {
+      buildCardstackConnectStart({ ...args, app: undefined, host: "production" });
+    } catch (err) {
+      expect(String(err)).not.toMatch(/CARDSTACK_SF/);
+    }
+  });
+});
+```
+
+- [ ] **Step 7: Run to verify failure**
+
+Run: `pnpm --filter @cardstack/studio test -- salesforce-connect`
+Expected: FAIL — module `./salesforce-connect` does not exist.
+
+- [ ] **Step 8: Implement the start builder**
+
+Create `apps/studio/lib/salesforce-connect.ts`:
+
+```ts
+/**
+ * One-click (Cardstack-app) admin OAuth start — the pure half of
+ * /api/connections/salesforce/oauth/start's cardstack mode. The staged
+ * pendingAuth carries `clientApp: "cardstack"` and NO client secret: the
+ * callback and every later refresh source the secret from the env-configured
+ * app via hydrateSalesforceClientSecret, so it is never persisted per-tenant
+ * (spec 2026-08-11 §1).
+ */
+import {
+  buildSalesforceAuthorizationUrl,
+  type SalesforceLoginApp,
+} from "@cardstack/crm-adapters";
+
+export const SALESFORCE_HOSTS = {
+  production: "https://login.salesforce.com",
+  sandbox: "https://test.salesforce.com",
+} as const;
+export type SalesforceHost = keyof typeof SALESFORCE_HOSTS;
+
+export function buildCardstackConnectStart(args: {
+  app: SalesforceLoginApp | undefined;
+  host: SalesforceHost;
+  redirectUri: string;
+  state: string;
+  codeVerifier: string;
+  codeChallenge: string;
+}): { pendingAuth: Record<string, string>; authorizationUrl: string } {
+  if (!args.app) {
+    throw new Error(
+      "This deployment has no Cardstack Salesforce app configured — use your own connected app instead.",
+    );
+  }
+  const loginUrl = SALESFORCE_HOSTS[args.host];
+  return {
+    pendingAuth: {
+      authType: "oauth_pending",
+      loginUrl,
+      clientId: args.app.clientId,
+      clientApp: "cardstack",
+      redirectUri: args.redirectUri,
+      state: args.state,
+      codeVerifier: args.codeVerifier,
+    },
+    authorizationUrl: buildSalesforceAuthorizationUrl({
+      loginUrl,
+      clientId: args.app.clientId,
+      redirectUri: args.redirectUri,
+      state: args.state,
+      codeChallenge: args.codeChallenge,
+    }),
+  };
+}
+```
+
+- [ ] **Step 9: Run to verify pass**
+
+Run: `pnpm --filter @cardstack/studio test -- salesforce-connect`
+Expected: PASS.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add apps/studio/lib/salesforce-connect.ts apps/studio/lib/salesforce-connect.test.ts
+git commit -m "feat(studio): pure builder for one-click Salesforce connect start"
+```
+
+- [ ] **Step 11: Wire the start route's cardstack mode**
+
+In `apps/studio/app/api/connections/salesforce/oauth/start/route.ts`:
+
+Extend the body type and add imports (`cardstackSalesforceLoginApp` from
+`@cardstack/crm-adapters`, `buildCardstackConnectStart` from
+`../../../../../../lib/salesforce-connect`):
+
+```ts
+interface StartBody {
+  app?: "cardstack";
+  host?: "production" | "sandbox";
+  loginUrl?: string;
+  clientId?: string;
+  clientSecret?: string;
+}
+```
+
+Replace the section from the `const loginUrl = ...` line through the
+`pendingAuth` literal with a branch (the BYO half is today's code, moved):
+
+```ts
+    const redirectUri = `${studioOrigin(req.url)}/api/connections/salesforce/oauth/callback`;
+    const state = randomUUID();
+    const { verifier, challenge } = createPkcePair();
+    let pendingAuth: Record<string, string>;
+    let authorizationUrl: string;
+    if (body.app === "cardstack") {
+      const start = buildCardstackConnectStart({
+        app: cardstackSalesforceLoginApp(),
+        host: body.host === "sandbox" ? "sandbox" : "production",
+        redirectUri,
+        state,
+        codeVerifier: verifier,
+        codeChallenge: challenge,
+      });
+      pendingAuth = start.pendingAuth;
+      authorizationUrl = start.authorizationUrl;
+    } else {
+      const loginUrl = normalizeSalesforceLoginUrl(body.loginUrl);
+      const clientId = body.clientId?.trim();
+      const clientSecret = body.clientSecret?.trim();
+      if (!clientId || !clientSecret) {
+        return NextResponse.json(
+          { error: "Consumer key and consumer secret are required." },
+          { status: 400 },
+        );
+      }
+      // Pending OAuth state (incl. PKCE verifier + the newly entered secret) is
+      // staged under `pendingAuth`, checked on callback. Client secret enters the
+      // system here and becomes the single canonical copy on the admin connection.
+      pendingAuth = {
+        authType: "oauth_pending",
+        loginUrl,
+        clientId,
+        clientSecret,
+        redirectUri,
+        state,
+        codeVerifier: verifier,
+      };
+      authorizationUrl = buildSalesforceAuthorizationUrl({
+        loginUrl,
+        clientId,
+        redirectUri,
+        state,
+        codeChallenge: challenge,
+      });
+    }
+```
+
+The rest of the route (the non-downgrading persist of `pendingAuth`, the JSON
+response) stays; the response now returns the branch's `authorizationUrl`.
+
+- [ ] **Step 12: Callback — source the secret, persist without it, hint on lockout**
+
+In `apps/studio/app/api/connections/salesforce/oauth/callback/route.ts`, add
+`cardstackSalesforceLoginApp` and `stripCardstackClientSecret` to the
+`@cardstack/crm-adapters` import. Three changes:
+
+(a) The early `if (error)` return gains the one-click lockout hint (spec §3 —
+only when the failed attempt was the one-click path):
+
+```ts
+  if (error) {
+    let hint = "";
+    try {
+      const { tenantId } = await getUserContextFromRequest(req);
+      const store = await getStore();
+      const pendingAuth = (await store.getConnection(tenantId)).pendingAuth as
+        | Record<string, string>
+        | undefined;
+      if (pendingAuth?.clientApp === "cardstack") {
+        hint = " If your org blocks third-party apps, set up your own connected app instead.";
+      }
+    } catch {
+      // No session/store — surface the raw Salesforce error alone.
+    }
+    return done(req, { error: error + hint });
+  }
+```
+
+(b) The `pendingAuth` cast becomes `Partial<SalesforceCredentials> & { state?:
+string; codeVerifier?: string }` and the guard adds `!pendingAuth.clientId`.
+Before the exchange call, resolve the secret:
+
+```ts
+    const clientSecret =
+      pendingAuth.clientSecret ??
+      (pendingAuth.clientApp === "cardstack"
+        ? cardstackSalesforceLoginApp()?.clientSecret
+        : undefined);
+    if (!clientSecret) {
+      return done(req, {
+        error: "The deployment's Salesforce app changed mid-authorization — start again.",
+      });
+    }
+```
+
+and pass `clientId: pendingAuth.clientId, clientSecret` into
+`exchangeSalesforceAuthorizationCode`.
+
+(c) Persist without the secret. The probe/validation still runs on the FULL
+`credentials` (secret included — refresh during validation must work); only the
+stored row is stripped:
+
+```ts
+    const persisted =
+      pendingAuth.clientApp === "cardstack"
+        ? stripCardstackClientSecret({ ...credentials, clientApp: "cardstack" })
+        : credentials;
+```
+
+and the `ConnectionState` literal uses
+`credentials: persisted as unknown as Record<string, string>`.
+
+- [ ] **Step 13: User-connection callback — hydrate the admin secret**
+
+In `apps/studio/app/api/user-connections/salesforce/oauth/callback/route.ts`
+(~line 48), replace the direct read:
+
+```ts
+    const clientSecret = (workspace.credentials as SalesforceCredentials | undefined)?.clientSecret;
+```
+
+with:
+
+```ts
+    const adminCredentials = workspace.credentials as SalesforceCredentials | undefined;
+    // One-click admin connections store no secret — hydrate from the env app
+    // (throws a typed CrmAuthError when the deployment app is gone).
+    const clientSecret = adminCredentials
+      ? hydrateSalesforceClientSecret(adminCredentials).clientSecret
+      : undefined;
+```
+
+(import `hydrateSalesforceClientSecret` from `@cardstack/crm-adapters`; the
+existing `if (!clientSecret)` 400 stays as the fallback).
+
+- [ ] **Step 14: Hydrate at both admin-adapter construction sites; strip on persist**
+
+`apps/studio/lib/backend.ts` `getAdapter`: add `hydrateSalesforceClientSecret`
+and `stripCardstackClientSecret` to the `@cardstack/crm-adapters` import, then:
+
+```ts
+  const store = await getStore();
+  const connection = await store.getConnection(tenantId);
+  // One-click (Cardstack-app) Salesforce connections are stored WITHOUT a
+  // client secret; the env app supplies it at use time. BYO credentials pass
+  // through untouched (stored secret wins).
+  const hydrate = (credentials: Record<string, string> | undefined) =>
+    connection.crm === "salesforce" && credentials
+      ? (hydrateSalesforceClientSecret(credentials) as Record<string, string>)
+      : credentials;
+  return createAdapterForConnection({
+    crm: connection.crm,
+    ...(connection.credentials ? { credentials: hydrate(connection.credentials) } : {}),
+    cacheNonce: connection.changedAt,
+    onCredentialsRefreshed: async (credentials) => {
+      await store.setConnection({
+        ...connection,
+        // Rotated refreshToken persists exactly as before — only the env
+        // secret is stripped from the stored row.
+        credentials: stripCardstackClientSecret(credentials),
+        changedAt: new Date().toISOString(),
+      });
+    },
+    getFreshCredentials: async () =>
+      hydrate((await store.getConnection(tenantId)).credentials ?? undefined) ?? null,
+  });
+```
+
+`apps/mcp-server/src/main.ts` (~line 289): apply the same three-part change to
+the admin `adapterSettings` — a local `hydrateAdmin` helper identical to
+`hydrate` above (guarding `connection.crm === "salesforce"`), used for
+`credentials` and `getFreshCredentials`, and `stripCardstackClientSecret(credentials)`
+in `onCredentialsRefreshed`. The per-user secret-matching block below it
+(~line 321) is **unchanged**: a one-click admin connection's `clientId` IS the
+Cardstack app's, so `userClientId === loginApp?.clientId` already matches first.
+
+- [ ] **Step 15: `cardstackAppAvailable` on GET /api/connections**
+
+In `apps/studio/app/api/connections/route.ts`, import
+`cardstackSalesforceLoginApp` and add
+`cardstackAppAvailable: Boolean(cardstackSalesforceLoginApp())` to **both** GET
+JSON responses (the early not-connected return and the connected one). POST
+responses are unchanged — the page reads the flag on load.
+
+- [ ] **Step 16: Verify the whole lane**
+
+```bash
+pnpm typecheck
+pnpm test
+```
+
+Expected: green. Pay attention to `packages/config-store/src/tenant-isolation.test.ts`
+(global constraint) and the existing salesforce-adapter refresh tests.
+
+- [ ] **Step 17: Commit**
+
+```bash
+git add apps/studio packages/crm-adapters apps/mcp-server
+git commit -m "feat: one-click Salesforce connect lane via the Cardstack-owned app"
+```
+
+---
+
+### Task 17: One-click UI — reshaped Salesforce card + the BYO setup page
+
+Spec: `docs/superpowers/specs/2026-08-11-one-click-salesforce-connection-design.md`
+(§2). Depends on Task 16.
+
+No component-test harness exists for Studio pages (same as Task 11's screens) —
+verification is typecheck + lint + a scripted dev-server walkthrough.
+
+**Files:**
+- Modify: `apps/studio/app/connections/page.tsx`
+- Create: `apps/studio/app/connections/salesforce/setup/page.tsx`
+- Modify: `docs/salesforce-setup.md` (lead with the one-click path)
+
+**Interfaces:**
+- Consumes: `POST /api/connections/salesforce/oauth/start` with `{ app: "cardstack", host }` and with the BYO shape; `cardstackAppAvailable: boolean` on `GET /api/connections` (both Task 16).
+- Produces: the route `/connections/salesforce/setup` (linked from the card; nothing else consumes it).
+
+- [ ] **Step 1: Reshape the Salesforce card**
+
+In `apps/studio/app/connections/page.tsx`:
+
+- `ConnectionsData` gains `cardstackAppAvailable?: boolean`.
+- Replace the `sf` state with `const [host, setHost] = useState<"production" | "sandbox">("production");` (the BYO fields move to the setup page).
+- `startSalesforceAdminOAuth` now takes no fields: it POSTs `JSON.stringify({ app: "cardstack", host })` to the same start route (error/navigate handling unchanged).
+- Replace the disconnected-Salesforce branch (the `<div className="mt-3 space-y-2">` block holding the intro text, callback-URL box, and the three inputs) with:
+
+```tsx
+              <div className="mt-3 space-y-3">
+                {data.cardstackAppAvailable ? (
+                  <>
+                    <p className="text-[11.5px] text-ink-55">
+                      Connect your Salesforce org. You&apos;ll approve Cardstack&apos;s
+                      access on Salesforce — nothing to install or configure.
+                    </p>
+                    <div className="flex items-center justify-between gap-3">
+                      <div
+                        className="flex rounded-[8px] border border-line-soft p-0.5"
+                        role="radiogroup"
+                        aria-label="Salesforce environment"
+                      >
+                        {(["production", "sandbox"] as const).map((h) => (
+                          <button
+                            key={h}
+                            type="button"
+                            role="radio"
+                            aria-checked={host === h}
+                            className={`rounded-[6px] px-2.5 py-1 text-[12px] capitalize ${
+                              host === h ? "bg-paper font-semibold" : "text-ink-55"
+                            }`}
+                            onClick={() => setHost(h)}
+                          >
+                            {h}
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        className="st-btn st-btn--primary"
+                        disabled={busy}
+                        onClick={startSalesforceAdminOAuth}
+                      >
+                        {busy ? "Starting…" : "Connect Salesforce"}
+                      </button>
+                    </div>
+                    <p className="text-[11.5px] text-ink-45">
+                      Can&apos;t use the Cardstack app?{" "}
+                      <Link href="/connections/salesforce/setup" className="underline">
+                        Set up your own connected app →
+                      </Link>
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[11.5px] text-ink-55">
+                      This deployment connects with your own Salesforce Connected App.
+                    </p>
+                    <div className="flex justify-end">
+                      <Link href="/connections/salesforce/setup" className="st-btn st-btn--primary">
+                        Set up a connected app →
+                      </Link>
+                    </div>
+                  </>
+                )}
+              </div>
+```
+
+- [ ] **Step 2: Build the setup page**
+
+Create `apps/studio/app/connections/salesforce/setup/page.tsx` — a client
+component, single scrolling page of numbered steps ending in the BYO authorize
+form (spec §2: not a multi-screen wizard; nothing to persist between steps).
+Content adapted from `docs/salesforce-setup.md` steps 1–2; self-sufficient, no
+links into the git repo. Structure:
+
+```tsx
+"use client";
+/**
+ * BYO connected-app setup (spec 2026-08-11 §2): the guided path for
+ * deployments without the Cardstack app and orgs that block third-party apps.
+ * The one-click path lives on /connections; this page ends in the same
+ * "Authorize admin" POST, so the shared callback (and its org claim) is
+ * identical for both. Success and errors land back on /connections.
+ *
+ * /design has no mockup for this page — invented in the Studio token language
+ * (PR must note this per hard rule 6).
+ */
+import Link from "next/link";
+import { useEffect, useState } from "react";
+
+function CopyField({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex items-center gap-2">
+      <code className="block flex-1 break-all rounded-[6px] bg-white px-2 py-1 text-[11px]">
+        {value}
+      </code>
+      <button
+        type="button"
+        className="st-btn"
+        onClick={() => {
+          void navigator.clipboard.writeText(value);
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1500);
+        }}
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
+```
+
+then the default export with `origin` state (from `window.location.origin`, the
+`/connections` page's pattern), `sf` state (`loginUrl` defaulting to
+`https://login.salesforce.com`, `clientId`, `clientSecret`), `busy`/`error`
+state, and the `startSalesforceAdminOAuth` POST carried over verbatim from the
+old card (BYO body shape). Page body — a `max-w-[620px]` column titled "Set up
+your own Salesforce connected app" with a back link to `/connections`, and four
+`st-card` sections:
+
+1. **"1 · Create the app"** — copy: in Salesforce Setup, search "App Manager"
+   → New Connected App (or New External Client App). Create it **in the org
+   you're connecting** — a sandbox app's Consumer Key/Secret differ from
+   production's.
+2. **"2 · OAuth settings"** — enable OAuth; enable the web-server
+   (Authorization Code) flow; leave "Require PKCE" on; scopes as two
+   `st-chip-mono` chips: `api` and `refresh_token/offline_access`; both
+   callback URLs as `CopyField`s:
+   `` `${origin}/api/connections/salesforce/oauth/callback` `` and
+   `` `${origin}/api/user-connections/salesforce/oauth/callback` ``.
+3. **"3 · Collect credentials"** — Consumer Key and Consumer Secret live under
+   the app's "Manage Consumer Details"; Salesforce takes ~2–10 minutes to
+   propagate a new app — an immediate authorize can fail once, wait and retry.
+4. **"4 · Authorize"** — the login URL input (placeholder
+   `https://login.salesforce.com — or https://test.salesforce.com for a sandbox`),
+   the Consumer key / Consumer secret inputs, the error banner, and the
+   **Authorize admin** primary button — all carried over from the old card
+   unchanged, including the disabled condition.
+
+- [ ] **Step 3: Typecheck, lint, build**
+
+```bash
+pnpm typecheck && pnpm lint && pnpm --filter @cardstack/studio build
+```
+
+Expected: green.
+
+- [ ] **Step 4: Dev-server walkthrough**
+
+Run `pnpm --filter @cardstack/studio dev` and verify against a signed-in
+session on a workspace with no CRM connected:
+
+- With `CARDSTACK_SF_CLIENT_ID/SECRET` set: the Salesforce card shows the
+  Production/Sandbox choice + **Connect Salesforce**; clicking it navigates to
+  a `login.salesforce.com/services/oauth2/authorize` URL whose `client_id` is
+  the Cardstack app's (stop there — do not complete OAuth against a real org).
+- With them unset: the card shows only the "Set up a connected app →" primary
+  link; POSTing `{ "app": "cardstack" }` to the start route by hand returns the
+  typed no-app error, which names no env vars.
+- `/connections/salesforce/setup` renders all four steps; both copy buttons
+  put the full callback URL on the clipboard; the authorize form's button is
+  disabled until all three fields are filled.
+- HubSpot card, mock connect, connected-state rendering: unchanged.
+
+- [ ] **Step 5: Lead `docs/salesforce-setup.md` with the one-click path**
+
+Under the doc's title, before "How it works", insert:
+
+```markdown
+> **Most workspaces don't need this document.** On deployments with the
+> Cardstack connected app configured, Connections → **Connect Salesforce** is
+> one click — you approve Cardstack's access on Salesforce and you're done; no
+> app to create, nothing to paste. The steps below are for the
+> bring-your-own-app path: self-hosted deployments without a Cardstack app, or
+> orgs whose policies block third-party connected apps. In Studio, the same
+> steps are guided at Connections → "Set up your own connected app".
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/studio/app/connections docs/salesforce-setup.md
+git commit -m "feat(studio): one-click Salesforce card + guided BYO setup page"
+```
+
+**PR note (required by CLAUDE.md hard rule 6):** the PR description must also
+state: */design has no mockup for the reshaped Salesforce connection card or
+the /connections/salesforce/setup page; both are invented in the Studio token
+vocabulary (spec 2026-08-11 §2).*
+
+---
+
 ## Deploy runbook (after merge — operator steps, not tasks)
 
 1. Deploy both services. Set `RESEND_API_KEY` + `CARDSTACK_EMAIL_FROM` on `@cardstack/studio` (optional — without them, verification/reset links appear in server logs only).
@@ -1981,3 +2717,13 @@ git commit -m "docs: rewrite accounts model for self-serve accounts; amend PLAN.
 3. `pnpm --filter @cardstack/studio attach:workspace -- --workspace t_demo --account <that email>` (report), then `--apply`.
 4. Confirm `/login` shows the new page, the old access key is refused (POST bridge is gone), and chat-host connections still resolve `t_demo` by its claimed org.
 5. ~2026-08-24 (existing clock): drop `STUDIO_SHARED_SECRET` from the env entirely (verify-list step 5 of the 2026-08-08 migration).
+6. **One-click connect prerequisite (Tasks 16–17, spec 2026-08-11 §1):** in the
+   Cardstack-owned connected app's Salesforce config, add both connections
+   callbacks to the callback URL allowlist, alongside the existing auth/MCP
+   ones:
+   `https://<studio-origin>/api/connections/salesforce/oauth/callback` and
+   `https://<studio-origin>/api/user-connections/salesforce/oauth/callback`.
+   Connected-app edits take ~2–10 minutes to propagate. Then verify one-click
+   connect end-to-end on a test org; until this step is done, the one-click
+   button fails at Salesforce with a redirect_uri mismatch while the BYO setup
+   page keeps working.
