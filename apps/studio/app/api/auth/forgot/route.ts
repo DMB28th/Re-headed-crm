@@ -23,7 +23,14 @@ export async function POST(req: Request) {
       const account = await store.getAccount(result.accountId);
       if (account?.email) {
         const links = buildAuthLinks(studioOrigin(req.url));
-        await sendMail({ to: account.email, ...resetEmail(account.name, links.resetUrl(result.resetToken)) });
+        // Deliberately not awaited: awaiting the outbound Resend fetch here
+        // would make a HIT measurably slower to respond to than a MISS,
+        // turning this constant-response-body route into a timing side
+        // channel (spec §3 enumeration resistance). The token is already
+        // durably stored, so a failed send just means the user asks again.
+        void sendMail({ to: account.email, ...resetEmail(account.name, links.resetUrl(result.resetToken)) }).catch(
+          (error) => console.error("[mail] reset send failed", error),
+        );
       }
     }
   }

@@ -31,7 +31,14 @@ export async function POST(req: Request) {
   }
   if (result.kind === "claim-email-sent") {
     const account = await store.getAccount(result.accountId);
-    await sendMail({ to: body.email.trim(), ...claimEmail(account?.name ?? "there", links.resetUrl(result.claimToken)) });
+    // Mail the stored account's address, not the caller-supplied body — the
+    // canonical discipline used elsewhere (forgot/route.ts): the request body
+    // is untrusted input, and only the record we just looked up is
+    // authoritative for where this account actually receives mail.
+    await sendMail({
+      to: account?.email ?? body.email.trim(),
+      ...claimEmail(account?.name ?? "there", links.resetUrl(result.claimToken)),
+    });
     return NextResponse.json({ status: "check-email" });
   }
 
