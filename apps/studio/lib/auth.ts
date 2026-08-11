@@ -21,6 +21,15 @@
  * it enforced anything. A `requireAdmin()` helper would have been twenty-six
  * call sites to remember. Refusing to resolve the session at all is one.
  *
+ * Studio authority is workspace OWNERSHIP (`Workspace.ownerAccountId`), not a
+ * membership role: a `Membership` grants chat access, never Studio. Legacy
+ * workspaces the attach-workspace script has not stamped yet (no
+ * `ownerAccountId`) fall back to an admin membership row, so a deployed
+ * workspace's live session survives the deploy that introduces ownership. A
+ * password reset (`Account.passwordChangedAt`) invalidates every session
+ * minted before it, checked against the record's `createdAt` rather than by
+ * enumerating the KV.
+ *
  * The single exception is local development, where `pnpm dev` / `dev:sf` / the
  * demo scripts have no browser login to go through. It needs TWO conditions —
  * a non-production build AND an explicit `CARDSTACK_DEV_IDENTITY=1` — and it
@@ -86,38 +95,20 @@ export async function resolveSessionId(sessionId: string): Promise<StudioIdentit
 }
 
 /**
- * The one identity resolution that admits members: `/me/connection`, where a
- * rep manages their OWN CRM authorization and nothing else.
- *
- * Written as a separate entry point rather than a flag on `resolveStudioSession`
- * on purpose. The choke point stays absolute — there is no parameter that makes
- * it let a member through — so this is a decision each caller makes explicitly
- * and a reviewer can find by grepping for one name.
- */
-export async function getSelfServiceIdentity(): Promise<StudioIdentity | null> {
-  const secrets = sessionSigningSecrets();
-  if (secrets.length === 0) return null;
-  const jar = await cookies();
-  const sessionId = await readStudioSession(jar.get(STUDIO_SESSION_COOKIE)?.value, secrets);
-  if (!sessionId) return null;
-  return resolveStudioSession(await getStore(), sessionId, Date.now(), { allowMembers: true });
-}
-
-/**
  * Store-level session resolution — the choke point itself, taking its store so
  * it can be tested without a running Next.js.
  *
- * Returns null, meaning "not signed in", for four distinct reasons. They are
+ * Returns null, meaning "not signed in", for several distinct reasons —
+ * unknown session, idle timeout, missing account/workspace, a password reset
+ * since the session was minted, or failing the ownership check. They are
  * deliberately indistinguishable to the caller: a page that could tell "your
- * session expired" from "you are not an admin" would be a page that leaks
- * membership to anyone holding a stale cookie.
+ * session expired" from "you are not the owner" would be a page that leaks
+ * that distinction to anyone holding a stale cookie.
  */
 export async function resolveStudioSession(
   store: Pick<AdminConfigStore, "kvGet" | "kvSet" | "kvDelete" | "getAccount" | "getWorkspace" | "getMembership">,
   sessionId: string,
   now: number = Date.now(),
-  /** Set ONLY by `getSelfServiceIdentity`. See its comment. */
-  options: { allowMembers?: boolean } = {},
 ): Promise<StudioIdentity | null> {
   const record = (await store.kvGet(STUDIO_SESSION_NS, sessionId)) as
     | StudioSessionRecord
@@ -132,20 +123,31 @@ export async function resolveStudioSession(
     return null;
   }
 
-  const [account, workspace, membership] = await Promise.all([
+  const [account, workspace] = await Promise.all([
     store.getAccount(record.accountId),
     store.getWorkspace(record.workspaceId),
-    store.getMembership(record.accountId, record.workspaceId),
   ]);
-  // 2. Membership is re-read rather than trusted from the session: removing
-  //    someone from a workspace must take effect on their next request, not
-  //    when their cookie happens to expire.
-  if (!account || !workspace || !membership) return null;
+  if (!account || !workspace) return null;
 
-  // 3. Studio is for workspace admins. A member holds no Studio session at all
-  //    — not a read-only one — so this is where a demotion takes effect, on the
-  //    next request rather than in fourteen days.
-  if (membership.role !== "admin" && !options.allowMembers) return null;
+  // 2. Password reset invalidates every session minted before it, without
+  //    enumerating the KV: the record's createdAt is compared to the account's
+  //    passwordChangedAt stamp (spec §3).
+  const passwordChangedAt = account.passwordChangedAt ? Date.parse(account.passwordChangedAt) : NaN;
+  if (Number.isFinite(passwordChangedAt) && Date.parse(record.createdAt) < passwordChangedAt) {
+    await store.kvDelete(STUDIO_SESSION_NS, sessionId);
+    return null;
+  }
+
+  // 3. Studio is for the workspace's OWNER — ownership is structural, not a
+  //    role (spec §1). Legacy workspaces predate ownership: until
+  //    attach-workspace stamps ownerAccountId, an admin membership stands in,
+  //    so the deployed workspace's live session survives the deploy (spec §6).
+  if (workspace.ownerAccountId) {
+    if (workspace.ownerAccountId !== account.id) return null;
+  } else {
+    const membership = await store.getMembership(record.accountId, record.workspaceId);
+    if (membership?.role !== "admin") return null;
+  }
 
   // 4. Touch, throttled. The absolute expiry is recomputed from createdAt so a
   //    refresh can never push the session past its 14-day cap.
@@ -159,7 +161,10 @@ export async function resolveStudioSession(
     );
   }
 
-  return { account, workspace, role: membership.role };
+  // `role` is a vestigial field: authority above is ownership, not membership,
+  // and `userContextFor` does not read it. Kept on `StudioIdentity` for now so
+  // callers that still destructure it do not need a second change.
+  return { account, workspace, role: "admin" };
 }
 
 /**
