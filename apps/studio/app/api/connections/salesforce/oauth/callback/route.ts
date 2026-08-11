@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   SalesforceAdapter,
   exchangeSalesforceAuthorizationCode,
+  fetchSalesforceSignerIdentity,
   invalidateAdapterCache,
   type SalesforceCredentials,
 } from "@cardstack/crm-adapters";
@@ -58,6 +59,29 @@ export async function GET(req: Request) {
     });
     const connectedUser = await probe.validateConnection();
     invalidateAdapterCache({ crm: "salesforce", credentials: credentials as unknown as Record<string, string> });
+
+    // The claim IS the connection (spec §4): the org this token belongs to gets
+    // bound to this workspace, exclusively — the unique org_key decides races.
+    // On conflict nothing is stored: this workspace keeps no credentials for an
+    // org it does not hold.
+    const signer = await fetchSalesforceSignerIdentity(credentials);
+    // Sandbox tag (spec §4): the login host is the honest signal — pendingAuth
+    // staged it at OAuth start. No schema change; the tag rides the name.
+    const sandbox = pendingAuth.loginUrl?.includes("test.salesforce.com");
+    const orgLabel = signer.orgName ? (sandbox ? `${signer.orgName} (sandbox)` : signer.orgName) : undefined;
+    const claim = await store.claimOrg(tenantId, signer.orgId, orgLabel);
+    if (!claim.ok) {
+      return done(req, {
+        error:
+          "That Salesforce org is already connected to another Cardstack account. Each org can be connected to exactly one account.",
+      });
+    }
+    // Record WHICH Salesforce user connected — this is what makes Continue with
+    // Salesforce a one-click sign-in for the owner later (spec §1, §3).
+    const { userId } = await getUserContextFromRequest(req);
+    const owner = await store.getAccount(userId);
+    if (owner) await store.upsertAccount({ ...owner, salesforceUserId: signer.salesforceUserId });
+
     // First Salesforce connect over the demo "deals"/hubspot seed (or any other
     // CRM's config) must not leave stale layouts/lists/home cards behind.
     const existingCrm = await store.tenantConfigCrm(tenantId);
