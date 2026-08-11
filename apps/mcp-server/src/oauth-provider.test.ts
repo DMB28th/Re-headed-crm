@@ -227,6 +227,9 @@ describe("CardstackOAuthProvider", () => {
     await expect(attempt).rejects.toBeInstanceOf(UnclaimedOrgError);
     await expect(attempt).rejects.toMatchObject({ orgId: "00D000000000001AAA" });
     await expect(attempt).rejects.toThrow(/00D000000000001AAA|Acme Corp/);
+    // The find-or-refuse guarantee: refusing must not have a side effect of
+    // silently creating the very workspace it refused to route into.
+    expect(await store.getWorkspaceByOrgId("00D000000000001AAA")).toBeUndefined();
   });
 
   it("authorize refuses (via redirect error) when no admin Salesforce OAuth exists", async () => {
