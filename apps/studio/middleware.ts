@@ -6,7 +6,16 @@ import {
 } from "./lib/studio-session";
 import { sameOriginRequest } from "./lib/request-guard";
 
-const PUBLIC_PATHS = new Set(["/login", "/api/session", "/healthz"]);
+const PUBLIC_PATHS = new Set([
+  "/login",
+  "/signup",
+  "/forgot",
+  "/reset",
+  "/verify",
+  "/link",
+  "/api/session", // DELETE = sign-out; the POST bridge dies with the governance layer
+  "/healthz",
+]);
 
 /**
  * CRM OAuth callbacks. These resolve identity themselves (and fail closed in
