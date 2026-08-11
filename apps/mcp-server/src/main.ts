@@ -308,9 +308,21 @@ app.all("/mcp", async (req, res) => {
     connection.crm === "salesforce" && credentials
       ? (hydrateSalesforceClientSecret(credentials) as Record<string, string>)
       : credentials;
+  // Hydration throws (CrmAuthError) when a one-click connection's env app is
+  // gone or changed. This runs before any tool call, outside the per-tool
+  // asToolError handling in server.ts, and Express 4 does not catch async
+  // rejections — left unguarded, this becomes an unhandled rejection that
+  // never sends a response, hanging the chat host until its own timeout.
+  let adminCredentials: Record<string, string> | undefined;
+  try {
+    adminCredentials = connection.credentials ? hydrateAdmin(connection.credentials) : undefined;
+  } catch (err) {
+    res.status(401).json({ error: err instanceof Error ? err.message : String(err) });
+    return;
+  }
   let adapterSettings: ConnectionSettings = {
     crm: connection.crm,
-    ...(connection.credentials ? { credentials: hydrateAdmin(connection.credentials) } : {}),
+    ...(adminCredentials ? { credentials: adminCredentials } : {}),
     // Shared with Studio via the store: a refresh bumps changedAt, which busts
     // this process's cached adapter on its next request too.
     cacheNonce: connection.changedAt,

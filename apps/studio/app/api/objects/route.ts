@@ -8,7 +8,6 @@ import { generateStarterLayout } from "../../../lib/starter-layout";
 export async function GET(req: Request) {
   const { tenantId } = await getUserContextFromRequest(req);
   const store = await getStore();
-  const adapter = await getAdapter(tenantId);
   const connection = await store.getConnection(tenantId);
   // Redact: credentials never leave the server (hard rule 3).
   const { credentials, ...connectionSafe } = connection;
@@ -21,27 +20,35 @@ export async function GET(req: Request) {
       customObjectsBlocked: null,
     });
   }
-  const crmObjects = await adapter.listObjects();
-  // Set by listObjects when the schemas read 403'd — the UI must say so
-  // instead of claiming every object is configured.
-  const customObjectsBlocked =
-    adapter instanceof HubSpotAdapter ? adapter.customObjectsBlocked : null;
-  const objects: { api: string; labelPlural: string; draft: boolean; publishedRevision: number | null }[] = [];
-  const available: { api: string; labelPlural: string }[] = [];
-  for (const summary of crmObjects) {
-    const record = await store.getLayoutRecord(tenantId, summary.api);
-    if (record.draft || record.published) {
-      objects.push({
-        api: summary.api,
-        labelPlural: summary.labelPlural,
-        draft: !!record.draft,
-        publishedRevision: record.published?.revision ?? null,
-      });
-    } else {
-      available.push({ api: summary.api, labelPlural: summary.labelPlural });
+  try {
+    const adapter = await getAdapter(tenantId);
+    const crmObjects = await adapter.listObjects();
+    // Set by listObjects when the schemas read 403'd — the UI must say so
+    // instead of claiming every object is configured.
+    const customObjectsBlocked =
+      adapter instanceof HubSpotAdapter ? adapter.customObjectsBlocked : null;
+    const objects: { api: string; labelPlural: string; draft: boolean; publishedRevision: number | null }[] = [];
+    const available: { api: string; labelPlural: string }[] = [];
+    for (const summary of crmObjects) {
+      const record = await store.getLayoutRecord(tenantId, summary.api);
+      if (record.draft || record.published) {
+        objects.push({
+          api: summary.api,
+          labelPlural: summary.labelPlural,
+          draft: !!record.draft,
+          publishedRevision: record.published?.revision ?? null,
+        });
+      } else {
+        available.push({ api: summary.api, labelPlural: summary.labelPlural });
+      }
     }
+    return NextResponse.json({ connection: redacted, objects, available, customObjectsBlocked });
+  } catch (error) {
+    // Surface CRM/adapter failures (incl. a one-click connection whose env
+    // app is gone) as JSON — an HTML 500 leaves the panel stuck on "Loading…"
+    // forever, matching layout/[object]'s GET pattern.
+    return NextResponse.json({ error: String(error) }, { status: 502 });
   }
-  return NextResponse.json({ connection: redacted, objects, available, customObjectsBlocked });
 }
 
 /** Add an object: generate a starter DRAFT layout from describe (3c). */

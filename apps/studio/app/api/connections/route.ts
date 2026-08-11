@@ -37,17 +37,31 @@ export async function GET(req: Request) {
       cardstackAppAvailable,
     });
   }
-  const adapter = await getAdapter(tenantId);
-  const [connectedUser, scopeGaps] = await Promise.all([
-    adapter.getConnectedUser().catch(() => null),
-    scopeGapsFor(adapter),
-  ]);
-  return NextResponse.json({
-    connection: redact(connection),
-    connectedUser,
-    scopeGaps,
-    cardstackAppAvailable,
-  });
+  try {
+    const adapter = await getAdapter(tenantId);
+    const [connectedUser, scopeGaps] = await Promise.all([
+      adapter.getConnectedUser().catch(() => null),
+      scopeGapsFor(adapter),
+    ]);
+    return NextResponse.json({
+      connection: redact(connection),
+      connectedUser,
+      scopeGaps,
+      cardstackAppAvailable,
+    });
+  } catch (error) {
+    // This page IS where the admin goes to reconnect, so a live connection
+    // whose adapter can't be built (e.g. a one-click connection whose env app
+    // is gone or changed) must still render — degrade the adapter-dependent
+    // extras and surface the reason instead of 500ing the whole page.
+    return NextResponse.json({
+      connection: redact(connection),
+      connectedUser: null,
+      scopeGaps: [],
+      cardstackAppAvailable,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 interface ConnectBody {
