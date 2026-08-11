@@ -202,5 +202,6 @@ Appended to `docs/superpowers/plans/2026-08-10-self-serve-accounts.md`:
   `/connections/salesforce/setup` page.
 
 Both ordered after Task 10, which they share the claim-bearing callback with.
-Task 15's docs step gains a line: update `salesforce-setup.md` to lead with
-the one-click path.
+The `salesforce-setup.md` update (lead with the one-click path) lives inside
+Task 17 rather than Task 15's docs step, so the doc never describes a feature
+that hasn't been built yet in execution order.
