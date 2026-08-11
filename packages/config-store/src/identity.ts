@@ -129,8 +129,10 @@ export interface IdentityStore {
    * Every workspace on this deployment. Operational only — nothing
    * request-scoped may call this, because a request belongs to exactly one
    * workspace and enumerating the rest is the tenancy leak the model exists to
-   * prevent. Backs the zero-admin backfill (see
-   * apps/studio/scripts/backfill-workspace-admins.ts).
+   * prevent. The zero-admin backfill it used to back
+   * (`backfill-workspace-admins.ts`) was deleted with the rest of the
+   * multi-admin governance layer (self-serve-accounts design §1); this stays
+   * as the operational escape hatch a future migration script would need.
    */
   listWorkspaces(): Promise<Workspace[]>;
   /** Exclusively claim an org for a workspace; conflicts if another workspace

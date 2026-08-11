@@ -22,10 +22,13 @@ Every confirmed chat write lands in a durable, queryable audit log
 
 Also shipped since M4:
 
-- **Cardstack accounts and multi-workspace tenancy.** Sign-in is Salesforce
-  OAuth; a workspace *is* a Salesforce org, so the first signer from an org
-  creates it and later signers auto-join. See
-  `docs/accounts-and-workspaces.md`.
+- **Cardstack accounts and multi-workspace tenancy — self-serve.** Sign-up is
+  email + password, creating the account and its one owned workspace in the
+  same step; "Continue with Salesforce" is a peer sign-in/signup lane, not a
+  requirement. Connecting a Salesforce org is a later, exclusive claim made by
+  the workspace's owner; reps arriving from a chat host are routed by that
+  claimed org id and refused with a typed message when nobody has claimed it
+  yet. See `docs/accounts-and-workspaces.md`.
 - **Per-user OAuth 2.1 on `/mcp`.** `MCP_SHARED_SECRET` remains an opt-in
   second gate, not a boot requirement.
 - **One staging model.** Layouts, permissions, view exposures, flow render

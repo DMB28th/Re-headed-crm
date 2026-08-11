@@ -508,6 +508,13 @@ purpose. It is the mechanism that keeps a local run from revoking the deployed
 grant family, and every part of this design routes around it rather than through
 it.
 
+> **Addendum (2026-08-10):** Two §7 entries are superseded by
+> [2026-08-10-self-serve-accounts-design.md](./2026-08-10-self-serve-accounts-design.md):
+> "a workspace IS a Salesforce org" (now: a workspace is owned by an account and
+> *claims* an org exclusively) and "no password flows" (now: email+password is
+> the primary lane). The session design, choke-point shape, and the whole MCP
+> OAuth surface carried forward unchanged.
+
 ---
 
 ## 8. Risks accepted

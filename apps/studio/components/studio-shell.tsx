@@ -5,10 +5,11 @@ import { usePathname } from "next/navigation";
 import { NavRail } from "./nav-rail";
 
 /**
- * Pages that render without the admin nav rail: the six auth screens (all
- * reachable signed out, or mid-transition) and `/me/connection` — the one
- * page a workspace MEMBER may open, and every link in the rail would 401 or
- * bounce them back to a lockout message.
+ * Pages that render without the admin nav rail: the six auth screens, all
+ * reachable signed out or mid-transition. There is no member-facing exception
+ * anymore — `/me/connection` is gone (self-serve-accounts design §1
+ * "Deleted": a rep can never hold a Studio session of any kind), so every
+ * other route is owner-only and the nav rail is safe to assume.
  */
 const BARE_PATHS = new Set([
   "/login",
@@ -17,7 +18,6 @@ const BARE_PATHS = new Set([
   "/reset",
   "/verify",
   "/link",
-  "/me/connection",
 ]);
 
 export function StudioShell({
