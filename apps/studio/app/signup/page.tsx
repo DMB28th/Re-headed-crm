@@ -1,14 +1,16 @@
 /**
- * Sign in — one of six pages sharing the split brand panel (`AuthShell`).
- * Server component so a failed OAuth callback's `?error=` renders on first
- * paint and "Continue with Salesforce" needs no client JS to start.
+ * Create an account — same split-panel shell as `/login`. Success either
+ * signs in immediately (brand-new account) or hands back
+ * `{status:"check-email"}` when the address already exists passwordless
+ * (Salesforce-created or rep-runtime identity) — `SignupForm` renders the
+ * inline notice for that case instead of navigating.
  */
 import { cardstackSalesforceLoginApp } from "@cardstack/crm-adapters";
 import { AuthShell } from "../../components/auth-shell";
-import { SigninForm } from "../../components/auth-forms";
+import { SignupForm } from "../../components/auth-forms";
 import { safeNext } from "../../lib/login-flow";
 
-export default async function LoginPage({
+export default async function SignupPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -18,8 +20,12 @@ export default async function LoginPage({
   const next = safeNext(single(params.next));
   const salesforce = Boolean(cardstackSalesforceLoginApp());
   return (
-    <AuthShell title="Sign in" subtitle="Welcome back." error={single(params.error)}>
-      <SigninForm next={next} />
+    <AuthShell
+      title="Create your account"
+      subtitle="Set up your Studio workspace."
+      error={single(params.error)}
+    >
+      <SignupForm next={next} />
       {salesforce && (
         <>
           <div className="mt-5 flex items-center gap-3 text-[12px] text-ink-45">
