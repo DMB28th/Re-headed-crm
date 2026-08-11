@@ -61,7 +61,10 @@ export async function GET(req: Request) {
   const secrets = sessionSigningSecrets();
   const signingSecret = secrets[0];
   if (!signingSecret) {
-    return fail("Sign-in is not configured on this deployment: CARDSTACK_SESSION_SECRET is unset.");
+    // Specifics to the server log only — the redirect lands on /login, and
+    // AuthShell renders `error` verbatim (spec: never render env var names).
+    console.error("[auth] Salesforce sign-in unavailable: CARDSTACK_SESSION_SECRET is unset.");
+    return fail("Sign-in is not available on this deployment.");
   }
   const app = cardstackSalesforceLoginApp();
   if (!app) return fail("Sign-in is not configured on this deployment.");

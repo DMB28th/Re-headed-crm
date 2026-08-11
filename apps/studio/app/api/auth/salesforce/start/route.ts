@@ -45,9 +45,12 @@ export async function GET(req: Request) {
 
   const app = cardstackSalesforceLoginApp();
   if (!app) {
-    return fail(
-      "Sign-in is not configured on this deployment: CARDSTACK_SF_CLIENT_ID and CARDSTACK_SF_CLIENT_SECRET are unset.",
+    // Specifics to the server log only — the redirect lands on /login, and
+    // AuthShell renders `error` verbatim (spec: never render env var names).
+    console.error(
+      "[auth] Salesforce sign-in unavailable: CARDSTACK_SF_CLIENT_ID / CARDSTACK_SF_CLIENT_SECRET are unset.",
     );
+    return fail("Salesforce sign-in is not available on this deployment.");
   }
 
   try {
