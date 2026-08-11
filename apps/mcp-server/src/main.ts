@@ -26,6 +26,7 @@ import {
 import {
   createPostgresConfigStore,
   encryptionEnabled,
+  UnclaimedOrgError,
   type AdminConfigStore,
 } from "@cardstack/config-store";
 import { createCardstackServer } from "./server.js";
@@ -51,6 +52,18 @@ const PORT = Number(process.env.PORT ?? 3001);
  * actually do something about (by asking the right person for the right thing).
  */
 function renderSignInFailure(error: unknown): string {
+  // An org nobody in Cardstack has claimed yet (Task 3's find-or-refuse) is
+  // not a Salesforce policy failure — the rep did everything right, there is
+  // just no workspace to route them into. Point them at the two ways to get
+  // one instead of running Salesforce's generic guidance over the message.
+  if (error instanceof UnclaimedOrgError) {
+    return (
+      `<h3>This Salesforce org isn't connected to Cardstack yet</h3>` +
+      `<p>${escapeHtml(error.message)}</p>` +
+      `<p>Ask whoever administers Cardstack for your team to connect the org in Studio — ` +
+      `or create your own Cardstack account and connect it yourself.</p>`
+    );
+  }
   const raw = error instanceof Error ? error.message : String(error);
   const guidance = describeSalesforceAuthError(raw, {
     name: "Cardstack",
@@ -361,16 +374,22 @@ app.all("/mcp", async (req, res) => {
         },
       };
     } else {
-      const studioBase = (process.env.CARDSTACK_STUDIO_URL ?? "http://localhost:3002").replace(/\/$/, "");
       // C1: this branch already knows whose problem it is, and the card used to
       // throw that away. A rep signed in through a chat host owns their own
-      // per-user grant; the Studio link only helps when the WORKSPACE's shared
-      // connection is what broke, and only an admin can follow it anyway.
+      // per-user grant, and only THEY can fix it — through their chat host's
+      // own reconnect flow, never a Studio URL (self-serve-accounts design §1
+      // "Deleted": a rep can never hold a Studio session of any kind, so
+      // `/me/connection` is gone; "their re-auth path is the chat host's
+      // reconnect, which the re-auth card already deep-links"). Leaving
+      // `connectUrl` unset here falls through to that existing guidance
+      // (packages/widgets/src/shared/components.tsx), which asks the chat
+      // host directly instead of linking anywhere. The workspace-admin case
+      // (`reauthKind: "admin"`) is the one that links Studio, at
+      // `${studioBase}/connections`.
       runtimeAuth = {
         missingUserAuth: true,
         crmLabel: "Salesforce",
         reauthKind: "user",
-        connectUrl: `${studioBase}/me/connection`,
       };
     }
   }
