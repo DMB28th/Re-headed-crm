@@ -8,7 +8,7 @@ signed token (hard rule 8).
 
 - **`ConfirmationSigner`**: HMAC-SHA256 via `Crypto.generateMac` over a
   canonical string of `(tool, object, recordId, sorted field diff, actor id,
-  expiry)`, keyed from `Cardstack_Settings__c.Signing_Key__c`. Refuses to
+  expiry)`, keyed from `MCPforce_Settings__c.Signing_Key__c`. Refuses to
   sign or verify when the key is blank — never degrades to unsigned. A
   `KeyBootstrap` class generates the key on first admin use and the
   post-install script (Session 7) calls it.

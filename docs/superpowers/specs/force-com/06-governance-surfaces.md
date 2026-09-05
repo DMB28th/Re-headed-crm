@@ -27,7 +27,7 @@ page, and the audit log tab.
   today.
 - **Connect tab** (LWC `connectPage`): endpoint URL (built from
   `URL.getOrgDomainUrl()`), consumer key from `ConnectedApplication`,
-  consumer secret from `Cardstack_Settings__c` with a "set it" link to
+  consumer secret from `MCPforce_Settings__c` with a "set it" link to
   Setup, copy buttons, and per-host walkthroughs written from Session 0's
   result doc.
 - **Audit log tab** (LWC `auditLog`): filters for object, actor, record or

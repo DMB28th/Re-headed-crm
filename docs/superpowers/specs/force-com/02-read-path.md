@@ -8,7 +8,7 @@ through the real `McpEndpoint`, with the widgets rendering in Claude.
 - **`McpEndpoint`** full dispatch (from the Session 0 skeleton): JSON-RPC
   envelope parsing, method routing, error shaping, 202 for notifications,
   405 for GET.
-- **`CardstackTool` interface and `McpTools` registry.** One Apex class per
+- **`McpforceTool` interface and `McpTools` registry.** One Apex class per
   tool, listed statically. `tools/list` emits each tool's input schema and
   the MCP Apps `_meta` from the Session 0 fixtures.
 - **Read tools:** `crm_list_objects`, `crm_search` (SOSL), `crm_list_view`
@@ -24,7 +24,7 @@ through the real `McpEndpoint`, with the widgets rendering in Claude.
   (`applyDenylist`, `filterRecord`, `filterPage`, `buildMeta`,
   `buildCapabilities`).
 - **`ConfigReader`** — the read side of the store: published rows only,
-  running in system mode so `Cardstack_User` needs no object permission on
+  running in system mode so `MCPforce_User` needs no object permission on
   config (drafts remain structurally unreachable from chat).
 - **`McpResources`** for all four widgets.
 - **Contract test harness:** a script that calls each read tool against a

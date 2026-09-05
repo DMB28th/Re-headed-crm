@@ -1,4 +1,4 @@
-# Force.com rebuild — session briefs
+# MCPforce — session briefs
 
 Overview and decisions: [../2026-09-05-force-com-rebuild-design.md](../2026-09-05-force-com-rebuild-design.md).
 Read it first; each brief assumes it.

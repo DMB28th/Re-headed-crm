@@ -9,7 +9,7 @@ draft / publish / rollback and per-surface diff.
 - **Objects** per the overview's data model: `Card_Layout__c`,
   `View_Exposure__c`, `Flow_Render_Mode__c`, `Home_Card__c`,
   `Publish_Event__c`, `Audit_Entry__c`, plus the protected custom setting
-  `Cardstack_Settings__c` (`Signing_Key__c`, `Consumer_Secret__c`).
+  `MCPforce_Settings__c` (`Signing_Key__c`, `Consumer_Secret__c`).
 - **Uniqueness trigger** computing `Unique_Key__c` (external id, unique) so
   each key has at most one Draft and one Published row.
 - **`StagingService`** (Apex, `with sharing`):
@@ -23,7 +23,7 @@ draft / publish / rollback and per-surface diff.
 - **`ConfigValidator`**: hand-written shape validation for each surface's
   JSON, mirroring `packages/core/src/layout-config.ts`, `view-exposures.ts`,
   `home-card.ts`. Reject on save with a field-level message.
-- **Permission sets** `Cardstack_Admin` and `Cardstack_User`.
+- **Permission sets** `MCPforce_Admin` and `MCPforce_User`.
 - **Seed script** (`scripts/seed-scratch.apex`) that creates a published
   Account and Opportunity layout so later sessions have data.
 
@@ -44,5 +44,5 @@ Any tool, any UI, the HMAC signing (Session 3 seeds and uses the key).
   revision and moves the old Published to History; rollback republishes a
   History revision as a new revision with `Kind__c = rollback`; a batch with
   one failing surface still publishes the others and reports the failure.
-- A user with only `Cardstack_User` cannot insert or update any config row
+- A user with only `MCPforce_User` cannot insert or update any config row
   through the API.

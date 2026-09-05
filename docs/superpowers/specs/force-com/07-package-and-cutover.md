@@ -9,7 +9,7 @@ retirement of the Node stack.
   `sf package create` / `version create` scripts, and a versioning note in
   `force-app/README.md`. Versions are promoted only after CI passes.
 - **Post-install script** (`InstallHandler`): generates
-  `Cardstack_Settings__c.Signing_Key__c` if blank; creates nothing else.
+  `MCPforce_Settings__c.Signing_Key__c` if blank; creates nothing else.
   Confirm from Session 0 whether it can also read the consumer secret; if
   not, the Connect page's "set it" path stays.
 - **CI (GitHub Actions):** on every PR create a scratch org, deploy, run

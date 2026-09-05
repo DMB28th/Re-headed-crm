@@ -5,10 +5,10 @@ pending changes → publish → live change in chat → rollback.
 
 ## Deliver
 
-- **Lightning app `Cardstack`** with tabs Home, Pending changes, Objects,
+- **Lightning app `MCPforce`** with tabs Home, Pending changes, Objects,
   Home card (placeholder until Session 5), Flows (placeholder until 6),
   Audit log (placeholder until 6), Connect (placeholder until 6). SLDS
-  and base components only. Visible to `Cardstack_Admin`.
+  and base components only. Visible to `MCPforce_Admin`.
 - **Home tab:** recent publishes (from `Publish_Event__c`), objects with
   drafts, a "Connect your chat app" pointer.
 - **Objects tab:** left list of objects that have a layout or that the admin
@@ -52,4 +52,4 @@ Exposures, actions, flows, home card, audit UI, Connect page content.
 - Jest: builder renders sections from a config, drag and keyboard reorder
   both produce the same updated config, settings popover changes Access.
 - Apex tests for every `@AuraEnabled` method, including that a
-  `Cardstack_User` calling them gets an access error.
+  `MCPforce_User` calling them gets an access error.

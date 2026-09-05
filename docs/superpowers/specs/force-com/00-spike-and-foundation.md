@@ -33,7 +33,7 @@ the skeleton every later session builds in. Ends with a written go/no-go.
   `force-app/test/` directory and delete `salesforce-metadata/`.
 - **Widget copy step.** A pnpm script that builds `packages/widgets` and
   copies each `dist/*.html` into
-  `force-app/main/default/staticresources/cardstack_<name>.resource` with
+  `force-app/main/default/staticresources/mcpforce_<name>.resource` with
   its `.resource-meta.xml` (`contentType text/html`, `cacheControl Private`).
 - **Packaged connected app** metadata (`ConnectedApp`), PKCE required,
   refresh-token flow, scopes `api refresh_token openid`, callback URLs for

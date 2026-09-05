@@ -1,10 +1,25 @@
-# Cardstack on Force.com — rebuild design
+# MCPforce — rebuilding Cardstack on Force.com
 
 Date: 2026-09-05
 Status: design agreed in brainstorming; awaiting spec review
 Supersedes, once shipped: the Node/Next.js architecture in PLAN.md,
 `docs/accounts-and-workspaces.md`, `docs/salesforce-oauth-support.md`, and the
 Railway deployment.
+
+## Name
+
+The on-platform product is **MCPforce**: that is the Lightning app name, the
+prefix on permission sets, custom settings and static resources, and the
+proposed namespace (`mcpforce`). "Cardstack" remains the name of the Node
+codebase being retired, and of nothing else. The `ui://mcpforce/*` resource
+URIs are new; the widget bundles never read their own URI, so they are
+unaffected.
+
+**Open before Session 0 registers the namespace:** Salesforce's partner
+trademark guidelines do not permit partner product names containing
+"force". That matters for the AppExchange listing (decision 3's end goal),
+not for an unlocked package in orgs you control. Decide whether to keep the
+name, and therefore the namespace, before it becomes permanent.
 
 ## Why
 
@@ -27,7 +42,7 @@ self-serve account system, and puts Studio where the admin already works.
    serve MCP discovery documents or anonymous dynamic client registration, so
    a rep adds a custom connector by pasting the endpoint URL and the packaged
    connected app's consumer key and secret, then logs into Salesforce.
-   Studio's Connect page shows those values. Session 0 proves this works on
+   MCPforce's Connect page shows those values. Session 0 proves this works on
    Claude before any tool is written; if a host cannot complete the flow with
    a manual client id, that host is out until it can.
 3. **Unlocked package first, managed 2GP later — with the namespace
@@ -69,7 +84,7 @@ security do the access work the adapter and config store used to do.
    deploy.
 4. **Studio (Lightning app).** SLDS app with tabs: Home, Pending changes,
    Objects (single tab, left list — tabs cannot be dynamic), Home card,
-   Flows, Audit log, Connect. Visible only to `Cardstack_Admin`.
+   Flows, Audit log, Connect. Visible only to `MCPforce_Admin`.
 
 Off-platform at runtime: nothing. Build tooling only: `sf` CLI for deploys
 and packaging, pnpm for the widget bundles.
@@ -132,10 +147,10 @@ the contract tests catch drift between the two.
 
 ### Permission sets
 
-- `Cardstack_Admin`: the Cardstack app and all tabs, CRUD on the four config
+- `MCPforce_Admin`: the MCPforce app and all tabs, CRUD on the four config
   objects and `Publish_Event__c`, read on `Audit_Entry__c`, access to the
   Apex classes behind `@AuraEnabled` methods.
-- `Cardstack_User`: connected-app access and access to `McpEndpoint`. No
+- `MCPforce_User`: connected-app access and access to `McpEndpoint`. No
   object permission on config, audit or publish objects: the runtime's
   `ConfigReader` reads Published rows in system mode, so a rep can reach
   config only through the tools, never through the API.
@@ -149,7 +164,7 @@ flow enabled, callback list covering known hosts' redirect URIs (Claude web,
 Claude Desktop, ChatGPT, Copilot — captured in Session 0). Consumer key is
 readable at runtime from `ConnectedApplication`; the consumer secret is not,
 so the Connect page reads it from a protected custom setting
-(`Cardstack_Settings__c.Consumer_Secret__c`) filled by the admin once from
+(`MCPforce_Settings__c.Consumer_Secret__c`) filled by the admin once from
 Setup → Manage Connected Apps, with the page linking straight there.
 Session 0 confirms whether a post-install script can fill it instead.
 
@@ -158,7 +173,7 @@ Session 0 confirms whether a post-install script can fill it instead.
 `crm_preview_update` computes the diff and returns an HMAC-SHA256 token
 bound to `(object, recordId, sorted field diff, actor, expiry)` using
 `Crypto.generateMac` with a per-org key stored in
-`Cardstack_Settings__c.Signing_Key__c` (protected custom setting, generated
+`MCPforce_Settings__c.Signing_Key__c` (protected custom setting, generated
 at install by the post-install script, never displayed). `crm_update_record`
 verifies the token, re-reads the record, and refuses if the diff no longer
 matches. Handoff flow state is signed with the same key. Never widen a write
@@ -176,9 +191,9 @@ KV. No row anywhere holds a credential.
   envelope, routes by method, and shapes errors (`-32601` unknown method,
   `-32602` bad params, `-32603` internal with the Apex exception message).
 - **`McpTools`** holds a static registry of classes implementing
-  `CardstackTool { String name(); Map<String,Object> inputSchema();
+  `McpforceTool { String name(); Map<String,Object> inputSchema();
   Map<String,Object> call(Map<String,Object> args); }`. One class per tool.
-- **`McpResources`** maps `ui://cardstack/record-card`, `results-table`,
+- **`McpResources`** maps `ui://mcpforce/record-card`, `results-table`,
   `home-card`, `flow-run` to static resources.
 - **`PayloadAssembler`** is the Apex port of `packages/core/src/assemble.ts`
   plus `filtering.ts`: published config + describe + record data →
