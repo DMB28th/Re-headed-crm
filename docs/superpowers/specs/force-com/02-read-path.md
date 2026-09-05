@@ -33,7 +33,9 @@ through the real `McpEndpoint`, with the widgets rendering in Claude.
 
 ## Out of scope
 
-Writes, flows, home card, Studio.
+Writes, flows, home card, Studio. The callout-to-self helper proven in
+Session 0 (`OrgApi.cls`) is reused here for the list-view describe; do not
+introduce a Named Credential for it.
 
 ## Read first
 

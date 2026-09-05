@@ -11,7 +11,7 @@ signed token (hard rule 8).
   expiry)`, keyed from `MCPforce_Settings__c.Signing_Key__c`. Refuses to
   sign or verify when the key is blank — never degrades to unsigned. A
   `KeyBootstrap` class generates the key on first admin use and the
-  post-install script (Session 7) calls it.
+  post-install script (Session 8) calls it.
 - **Tools:** `crm_preview_update` (diff + token), `crm_update_record`
   (verify token, re-read record, refuse if the diff drifted, DML as the rep,
   return receipt), `crm_preview_complete_task` / `crm_complete_task`,

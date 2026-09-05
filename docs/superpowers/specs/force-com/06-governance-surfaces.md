@@ -36,8 +36,9 @@ page, and the audit log tab.
 
 ## Out of scope
 
-Native flow rendering, quick actions, custom screens, audience picker,
-view-as preview.
+Native flow rendering and quick actions (Session 7 — build the Flows page so
+its support-level column can be filled in without restructuring), custom
+screens, audience picker, view-as preview.
 
 ## Read first
 

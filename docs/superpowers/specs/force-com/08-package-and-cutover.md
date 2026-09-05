@@ -1,4 +1,4 @@
-# Session 7 — Package and cutover
+# Session 8 — Package and cutover
 
 **Goal:** an installable unlocked package, CI that proves it, and the
 retirement of the Node stack.
@@ -17,6 +17,9 @@ retirement of the Node stack.
   diff against the committed static resources (fail if stale), run the
   contract-test capture and vitest, delete the org. Nightly: package version
   create against the Dev Hub.
+- **Named Credential + External Credential** for Studio's Tooling API
+  access (`MCPforce_Self`), packaged, with the install guide covering the
+  one-time per-user authorisation on the Flows page.
 - **Retire:** delete `apps/mcp-server`, `apps/studio`,
   `packages/config-store`, `packages/crm-adapters`, `docker-compose.yml`,
   the `demo:m*` scripts, and the Railway service (memory note

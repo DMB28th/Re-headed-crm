@@ -20,6 +20,16 @@ the skeleton every later session builds in. Ends with a written go/no-go.
    `resources/list`, `resources/read` returning the real `record-card.html`
    static resource with the right `_meta`. The host must render the widget.
 
+3. **Apex REST can call its own org as the caller.** From inside the
+   `crm_ping` tool, make an HTTP callout to
+   `URL.getOrgDomainUrl()` + `/services/data/v62.0/tooling/query?q=SELECT+Id+FROM+Flow+LIMIT+1`
+   with `Authorization: Bearer ` + `UserInfo.getSessionId()`, with **no**
+   Remote Site Setting or Named Credential. Record whether it succeeds when
+   the endpoint is invoked with a connected-app OAuth token (the way a host
+   calls it). Sessions 2 and 7 depend on this; if it fails, the fallback is
+   a packaged Named Credential with a per-user principal, and the result
+   doc must say so.
+
 ## Also deliver
 
 - **Dev Hub and namespace.** No Dev Hub is configured today (`sf org list`
@@ -40,6 +50,8 @@ the skeleton every later session builds in. Ends with a written go/no-go.
 - **Packaged connected app** metadata (`ConnectedApp`), PKCE required,
   refresh-token flow, scopes `api refresh_token openid`, callback URLs for
   every host that passed. Document the callback URIs in the brief's output.
+- **`OrgApi.cls`** — the callout-to-self helper from proof 3, kept: one
+  method `HttpResponse get(String pathAndQuery)`, plus `post`.
 - **Fixtures.** Read `node_modules/@modelcontextprotocol/ext-apps` types and
   capture the exact `_meta` shapes for tool results and `ui://` resources into
   `force-app/test/fixtures/mcp-apps-meta.json`; the Apex code uses these, not

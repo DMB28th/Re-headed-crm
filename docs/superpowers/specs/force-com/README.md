@@ -16,6 +16,8 @@ done when its acceptance path runs in a scratch org, not when its code exists.
 | 4 | [04-studio-core.md](04-studio-core.md) | 1, 2 |
 | 5 | [05-home-card.md](05-home-card.md) | 3, 4 |
 | 6 | [06-governance-surfaces.md](06-governance-surfaces.md) | 3, 4 |
-| 7 | [07-package-and-cutover.md](07-package-and-cutover.md) | 5, 6 |
+| 7 | [07-flow-interpreter.md](07-flow-interpreter.md) | 6 |
+| 8 | [08-package-and-cutover.md](08-package-and-cutover.md) | 5, 7 |
 
-Sessions 2 and 4 can run side by side after 1; 5 and 6 after 3 and 4.
+Sessions 2 and 4 can run side by side after 1; 5 and 6 after 3 and 4; 7
+follows 6 and can overlap with 5.

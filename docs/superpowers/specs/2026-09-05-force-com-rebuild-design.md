@@ -53,8 +53,10 @@ self-serve account system, and puts Studio where the admin already works.
    including the layout builder. Hard rule 6 ("UI must match /design") is
    retired for the on-platform build; the /design canvas remains the
    reference for *what* each surface does, not how it looks.
-5. **v1 scope is core + home card, flows as handoff only.** The native
-   screen-flow interpreter and quick actions are a later session. Custom
+5. **v1 ships the native screen-flow interpreter.** It is the last thing
+   built before cutover (Session 7), not the first, because it is the
+   largest Apex port and should land on a proven foundation — but it is a
+   launch requirement, not a follow-on. Quick actions ship with it. Custom
    screens are dropped (config with no runtime).
 6. **Salesforce only.** HubSpot and the mock adapter are retired. The
    `CrmAdapter` abstraction disappears; Apex talks to the platform directly.
@@ -202,8 +204,7 @@ KV. No row anywhere holds a credential.
   `@modelcontextprotocol/ext-apps` types into fixtures during Session 0.
 - **Where the adapter went:** `describeObject` → `Schema.describeSObjects`
   (already FLS-aware); `search` → SOSL; `listView` → the ListView describe
-  REST endpoint (a callout to self via a Named Credential, the one place the
-  runtime calls the API) then SOQL; `getRecord` / `getRelated` → SOQL from
+  REST endpoint (a callout to self, see below) then SOQL; `getRecord` / `getRelated` → SOQL from
   the config's field set; `aggregate` → SOQL aggregate. The denylist is
   applied in Apex before assembly, so hard rule 2 is enforced twice: FLS and
   config.
@@ -214,8 +215,19 @@ Tools carried to v1, names unchanged:
 |---|---|
 | Read | `crm_list_objects`, `crm_search`, `crm_list_view`, `crm_get_record`, `crm_get_related`, `crm_lookup_search`, `crm_aggregate`, `crm_home` |
 | Write (confirmed) | `crm_preview_update` → `crm_update_record`, `crm_preview_complete_task` → `crm_complete_task`, `crm_create_record` |
-| Flows, handoff only | `crm_flow_start`, `crm_flow_continue`, `crm_flow_cancel` |
-| Deferred | `crm_quick_action_start`, native branch of `crm_flow_*` |
+| Flows | `crm_flow_start`, `crm_flow_continue`, `crm_flow_cancel` — handoff rung in Session 6, native rung in Session 7 |
+| Quick actions | `crm_quick_action_start` (Session 7) |
+
+**Callouts to self.** Three things the runtime needs are only reachable
+through the org's own REST and Tooling APIs: list-view describes, flow
+definitions, and quick-action describe/execute. From an Apex REST context
+`UserInfo.getSessionId()` is the caller's own API-enabled token, and callouts
+to `URL.getOrgDomainUrl()` need no Remote Site Setting, so the runtime calls
+its own org as the rep with no stored credential and no Named Credential.
+Session 0 proves this. Studio (a Lightning session, whose session id is not
+API-enabled) reaches the Tooling API instead through a packaged Named
+Credential + External Credential with a per-user OAuth principal against the
+packaged connected app; the admin authorises it once from the Flows page.
 
 Limits to design around: one tool call is one transaction — 100 SOQL, 100
 callouts, 10 s CPU, 6 MB heap, 12 MB response. `crm_home` is the only
@@ -238,11 +250,52 @@ fan-out tool and batches its queries with capped tile counts.
   `StagingService`.
 - **Flows page:** lists org-authored screen flows from `FlowDefinitionView`
   (a regular sObject — do not query it via Tooling), toggles `Active__c`,
-  picks render mode, and states plainly that native rendering is not built.
+  picks render mode, and shows each flow's support level (chat-renderable /
+  partial / handoff-only) from static analysis once Session 7 lands; until
+  then it states plainly that native rendering is not built.
 - **Connect page:** endpoint URL, consumer key, consumer secret, copy
   buttons, per-host walkthrough. Content comes from Session 0.
 - **Audit log:** list over `Audit_Entry__c` with object / actor / record or
   field / date filters; CSV export via a Visualforce page.
+
+## The screen-flow interpreter in Apex
+
+The native rung ports `packages/core/src/flow-interview.ts`,
+`flow-expressions.ts`, `flow-capabilities.ts`, `flow-analysis.ts` and
+`quick-action.ts` (about 2 600 lines of TypeScript) to Apex. The decisions in
+`docs/flow-rendering-spike.md` stand: a metadata interpreter, not the
+undocumented flow-runtime REST, not an iframe.
+
+- **Definition source.** `FlowDefinitionView` (regular sObject) lists
+  org-authored flows and their active version; the definition JSON comes from
+  a Tooling API query of `Flow` by version id, a callout to self. Installed
+  or managed flows cannot be retrieved and are labelled handoff-only.
+  Definitions are cached per version id in Platform Cache (org partition,
+  packaged, 60 s TTL matching today's memo) so a multi-screen interview does
+  not refetch on every step.
+- **Capability registry.** `FlowCapabilities.cls` is the single source of
+  truth for element and screen-component support levels (interpret / confirm
+  / transparent / degrade), consulted by both `FlowAnalysis` (static
+  labelling for the Flows page) and the runtime, so they cannot disagree.
+- **Interpreter.** `FlowInterview.cls` walks screens, decisions,
+  assignments, record lookups (SOQL as the rep, row count capped), loops,
+  collection processors and formulas (`FlowFormula.cls`, the port of the
+  expression evaluator); writes pause at a confirm diff and execute as the
+  rep's DML. State is the same frame-stack token as today, HMAC-signed by
+  `ConfirmationSigner` and carried in the payload, so the server stays
+  stateless. Unsupported elements degrade to handoff mid-interview, never
+  fail.
+- **Quick actions** are the single-screen sibling: describe via
+  `/quickActions/{name}/describe`, render through the same
+  `FlowRenderScreen` shape, execute via `POST /quickActions/{name}` sending
+  layout fields only.
+- **Widget unchanged.** `flow-run` already renders `FlowRenderScreen`,
+  the confirm diff and the finished state; if a shape differs, Apex changes.
+- **Limits.** One interview step is one transaction. A step that would need
+  more than the SOQL or callout budget degrades to handoff with a reason in
+  the audit trail. Definition JSON for large flows can reach a few hundred
+  kilobytes; parsing it with `JSON.deserializeUntyped` stays well inside the
+  6 MB heap.
 
 ## Testing strategy
 
@@ -258,17 +311,17 @@ fan-out tool and batches its queries with capped tile counts.
 
 | # | Session | Delivers | Needs |
 |---|---|---|---|
-| 0 | Spike and foundation | Dev Hub, namespace, SFDX project, scratch-org def, packaged connected app, hello-world `McpEndpoint` serving one widget, Claude connects with manual client id, `_meta` fixtures, go/no-go | — |
+| 0 | Spike and foundation | Dev Hub, namespace, SFDX project, scratch-org def, packaged connected app, hello-world `McpEndpoint` serving one widget, Claude connects with manual client id, callout-to-self proof, `_meta` fixtures, go/no-go | — |
 | 1 | Config objects and staging | Four config objects, publish event, audit entry, both permission sets, `StagingService` | 0 |
 | 2 | Read path | JSON-RPC dispatch, tool registry, read tools, `PayloadAssembler`, denylist, resources. Golden Path 1 | 1 |
 | 3 | Write path | HMAC confirmation provenance, preview/update, create, task check-off, system-mode audit. Golden Path 2 | 2 |
 | 4 | Studio core | App shell, object pages, layout builder, live preview, pending changes, publish, rollback. Golden Path 3 | 1, 2 |
 | 5 | Home card | `Home_Card__c` builder tab, `crm_home`. M4 on-platform | 3, 4 |
 | 6 | Governance surfaces | Exposures, actions editor, flows (handoff), Connect page, audit log tab | 3, 4 |
-| 7 | Package and cutover | Unlocked package, install script, CI, retire Node apps, rewrite CLAUDE.md, decommission Railway | 5, 6 |
+| 7 | Screen-flow interpreter | Capability registry, static analysis on the Flows page, native `crm_flow_*`, quick actions. Kitchen-sink flow runs in chat | 6 |
+| 8 | Package and cutover | Unlocked package, install script, CI, retire Node apps, rewrite CLAUDE.md, decommission Railway | 5, 7 |
 
-Later, not v1: native screen-flow interpreter and quick actions in Apex.
-
-Sessions 2 and 4 can run in parallel after 1; 5 and 6 after 3 and 4.
+Sessions 2 and 4 can run in parallel after 1; 5 and 6 after 3 and 4; 7
+follows 6 and can overlap with 5.
 Each session has a brief in `docs/superpowers/specs/force-com/` that a fresh
 coding session opens with before running the planning skill.
