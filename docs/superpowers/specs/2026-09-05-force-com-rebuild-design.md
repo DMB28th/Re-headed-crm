@@ -100,9 +100,9 @@ output is copied into `force-app/main/default/staticresources/`.
 `packages/core` stays as the JSON contract's source of truth: its zod schemas
 and fixtures become contract tests asserting the Apex runtime's output matches
 the shapes the widgets expect. `apps/mcp-server`, `apps/studio`,
-`packages/config-store`, and `packages/crm-adapters` are retired in Session 7,
+`packages/config-store`, and `packages/crm-adapters` are retired in Session 8,
 not before. `salesforce-metadata/` (test flows for the interpreter spike)
-folds into `force-app/` as unpackaged test metadata.
+moves to `unpackaged/` as a second, non-packaged source directory.
 
 ### What is knowingly lost
 
