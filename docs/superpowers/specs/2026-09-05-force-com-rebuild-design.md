@@ -8,18 +8,19 @@ Railway deployment.
 
 ## Name
 
-The on-platform product is **MCPforce**: that is the Lightning app name, the
-prefix on permission sets, custom settings and static resources, and the
-proposed namespace (`mcpforce`). "Cardstack" remains the name of the Node
-codebase being retired, and of nothing else. The `ui://mcpforce/*` resource
-URIs are new; the widget bundles never read their own URI, so they are
-unaffected.
+**MCPforce** is a working name, expected to change. It is the Lightning app
+label and the prefix on permission sets, custom settings and static
+resources; all of those are renameable in an unlocked package. "Cardstack"
+remains the name of the Node codebase being retired, and of nothing else.
+The `ui://mcpforce/*` resource URIs are new; the widget bundles never read
+their own URI, so they are unaffected.
 
-**Open before Session 0 registers the namespace:** Salesforce's partner
-trademark guidelines do not permit partner product names containing
-"force". That matters for the AppExchange listing (decision 3's end goal),
-not for an unlocked package in orgs you control. Decide whether to keep the
-name, and therefore the namespace, before it becomes permanent.
+**The namespace is the one permanent choice, so it must not carry the
+name.** Session 0 registers a short, neutral namespace (for example `rcrd`
+or `cstk`, whatever is free) rather than `mcpforce`. Known constraint on the
+eventual name: Salesforce's partner trademark guidelines do not permit
+partner product names containing "force", which matters at the AppExchange
+step, not before.
 
 ## Why
 

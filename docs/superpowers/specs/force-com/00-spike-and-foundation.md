@@ -25,7 +25,9 @@ the skeleton every later session builds in. Ends with a written go/no-go.
 - **Dev Hub and namespace.** No Dev Hub is configured today (`sf org list`
   shows only `screenflow-org`). Enable Dev Hub on a Developer Edition org,
   register the namespace (a separate Developer Edition org owns it), link it.
-  Pick the namespace with the admin; it is permanent.
+  The namespace is permanent and the product name is not, so pick a short
+  neutral one (`rcrd`, `cstk`, or similar), never the product name. Confirm
+  the exact string with the admin before registering.
 - **SFDX project at `force-app/`** with root `sfdx-project.json`
   (`namespace` set, `sourceApiVersion` current), `config/project-scratch-def.json`,
   `.forceignore`, and a `scripts/` folder with `org:create`, `deploy`,
