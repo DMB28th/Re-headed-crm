@@ -297,3 +297,49 @@
     margin-bottom: 0.15rem;
     color: #181818;
 }
+
+/* Classic-style palette above a full-width card canvas. */
+.builder-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.85rem 1rem; background: #f3f5f8; border: 1px solid #c9cdd3; border-radius: 0.3rem 0.3rem 0 0; }
+.builder-toolbar p { color: #5c6573; font-size: 0.75rem; margin-top: 0.15rem; }
+.toolbar-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.field-palette { border: 1px solid #c9cdd3; border-top: 0; padding: 0.75rem 1rem; background: #f8f9fb; position: relative; }
+.palette-header { display: grid; grid-template-columns: auto minmax(180px, 330px) minmax(140px, 230px); align-items: center; gap: 0.75rem; }
+.palette-header h3 { font-weight: 700; color: #16325c; }
+.palette-hint { color: #5c6573; font-size: 0.75rem; margin: 0.35rem 0 0.6rem; }
+.palette-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.35rem; max-height: 170px; overflow-y: auto; padding: 0.15rem; }
+.palette-field { display: flex; justify-content: space-between; align-items: center; background: white; border: 1px solid #c5cdd8; border-left: 3px solid #8fb5db; border-radius: 0.2rem; padding: 0.1rem 0.4rem; cursor: grab; min-width: 0; }
+.palette-field:hover { background: #eef6ff; border-color: #0176d3; }
+.palette-name { font-size: 0.75rem; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+.palette-used { background: #edf0f3; color: #66717f; cursor: default; opacity: 0.75; }
+.layout-canvas { border: 1px solid #c9cdd3; border-top: 0; background: #fff; padding: 1rem; }
+.canvas-record-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+.canvas-record-header p { color: #5c6573; font-size: 0.75rem; }
+.canvas-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; background: #edf1f7; padding: 0.5rem 0.7rem; border-bottom: 1px solid #d6dce5; border-radius: 0.25rem 0.25rem 0 0; }
+.canvas-section-heading h3 { font-size: 0.85rem; font-weight: 700; color: #16325c; }
+.canvas-section-heading span { font-size: 0.75rem; color: #5c6573; }
+.highlights-section, .section-card { border: 1px solid #d6dce5; border-radius: 0.25rem; margin-bottom: 1rem; }
+.highlight-dropzone { min-height: 70px; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; padding: 0.75rem; border: 2px dashed transparent; }
+.hl-add { margin: 0 0.75rem 0.75rem; }
+.hl-chip { border-radius: 0.25rem; padding: 0.35rem 0.5rem; gap: 0.4rem; cursor: grab; }
+.section-columns { width: 135px; flex-shrink: 0; }
+.section-grid, .preview-cols { display: grid; gap: 0.65rem; padding: 0.65rem; }
+.columns-1 { grid-template-columns: minmax(0, 1fr); }
+.columns-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.columns-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.column-dropzone { min-width: 0; min-height: 100px; background: #fafbfd; border: 1px dashed #b8c5d6; border-radius: 0.25rem; padding: 0.4rem; }
+.column-heading { color: #5c6573; font-size: 0.7rem; font-weight: 700; padding: 0.2rem 0.25rem 0.4rem; }
+.full-width-zone { margin: 0.65rem 0.65rem 0; min-height: 55px; }
+.drop-hint { display: block; color: #8a94a2; font-size: 0.7rem; padding: 0.4rem; }
+.layout-row { padding: 0; margin-bottom: 0.4rem; display: block; }
+.drag-over { background: #e7f3ff; outline: 2px solid #0176d3; outline-offset: -2px; }
+.layout-row.drag-over { border-top: 2px solid #0176d3; }
+.preview-panel { margin-top: 1rem; border: 1px solid #d6dce5; padding-bottom: 0.75rem; }
+.preview-panel > p { padding: 0 1rem; }
+.mock-card { border: 1px solid #ddd; border-radius: 0.4rem; margin: 1rem auto; padding: 1.25rem; max-width: 850px; }
+.mock-card h3 { font-size: 1.25rem; margin-bottom: 0.4rem; }
+.preview-section { border: 1px solid #ddd; border-radius: 0.25rem; margin: 1rem 0; padding: 0.85rem; }
+.preview-section h4 { font-weight: 700; margin-bottom: 0.75rem; }
+.preview-cell p { color: #5c6573; font-size: 0.75rem; }
+.preview-cell { padding: 0.45rem 0; overflow-wrap: anywhere; }
+.preview-highlights { margin-top: 1rem; }
+@media (max-width: 760px) { .builder-toolbar { align-items: start; flex-direction: column; } .palette-header { grid-template-columns: 1fr; } .section-columns { width: 110px; } }

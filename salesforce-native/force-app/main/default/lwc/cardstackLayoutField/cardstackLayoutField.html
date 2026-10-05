@@ -1,0 +1,16 @@
+<template>
+    <div class="field-tile">
+        <div class="field-heading"><lightning-icon icon-name="utility:drag" size="xx-small"></lightning-icon><strong title={field.api}>{field.label}</strong>
+            <lightning-button-menu alternative-text="Field actions" variant="bare" menu-alignment="right" onselect={menuSelect} ondragstart={stopDrag}>
+                <lightning-menu-item value="up" label="Move up"></lightning-menu-item><lightning-menu-item value="down" label="Move down"></lightning-menu-item><lightning-menu-item value="remove" label="Remove field"></lightning-menu-item>
+            </lightning-button-menu>
+        </div>
+        <template if:true={invalid}><p class="slds-text-color_error">Unknown field</p></template>
+        <details ondragstart={stopDrag}><summary>Field settings</summary><div class="field-settings">
+            <p class="field-api">{field.api}</p><lightning-input label="Display label" value={field.label} onchange={changeLabel}></lightning-input>
+            <lightning-combobox label="Placement" value={field.column} options={columnOptions} onchange={changeColumn}></lightning-combobox>
+            <template if:true={hasMoveOptions}><lightning-combobox label="Move to section" options={moveOptions} value="" placeholder="Choose section" onchange={changeSection}></lightning-combobox></template>
+            <lightning-input type="checkbox" label="Editable from chat" checked={field.editable} onchange={changeEditable}></lightning-input>
+        </div></details>
+    </div>
+</template>

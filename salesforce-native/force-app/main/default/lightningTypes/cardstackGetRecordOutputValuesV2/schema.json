@@ -1,0 +1,43 @@
+{
+  "description": "Output values for CardstackGetRecordAction",
+  "title": "cardstackGetRecordOutputValuesV2",
+  "lightning:type": "lightning__objectType",
+  "properties": {
+    "recordName": {
+      "lightning:type": "lightning__textType",
+      "title": "Record Name"
+    },
+    "objectName": {
+      "lightning:type": "lightning__textType",
+      "title": "Object Name"
+    },
+    "fields": {
+      "lightning:type": "@apexClassType/c__CardstackGetRecordAction$FieldRow",
+      "title": "Fields"
+    },
+    "highlights": {
+      "lightning:type": "@apexClassType/c__CardstackGetRecordAction$FieldRow",
+      "title": "Highlight Fields"
+    },
+    "sections": {
+      "lightning:type": "@apexClassType/c__CardstackGetRecordAction$LayoutSection",
+      "title": "Layout Sections"
+    },
+    "hasHighlights": {
+      "lightning:type": "lightning__booleanType",
+      "title": "Has Highlights"
+    },
+    "hasSections": {
+      "lightning:type": "lightning__booleanType",
+      "title": "Has Sections"
+    },
+    "showFlatFields": {
+      "lightning:type": "lightning__booleanType",
+      "title": "Show Flat Fields"
+    },
+    "recordUrl": {
+      "lightning:type": "lightning__textType",
+      "title": "Record Url"
+    }
+  }
+}

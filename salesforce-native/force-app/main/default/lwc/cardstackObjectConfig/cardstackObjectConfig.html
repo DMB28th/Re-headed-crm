@@ -91,407 +91,102 @@
                         </template>
                     </div>
 
-                    <div class="builder-grid">
-                        <!-- Field picker -->
-                        <div class="builder-col">
-                            <h3 class="slds-text-heading_small slds-m-bottom_x-small">Field picker</h3>
-                            <div class="slds-grid slds-grid_vertical-align-center slds-m-bottom_small">
-                                <span class="slds-text-body_small slds-m-right_x-small">Add to:</span>
-                                <template if:true={hasSections}>
-                                    <lightning-combobox
-                                        variant="label-hidden"
-                                        label="Target section"
-                                        placeholder="Select section…"
-                                        options={sectionTargetOptions}
-                                        value={targetSectionKey}
-                                        onchange={handleTargetSectionChange}>
-                                    </lightning-combobox>
-                                </template>
-                                <template if:false={hasSections}>
-                                    <span class="slds-text-color_weak slds-text-body_small">New section (auto)</span>
-                                </template>
-                            </div>
-                            <template if:false={hasSections}>
-                                <p class="slds-text-color_weak slds-text-body_small slds-m-bottom_small">
-                                    A section will be created automatically when you add the first field.
-                                </p>
-                            </template>
-                            <lightning-input
-                                type="search"
-                                label="Search fields"
-                                variant="label-hidden"
-                                placeholder="Search fields…"
-                                value={fieldSearch}
-                                onchange={handleFieldSearch}
-                                class="slds-m-bottom_small">
-                            </lightning-input>
-                            <template if:true={fieldsLoading}>
-                                <lightning-spinner size="small" alternative-text="Loading fields"></lightning-spinner>
-                            </template>
-                            <template for:each={groupedFields} for:item="group">
-                                <div key={group.category} class="slds-m-bottom_small">
-                                    <p class="slds-text-title_caps slds-m-bottom_xx-small">{group.category}</p>
-                                    <ul class="field-list">
-                                        <template for:each={group.fields} for:item="f">
-                                            <li key={f.api} class="field-row">
-                                                <div class="slds-truncate" title={f.api}>
-                                                    <span class="slds-text-body_small">{f.label}</span>
-                                                    <span class="slds-text-color_weak mono slds-m-left_xx-small">{f.api}</span>
-                                                </div>
-                                                <template if:true={f.added}>
-                                                    <lightning-icon icon-name="utility:check" size="x-small" class="slds-m-left_x-small" title="In layout"></lightning-icon>
-                                                </template>
-                                                <template if:false={f.added}>
-                                                    <lightning-button-icon
-                                                        icon-name="utility:add"
-                                                        variant="bare"
-                                                        size="small"
-                                                        alternative-text="Add field"
-                                                        title="Add to layout"
-                                                        data-api={f.api}
-                                                        onclick={handleAddFieldClick}
-                                                        class="slds-m-left_x-small">
-                                                    </lightning-button-icon>
-                                                </template>
-                                            </li>
-                                        </template>
-                                    </ul>
-                                </div>
-                            </template>
-                            <template if:false={groupedFields.length}>
-                                <template if:false={fieldsLoading}>
-                                    <p class="slds-text-color_weak">No fields match.</p>
-                                </template>
-                            </template>
-                        </div>
-
-                        <!-- Layout canvas: highlights + sections -->
-                        <div class="builder-col">
-                            <!-- Highlights Panel -->
-                            <h3 class="slds-text-heading_small slds-m-bottom_xx-small">Highlights Panel</h3>
-                            <p class="slds-text-color_weak slds-text-body_small slds-m-bottom_small">
-                                Key fields shown at the top of the card, like Salesforce Highlights.
-                            </p>
-                            <template if:true={workingHighlights.length}>
-                                <div class="hl-chips slds-m-bottom_small">
-                                    <template for:each={workingHighlights} for:item="h">
-                                        <span key={h.key} class={h.rowClass}>
-                                            <span class="slds-truncate">
-                                                <strong>{h.label}</strong>
-                                                <span class="slds-text-color_weak mono slds-m-left_xx-small">{h.api}</span>
-                                            </span>
-                                            <template if:false={h.valid}>
-                                                <span class="slds-text-color_error slds-text-body_small"> — unknown field</span>
-                                            </template>
-                                            <lightning-button-icon
-                                                icon-name="utility:close"
-                                                variant="bare"
-                                                size="x-small"
-                                                alternative-text="Remove highlight"
-                                                title="Remove highlight"
-                                                data-key={h.key}
-                                                onclick={handleRemoveHighlight}
-                                                class="slds-m-left_xx-small">
-                                            </lightning-button-icon>
-                                        </span>
-                                    </template>
-                                </div>
-                            </template>
-                            <template if:false={highlightsFull}>
-                                <lightning-combobox
-                                    label="Add highlight field"
-                                    variant="label-hidden"
-                                    placeholder="Add a highlight field…"
-                                    options={highlightFieldOptions}
-                                    value=""
-                                    onchange={handleAddHighlight}
-                                    class="slds-m-bottom_small hl-add">
-                                </lightning-combobox>
-                            </template>
-                            <template if:true={highlightsFull}>
-                                <p class="slds-text-color_weak slds-text-body_small slds-m-bottom_small">7 highlights max.</p>
-                            </template>
-
-                            <!-- Sections -->
-                            <h3 class="slds-text-heading_small slds-m-bottom_xx-small slds-m-top_medium">Sections</h3>
-                            <template for:each={sectionViews} for:item="s">
-                                <div key={s.key} class="section-card slds-box slds-box_x-small slds-m-bottom_small">
-                                    <div class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center slds-m-bottom_x-small">
-                                        <lightning-input
-                                            label="Section label"
-                                            variant="label-hidden"
-                                            value={s.label}
-                                            data-key={s.key}
-                                            onchange={handleSectionLabelChange}
-                                            class="section-label-input"
-                                            placeholder="Section label">
-                                        </lightning-input>
-                                        <lightning-button-icon
-                                            icon-name="utility:delete"
-                                            variant="bare"
-                                            size="small"
-                                            alternative-text="Remove section"
-                                            title="Remove section"
-                                            data-key={s.key}
-                                            onclick={handleRemoveSection}>
-                                        </lightning-button-icon>
-                                    </div>
-                                    <template if:true={s.fields.length}>
-                                        <ul class="layout-list" ondragend={handleDragEnd}>
-                                            <template for:each={s.fields} for:item="f">
-                                                <li key={f.key}
-                                                    data-key={f.key}
-                                                    data-section={s.key}
-                                                    draggable="true"
-                                                    ondragstart={handleDragStart}
-                                                    ondragover={handleDragOver}
-                                                    ondragleave={handleDragLeave}
-                                                    ondrop={handleDrop}
-                                                    class={f.rowClass}>
-                                                    <lightning-icon icon-name="utility:drag" size="x-small" class="drag-handle" title="Drag to reorder"></lightning-icon>
-                                                    <div class="slds-truncate slds-m-horizontal_x-small row-main">
-                                                        <span class="slds-text-body_small slds-m-right_x-small"><strong>{f.label}</strong></span>
-                                                        <span class="slds-text-color_weak mono">{f.api}</span>
-                                                        <template if:false={f.valid}>
-                                                            <p class="slds-text-color_error slds-text-body_small">Unknown field — not in the org schema.</p>
-                                                        </template>
-                                                    </div>
-                                                    <div class="col-switch slds-m-right_x-small" title="Column placement">
-                                                        <lightning-button-icon
-                                                            icon-name="utility:left_align_text"
-                                                            variant={f.colLeftVariant}
-                                                            size="small"
-                                                            alternative-text="Left column"
-                                                            title="Left column"
-                                                            data-key={f.key}
-                                                            data-section={s.key}
-                                                            onclick={handleColumnLeft}>
-                                                        </lightning-button-icon>
-                                                        <lightning-button-icon
-                                                            icon-name="utility:right_align_text"
-                                                            variant={f.colRightVariant}
-                                                            size="small"
-                                                            alternative-text="Right column"
-                                                            title="Right column"
-                                                            data-key={f.key}
-                                                            data-section={s.key}
-                                                            onclick={handleColumnRight}>
-                                                        </lightning-button-icon>
-                                                        <lightning-button-icon
-                                                            icon-name="utility:justify_text"
-                                                            variant={f.colFullVariant}
-                                                            size="small"
-                                                            alternative-text="Full width"
-                                                            title="Full width"
-                                                            data-key={f.key}
-                                                            data-section={s.key}
-                                                            onclick={handleColumnFull}>
-                                                        </lightning-button-icon>
-                                                    </div>
-                                                    <lightning-badge label={f.type} class="slds-m-right_x-small"></lightning-badge>
-                                                    <template if:true={s.moveOptions.length}>
-                                                        <lightning-combobox
-                                                            label="Move to section"
-                                                            variant="label-hidden"
-                                                            placeholder="Move to…"
-                                                            value=""
-                                                            options={s.moveOptions}
-                                                            data-key={f.key}
-                                                            data-section={s.key}
-                                                            onchange={handleMoveFieldSection}
-                                                            class="slds-m-right_x-small move-select"
-                                                            title="Move to another section">
-                                                        </lightning-combobox>
-                                                    </template>
-                                                    <lightning-input
-                                                        type="checkbox"
-                                                        label="Editable"
-                                                        variant="label-hidden"
-                                                        checked={f.editable}
-                                                        data-key={f.key}
-                                                        data-section={s.key}
-                                                        onchange={handleEditableToggle}
-                                                        title="Editable from chat"
-                                                        class="slds-m-right_x-small">
-                                                    </lightning-input>
-                                                    <lightning-button-icon
-                                                        icon-name="utility:arrowup"
-                                                        variant="bare" size="small"
-                                                        alternative-text="Move up"
-                                                        data-key={f.key}
-                                                        data-section={s.key}
-                                                        onclick={handleMoveUp}>
-                                                    </lightning-button-icon>
-                                                    <lightning-button-icon
-                                                        icon-name="utility:arrowdown"
-                                                        variant="bare" size="small"
-                                                        alternative-text="Move down"
-                                                        data-key={f.key}
-                                                        data-section={s.key}
-                                                        onclick={handleMoveDown}>
-                                                    </lightning-button-icon>
-                                                    <lightning-button-icon
-                                                        icon-name="utility:close"
-                                                        variant="bare" size="small"
-                                                        alternative-text="Remove"
-                                                        data-key={f.key}
-                                                        data-section={s.key}
-                                                        onclick={handleRemoveField}
-                                                        class="slds-m-left_xx-small">
-                                                    </lightning-button-icon>
-                                                </li>
-                                            </template>
-                                        </ul>
-                                    </template>
-                                    <template if:false={s.fields.length}>
-                                        <p class="slds-text-color_weak slds-text-body_small">No fields yet — add some from the picker.</p>
-                                    </template>
-                                </div>
-                            </template>
-                            <button class="add-section-btn slds-m-top_x-small" onclick={handleAddSection}>
-                                <lightning-icon icon-name="utility:add" size="x-small" class="slds-m-right_xx-small"></lightning-icon>
-                                Add section
-                            </button>
-                            <template if:false={hasSections}>
-                                <p class="slds-text-color_weak slds-text-body_small slds-m-top_small">
-                                    No sections yet. Add a section, or just add fields — the first field creates one for you.
-                                </p>
-                            </template>
-                        </div>
-
-                        <!-- Live preview -->
-                        <div class="builder-col preview-col">
-                            <div class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center slds-m-bottom_x-small">
-                                <h3 class="slds-text-heading_small">Preview</h3>
-                                <lightning-combobox
-                                    label="View as"
-                                    variant="label-hidden"
-                                    options={previewAudienceOptions}
-                                    value={previewAudience}
-                                    onchange={handlePreviewAudienceChange}
-                                    class="preview-audience">
-                                </lightning-combobox>
-                            </div>
-                            <template if:false={previewHasConfig}>
-                                <p class="slds-text-color_weak slds-m-bottom_small">
-                                    Audience "{previewAudience}" has no layout yet — showing a blank card.
-                                </p>
-                            </template>
-                            <div class="slds-box slds-theme_default mock-card">
-                                <p class="slds-text-heading_small">Sample Record Name</p>
-                                <p class="slds-text-color_weak slds-text-body_small slds-m-bottom_small">{selectedObjectLabel}</p>
-                                <!-- Highlights -->
-                                <template if:true={previewHasHighlights}>
-                                    <div class="preview-highlights">
-                                        <template for:each={previewHighlightRows} for:item="h">
-                                            <div key={h.key} class="ph-item">
-                                                <p class="slds-text-color_weak slds-text-body_small">{h.label}</p>
-                                                <p>
-                                                    <template if:true={h.sample.isCheck}>
-                                                        <lightning-icon icon-name="utility:check" size="x-small"></lightning-icon>
-                                                    </template>
-                                                    <template if:true={h.sample.isBadge}>
-                                                        <lightning-badge label={h.sample.value}></lightning-badge>
-                                                    </template>
-                                                    <template if:true={h.sample.isLink}>
-                                                        <a class="slds-text-body_small">{h.sample.value}</a>
-                                                    </template>
-                                                    <template if:true={h.sample.isText}>
-                                                        <span class="slds-text-body_small"><strong>{h.sample.value}</strong></span>
-                                                    </template>
-                                                </p>
-                                            </div>
-                                        </template>
-                                    </div>
-                                </template>
-                                <!-- Sections -->
-                                <template for:each={previewSectionViews} for:item="sec">
-                                    <div key={sec.key} class="slds-m-top_small">
-                                        <p class="slds-text-title_caps preview-section-label">{sec.label}</p>
-                                        <template if:true={sec.hasRows}>
-                                            <template for:each={sec.fullRows} for:item="r">
-                                                <div key={r.key} class="slds-grid slds-grid_align-spread slds-p-vertical_xx-small preview-row">
-                                                    <span class="slds-text-color_weak slds-text-body_small">{r.label}</span>
-                                                    <span>
-                                                        <template if:true={r.sample.isCheck}>
-                                                            <lightning-icon icon-name="utility:check" size="x-small"></lightning-icon>
-                                                        </template>
-                                                        <template if:true={r.sample.isBadge}>
-                                                            <lightning-badge label={r.sample.value}></lightning-badge>
-                                                        </template>
-                                                        <template if:true={r.sample.isLink}>
-                                                            <a class="slds-text-body_small">{r.sample.value}</a>
-                                                        </template>
-                                                        <template if:true={r.sample.isText}>
-                                                            <span class="slds-text-body_small">{r.sample.value}</span>
-                                                        </template>
-                                                    </span>
-                                                </div>
-                                            </template>
-                                            <template if:true={sec.usesColumns}>
-                                                <div class="preview-cols">
-                                                    <div class="preview-col-left">
-                                                        <template for:each={sec.leftRows} for:item="r">
-                                                            <div key={r.key} class="slds-p-vertical_xx-small preview-cell">
-                                                                <p class="slds-text-color_weak slds-text-body_small">{r.label}</p>
-                                                                <p>
-                                                                    <template if:true={r.sample.isCheck}>
-                                                                        <lightning-icon icon-name="utility:check" size="x-small"></lightning-icon>
-                                                                    </template>
-                                                                    <template if:true={r.sample.isBadge}>
-                                                                        <lightning-badge label={r.sample.value}></lightning-badge>
-                                                                    </template>
-                                                                    <template if:true={r.sample.isLink}>
-                                                                        <a class="slds-text-body_small">{r.sample.value}</a>
-                                                                    </template>
-                                                                    <template if:true={r.sample.isText}>
-                                                                        <span class="slds-text-body_small">{r.sample.value}</span>
-                                                                    </template>
-                                                                </p>
-                                                            </div>
-                                                        </template>
-                                                    </div>
-                                                    <div class="preview-col-right">
-                                                        <template for:each={sec.rightRows} for:item="r">
-                                                            <div key={r.key} class="slds-p-vertical_xx-small preview-cell">
-                                                                <p class="slds-text-color_weak slds-text-body_small">{r.label}</p>
-                                                                <p>
-                                                                    <template if:true={r.sample.isCheck}>
-                                                                        <lightning-icon icon-name="utility:check" size="x-small"></lightning-icon>
-                                                                    </template>
-                                                                    <template if:true={r.sample.isBadge}>
-                                                                        <lightning-badge label={r.sample.value}></lightning-badge>
-                                                                    </template>
-                                                                    <template if:true={r.sample.isLink}>
-                                                                        <a class="slds-text-body_small">{r.sample.value}</a>
-                                                                    </template>
-                                                                    <template if:true={r.sample.isText}>
-                                                                        <span class="slds-text-body_small">{r.sample.value}</span>
-                                                                    </template>
-                                                                </p>
-                                                            </div>
-                                                        </template>
-                                                    </div>
-                                                </div>
-                                            </template>
-                                        </template>
-                                        <template if:false={sec.hasRows}>
-                                            <p class="slds-text-color_weak slds-text-body_small">No fields in this section.</p>
-                                        </template>
-                                    </div>
-                                </template>
-                                <template if:true={previewIsEmpty}>
-                                    <p class="slds-text-color_weak">Nothing to preview.</p>
-                                </template>
-                                <div class="slds-m-top_small slds-text-align_right">
-                                    <lightning-button label="Open in Salesforce" variant="brand" disabled></lightning-button>
-                                </div>
-                            </div>
-                            <p class="slds-text-color_weak slds-text-body_small slds-m-top_x-small">
-                                This is how the card will look in chat. Sample values stand in for real data.
-                            </p>
+                    <div class="builder-toolbar">
+                        <div><strong>Layout editor</strong><p>Drag fields into the card. Choose columns for each section.</p></div>
+                        <div class="toolbar-actions">
+                            <lightning-button label="Add section" icon-name="utility:add" onclick={handleAddSection}></lightning-button>
+                            <lightning-button label={previewToggleLabel} icon-name="utility:preview" onclick={togglePreview}></lightning-button>
+                            <lightning-button label="Stage Draft" variant="brand" onclick={stageLayout} disabled={cannotStage}></lightning-button>
                         </div>
                     </div>
+                    <div class="field-palette">
+                        <div class="palette-header">
+                            <h3>Fields</h3>
+                            <lightning-input type="search" label="Search fields" variant="label-hidden" placeholder="Quick find fields…" value={fieldSearch} onchange={handleFieldSearch}></lightning-input>
+                            <lightning-combobox label="Add fields to section" variant="label-hidden" placeholder="Choose section" options={sectionTargetOptions} value={targetSectionKey} onchange={handleTargetSectionChange}></lightning-combobox>
+                        </div>
+                        <p class="palette-hint">Drag a field to Highlights or a column below. Use + to add to the selected section.</p>
+                        <template if:true={fieldsLoading}><lightning-spinner size="small" alternative-text="Loading fields"></lightning-spinner></template>
+                        <ul class="palette-grid">
+                            <template for:each={paletteFields} for:item="f">
+                                <li key={f.api} class={f.paletteClass} draggable={f.draggable} data-api={f.api} ondragstart={handleDragStart} ondragend={handleDragEnd} title={f.api}>
+                                    <span class="palette-name">{f.label}</span>
+                                    <template if:true={f.added}><lightning-icon icon-name="utility:check" size="xx-small" alternative-text="In layout"></lightning-icon></template>
+                                    <template if:false={f.added}><lightning-button-icon icon-name="utility:add" variant="bare" size="small" alternative-text="Add field" title="Add to selected section" data-api={f.api} onclick={handleAddFieldClick}></lightning-button-icon></template>
+                                </li>
+                            </template>
+                        </ul>
+                        <template if:false={paletteFields.length}><p class="palette-hint">No fields match your search.</p></template>
+                    </div>
+                    <div class="layout-canvas" ondragend={handleDragEnd}>
+                        <div class="canvas-record-header"><lightning-icon icon-name="standard:record" size="small"></lightning-icon><div><strong>{selectedObjectLabel}</strong><p>Record card</p></div></div>
+                        <section class="highlights-section">
+                            <div class="canvas-section-heading"><h3>Highlights Panel</h3><span>Up to 7 key fields</span></div>
+                            <div class="highlight-dropzone" data-section="highlights" ondragover={handleDragOver} ondragleave={handleDragLeave} ondrop={handleDrop}>
+                                <template for:each={workingHighlights} for:item="h">
+                                    <span key={h.key} class={h.rowClass} draggable="true" data-key={h.key} data-section="highlights" ondragstart={handleDragStart} ondragover={handleDragOver} ondragleave={handleDragLeave} ondrop={handleDrop}>
+                                        <lightning-icon icon-name="utility:drag" size="xx-small"></lightning-icon><strong>{h.label}</strong>
+                                        <lightning-button-icon icon-name="utility:close" variant="bare" size="x-small" alternative-text="Remove highlight" data-key={h.key} onclick={handleRemoveHighlight}></lightning-button-icon>
+                                    </span>
+                                </template>
+                                <span class="drop-hint">Drop a highlight field here</span>
+                            </div>
+                            <template if:false={highlightsFull}><lightning-combobox label="Add highlight field" variant="label-hidden" placeholder="Add a highlight field…" options={highlightFieldOptions} value="" onchange={handleAddHighlight} class="hl-add"></lightning-combobox></template>
+                        </section>
+                        <template for:each={sectionViews} for:item="s">
+                            <section key={s.key} class="section-card">
+                                <div class="canvas-section-heading">
+                                    <lightning-input label="Section label" variant="label-hidden" value={s.label} data-key={s.key} onchange={handleSectionLabelChange} class="section-label-input" placeholder="Section label"></lightning-input>
+                                    <lightning-combobox label="Section columns" variant="label-hidden" value={s.columnValue} options={sectionColumnOptions} data-key={s.key} onchange={handleSectionColumnsChange} class="section-columns"></lightning-combobox>
+                                    <lightning-button-icon icon-name="utility:delete" variant="bare" alternative-text="Remove section" title="Remove section" data-key={s.key} onclick={handleRemoveSection}></lightning-button-icon>
+                                </div>
+                                <template if:true={s.hasMultipleColumns}>
+                                    <div class="column-dropzone full-width-zone" data-section={s.key} data-column="full" ondragover={handleDragOver} ondragleave={handleDragLeave} ondrop={handleDrop}>
+                                        <p class="column-heading">Full width</p>
+                                        <template for:each={s.fullFields} for:item="f">
+                                            <div key={f.key} class={f.rowClass} draggable="true" data-key={f.key} data-section={s.key} data-column="full" ondragstart={handleDragStart} ondragover={handleDragOver} ondragleave={handleDragLeave} ondrop={handleDrop}>
+                                                <c-cardstack-layout-field field={f} section-key={s.key} column-count={s.columns} move-options={s.moveOptions} onfieldedit={handleFieldEdit}></c-cardstack-layout-field>
+                                            </div>
+                                        </template>
+                                        <span class="drop-hint">Drop full-width fields here</span>
+                                    </div>
+                                </template>
+                                <div class={s.gridClass}>
+                                    <template for:each={s.columnViews} for:item="col">
+                                        <div key={col.key} class="column-dropzone" data-section={s.key} data-column={col.key} ondragover={handleDragOver} ondragleave={handleDragLeave} ondrop={handleDrop}>
+                                            <p class="column-heading">{col.label}</p>
+                                            <template for:each={col.fields} for:item="f">
+                                                <div key={f.key} class={f.rowClass} draggable="true" data-key={f.key} data-section={s.key} data-column={col.key} ondragstart={handleDragStart} ondragover={handleDragOver} ondragleave={handleDragLeave} ondrop={handleDrop}>
+                                                    <c-cardstack-layout-field field={f} section-key={s.key} column-count={s.columns} move-options={s.moveOptions} onfieldedit={handleFieldEdit}></c-cardstack-layout-field>
+                                                </div>
+                                            </template>
+                                            <span class="drop-hint">Drop fields here</span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </section>
+                        </template>
+                        <button class="add-section-btn" onclick={handleAddSection}><lightning-icon icon-name="utility:add" size="x-small"></lightning-icon> Add section</button>
+                    </div>
+                    <template if:true={showPreview}>
+                        <div class="preview-panel">
+                            <div class="canvas-section-heading"><h3>Card preview</h3><lightning-combobox label="View as" variant="label-hidden" options={previewAudienceOptions} value={previewAudience} onchange={handlePreviewAudienceChange} class="preview-audience"></lightning-combobox></div>
+                            <div class="mock-card">
+                                <h3>Sample Record Name</h3><p class="slds-text-color_weak">{selectedObjectLabel}</p>
+                                <template if:true={previewHasHighlights}><div class="preview-highlights"><template for:each={previewHighlightRows} for:item="h"><div key={h.key} class="ph-item"><p>{h.label}</p><strong>{h.sample.value}</strong></div></template></div></template>
+                                <template for:each={previewSectionViews} for:item="sec">
+                                    <section key={sec.key} class="preview-section"><h4>{sec.label}</h4>
+                                        <template for:each={sec.fullRows} for:item="r"><div key={r.key} class="preview-cell"><p>{r.label}</p><span>{r.sample.value}</span></div></template>
+                                        <template if:true={sec.usesColumns}><div class={sec.gridClass}><template for:each={sec.columnViews} for:item="col"><div key={col.key}><template for:each={col.rows} for:item="r"><div key={r.key} class="preview-cell"><p>{r.label}</p><span>{r.sample.value}</span></div></template></div></template></div></template>
+                                        <template if:false={sec.hasRows}><p class="slds-text-color_weak">No fields in this section.</p></template>
+                                    </section>
+                                </template>
+                                <template if:true={previewIsEmpty}><p>Nothing to preview.</p></template>
+                                <div class="slds-text-align_right slds-m-top_medium"><lightning-button label="Open in Salesforce" variant="brand" disabled></lightning-button></div>
+                            </div>
+                            <p class="slds-text-color_weak slds-m-top_small">Sample values preview your card layout. Published layouts determine what appears in chat.</p>
+                        </div>
+                    </template>
 
                     <!-- Advanced: diff + JSON (collapsed by default) -->
                     <div class="slds-m-top_medium">
@@ -515,6 +210,7 @@
                                             <template if:true={diff.empty}>
                                                 <p class="slds-text-color_weak">No differences — working copy matches the published layout.</p>
                                             </template>
+                                            <template if:true={diff.structureChanged}><p class="diff-moved">Section layout or field settings changed. View JSON for the exact configuration.</p></template>
                                             <template for:each={diff.hlAdded} for:item="h">
                                                 <p key={h.key} class="diff-added">+ highlight: {h.label} <span class="mono">({h.api})</span></p>
                                             </template>

@@ -234,7 +234,7 @@ global with sharing class CardstackGetRecordAction {
     /**
      * Populate highlights/sections (new shape) or flat fields (old shape)
      * from the Studio layout. Also returns the configured fields in flat order
-     * for the stable flat-field HXL renderer. Always sets the widget flags.
+     * for legacy flat-field clients. Always sets the widget flags.
      */
     private static void applyLayout(GetRecordResponse res, String objectName,
             SObject rec, Map<String, Object> cfg) {
@@ -268,10 +268,11 @@ global with sharing class CardstackGetRecordAction {
                     LayoutSection sec = new LayoutSection();
                     sec.label = sm.get('label') == null ? '' : String.valueOf(sm.get('label'));
                     sec.fields = new List<FieldRow>();
+                    initSectionColumns(sec, sm);
                     for (Object fo : sectionFieldsOf(sm)) {
                         FieldRow r = toLayoutRow(apiLookup, fieldMap, rec,
                             (Map<String, Object>) fo);
-                        if (r != null) { sec.fields.add(r); res.fields.add(r); }
+                        if (r != null) { addSectionField(sec, r, (Map<String, Object>) fo, sm); res.fields.add(r); }
                     }
                     res.sections.add(sec);
                 }
@@ -306,10 +307,11 @@ global with sharing class CardstackGetRecordAction {
                 if (lbl == null) lbl = sm.get('title');
                 sec.label = lbl == null ? '' : String.valueOf(lbl);
                 sec.fields = new List<FieldRow>();
+                initSectionColumns(sec, sm);
                 for (Object fo : sectionFieldsOf(sm)) {
                     FieldRow r = toLayoutRow(apiLookup, fieldMap, rec,
                         (Map<String, Object>) fo);
-                    if (r != null) { sec.fields.add(r); res.fields.add(r); }
+                    if (r != null) { addSectionField(sec, r, (Map<String, Object>) fo, sm); res.fields.add(r); }
                 }
                 res.sections.add(sec);
             }
@@ -317,6 +319,36 @@ global with sharing class CardstackGetRecordAction {
         res.hasHighlights = !res.highlights.isEmpty();
         res.hasSections = !res.sections.isEmpty();
         res.showFlatFields = !res.hasSections;
+    }
+
+    private static void initSectionColumns(LayoutSection section, Map<String, Object> config) {
+        section.fullFields = new List<FieldRow>();
+        section.leftFields = new List<FieldRow>();
+        section.rightFields = new List<FieldRow>();
+        section.centerFields = new List<FieldRow>();
+        section.usesThreeColumns = String.valueOf(config.get('columns')) == '3';
+        section.usesColumns = false;
+    }
+
+    private static void addSectionField(LayoutSection section, FieldRow field, Map<String, Object> config, Map<String, Object> sectionConfig) {
+        section.fields.add(field);
+        String column = config.get('column') == null ? 'full' : String.valueOf(config.get('column'));
+        String count = String.valueOf(sectionConfig.get('columns'));
+        if (count == '1') column = 'full';
+        if (count == '2' && column == 'center') column = 'right';
+        if (column == 'center') {
+            section.centerFields.add(field);
+            section.usesColumns = true;
+            section.usesThreeColumns = true;
+        } else if (column == 'left') {
+            section.leftFields.add(field);
+            section.usesColumns = true;
+        } else if (column == 'right') {
+            section.rightFields.add(field);
+            section.usesColumns = true;
+        } else {
+            section.fullFields.add(field);
+        }
     }
 
     /** Build one FieldRow from a layout field ref; null when unknown/inaccessible/empty. */
@@ -434,6 +466,12 @@ global with sharing class CardstackGetRecordAction {
     global class LayoutSection {
         @InvocableVariable public String label;
         @InvocableVariable public List<FieldRow> fields;
+        @InvocableVariable public List<FieldRow> fullFields;
+        @InvocableVariable public List<FieldRow> leftFields;
+        @InvocableVariable public List<FieldRow> rightFields;
+        @InvocableVariable public List<FieldRow> centerFields;
+        @InvocableVariable public Boolean usesThreeColumns;
+        @InvocableVariable public Boolean usesColumns;
     }
 
     global class FieldRow {

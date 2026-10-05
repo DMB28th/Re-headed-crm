@@ -99,6 +99,7 @@
         <members>cardstackFlowWizard</members>
         <members>cardstackHomeCardConfig</members>
         <members>cardstackObjectConfig</members>
+        <members>cardstackLayoutField</members>
         <members>cardstackPublishCenter</members>
         <members>cardstackSetupChecklist</members>
         <members>cardstackStudio</members>
@@ -118,7 +119,9 @@
         <members>cardstackFlowStartOutputValues</members>
         <members>cardstackFlowStartResult</members>
         <members>cardstackGetRecordOutputValues</members>
+        <members>cardstackGetRecordOutputValuesV2</members>
         <members>cardstackGetRecordResult</members>
+        <members>cardstackGetRecordResultV2</members>
         <members>cardstackGetRelatedOutputValues</members>
         <members>cardstackGetRelatedResultV2</members>
         <members>cardstackHomeOutputValues</members>
@@ -158,6 +161,7 @@
         <members>cardstackHome</members>
         <members>cardstackKpi</members>
         <members>cardstackRecord</members>
+        <members>cardstackRecordV2</members>
         <members>cardstackResult</members>
         <members>cardstackResults</members>
         <members>cardstackTableV2</members>

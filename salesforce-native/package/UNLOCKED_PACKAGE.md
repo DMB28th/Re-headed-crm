@@ -23,3 +23,7 @@ For companion deployment, use `package/companion.xml` from the authoritative pro
 Investigate a supported way to provision HXL in package validation orgs, move widget/Lightning-type metadata into the package, and automate subscriber MCP/OAuth onboarding. McpServerDefinition currently has no unlocked-package support in the official metadata coverage report. Track platform changes before claiming a complete single-link package.
 
 References: [Metadata coverage](https://developer.salesforce.com/docs/success/metadata-coverage-report/references), [HXL prerequisites](https://developer.salesforce.com/docs/platform/hxl/guide/prerequisites.html).
+
+## Layout repair after beta 0.1.0.2
+
+The current source adds the Classic-style palette/canvas builder with per-section 1/2/3-column choices and `cardstackRecordV2` structured chat rendering. Beta 0.1.0.2 predates this repair. A new package version was blocked by the Dev Hub daily package-version-create limit on October 5, 2026; no replacement install URL is claimed. Deploy current native metadata to apply the repair until another unpromoted beta can be built.

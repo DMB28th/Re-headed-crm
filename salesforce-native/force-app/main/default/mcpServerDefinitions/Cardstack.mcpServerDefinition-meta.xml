@@ -16,9 +16,9 @@
     </resources>
     <resources>
         <description>Renders a Cardstack CRM record card.</description>
-        <resourceName>cardstackRecord</resourceName>
+        <resourceName>cardstackRecordV2</resourceName>
         <resourceTitle>Cardstack Record</resourceTitle>
-        <resourceUri>ui://widget/lightningType/c__cardstackGetRecordResult</resourceUri>
+        <resourceUri>ui://widget/lightningType/c__cardstackGetRecordResultV2</resourceUri>
     </resources>
     <resources>
         <description>Renders Cardstack related-record lists.</description>
@@ -120,7 +120,7 @@
         <returnDirect>false</returnDirect>
         <toolName>CardstackGetRecordAction</toolName>
         <toolTitle>Cardstack Get Record</toolTitle>
-        <uiResource>cardstackRecord</uiResource>
+        <uiResource>cardstackRecordV2</uiResource>
     </tools>
     <tools>
         <apiDefinition>

@@ -6,7 +6,7 @@ Cardstack runs entirely in Salesforce: 17 Hosted MCP tools, HXL widgets, a Light
 
 ## Beta limits
 
-- Record cards use the verified flat-field renderer. Studio retains Highlights Panel and named sections; Apex also flattens those values for chat compatibility. Sectioned chat rendering remains future work.
+- Record cards use `cardstackRecordV2`, with Highlights Panel, named sections, full-width fields, and one/two/three-column section layouts. The Classic-style Studio editor has a searchable draggable field palette above the card canvas. Older flat configs remain supported.
 - Named list views use a clearly labeled user-mode SOQL fallback. Arbitrary Salesforce saved-view filters, columns, and sorting are **not reproduced**. “My” filters never broaden to other owners when empty. Saved Cardstack filters remain supported.
 - Hosted MCP fatally rejects `UserInfo.getSessionId()` in the named-view path. The beta removes self-REST access rather than relying on catches.
 - The compatible list renderer uses `cardstackTableV2`, iterating returned `rows` and their `cells`. The list tool uses versioned Lightning types `cardstackListViewOutputValuesV2` and `cardstackListViewResultV3`; old immutable schemas referenced nonexistent Apex classes.

@@ -135,4 +135,42 @@ private class CardstackGetRecordActionTest {
         System.assertEquals('555-0101', result.fields[0].value);
             }
     }
+    @IsTest
+    static void structuredLayoutPreservesStudioColumns() {
+        System.runAs(new User(Id = UserInfo.getUserId())) {
+            Account a = new Account(Name = 'Structured Columns', Industry = 'Energy', Phone = '555-0102', Type = 'Customer - Direct', Description = 'Full width description');
+            insert a;
+            insert new Cardstack_Config__c(Name = 'layout:Account:default', Is_Active__c = true,
+                Value__c = '{"highlights":[{"api":"Industry"}],"sections":[{"label":"Details","fields":[{"api":"Phone","column":"left"},{"api":"Type","column":"right"},{"api":"Description","column":"full"},{"api":"Name"}]}]}');
+            CardstackGetRecordAction.GetRecordRequest req = new CardstackGetRecordAction.GetRecordRequest();
+            req.objectName = 'Account'; req.recordId = a.Id;
+            CardstackGetRecordAction.GetRecordResponse result = CardstackGetRecordAction.getRecord(
+                new List<CardstackGetRecordAction.GetRecordRequest>{req})[0];
+            Map<String, Object> section = (Map<String, Object>) JSON.deserializeUntyped(JSON.serialize(result.sections[0]));
+            System.assertNotEquals(null, section.get('leftFields'), 'Studio left column must reach the renderer');
+            System.assertEquals('Phone', ((Map<String, Object>) ((List<Object>) section.get('leftFields'))[0]).get('fieldApi'));
+            System.assertEquals('Type', ((Map<String, Object>) ((List<Object>) section.get('rightFields'))[0]).get('fieldApi'));
+            System.assertEquals(2, ((List<Object>) section.get('fullFields')).size(), 'Unspecified columns remain full width');
+            System.assertEquals(true, section.get('usesColumns'));
+            System.assertEquals(false, result.showFlatFields);
+            System.assertEquals(true, result.hasHighlights);
+        }
+    }
+    @IsTest
+    static void threeColumnSectionKeepsMiddleFields() {
+        System.runAs(new User(Id = UserInfo.getUserId())) {
+            Account a = new Account(Name = 'Three Columns', Industry = 'Energy', Phone = '555-0103', Website = 'https://example.com');
+            insert a;
+            insert new Cardstack_Config__c(Name = 'layout:Account:default', Is_Active__c = true,
+                Value__c = '{"sections":[{"label":"Company","columns":3,"fields":[{"api":"Phone","column":"left"},{"api":"Industry","column":"center"},{"api":"Website","column":"right"}]}]}');
+            CardstackGetRecordAction.GetRecordRequest req = new CardstackGetRecordAction.GetRecordRequest();
+            req.objectName = 'Account'; req.recordId = a.Id;
+            CardstackGetRecordAction.GetRecordResponse result = CardstackGetRecordAction.getRecord(new List<CardstackGetRecordAction.GetRecordRequest>{req})[0];
+            Map<String, Object> section = (Map<String, Object>) JSON.deserializeUntyped(JSON.serialize(result.sections[0]));
+            System.assertNotEquals(null, section.get('centerFields'), 'Middle-column values must reach HXL');
+            System.assertEquals('Energy', ((Map<String, Object>) ((List<Object>) section.get('centerFields'))[0]).get('value'));
+            System.assertEquals(true, section.get('usesThreeColumns'));
+            System.assertEquals(0, ((List<Object>) section.get('fullFields')).size());
+        }
+    }
 }

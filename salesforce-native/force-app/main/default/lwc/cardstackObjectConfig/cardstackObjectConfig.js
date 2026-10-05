@@ -42,12 +42,14 @@ export default class CardstackObjectConfig extends LightningElement {
     @track fieldSearch = '';
     @track previewAudience = 'default';
     @track previewHasConfig = true;
+    @track showPreview = false;
     @track showJson = false;
     @track showDiff = false;
     @track showAdvanced = false;
     @track loading = false;
     @track objectSearch = '';
     @track objectDropdownOpen = false;
+    dragApi = null;
     dragKey = null;
     dragSectionKey = null;
 
@@ -69,6 +71,17 @@ export default class CardstackObjectConfig extends LightningElement {
     @wire(getObjectFields, { objectApi: '$selectedObject' })
     wiredFields(result) {
         this.wiredFieldsResult = result;
+        if (result.data) {
+            const validate = (f, highlight) => {
+                const valid = !!this.fieldMap[(f.api || '').toUpperCase()];
+                return { ...f, valid, rowClass: highlight
+                    ? (valid ? 'hl-chip' : 'hl-chip hl-invalid')
+                    : (valid ? 'layout-row' : 'layout-row row-invalid') };
+            };
+            this.workingHighlights = this.workingHighlights.map(f => validate(f, true));
+            this.workingSections = this.workingSections.map(s => ({ ...s, fields: s.fields.map(f => validate(f, false)) }));
+            this.syncPreview();
+        }
     }
 
     // ---------- Searchable object picker ----------
@@ -305,7 +318,7 @@ export default class CardstackObjectConfig extends LightningElement {
                 highlights: this.enrichHighlights(cfg.highlights || []),
                 sections: cfg.sections.map((s, i) => this.makeSection(
                     s.label || `Section ${i + 1}`,
-                    this.enrichFields(s.fields || [])
+                    this.enrichFields(s.fields || []), s.columns
                 ))
             };
         }
@@ -314,13 +327,13 @@ export default class CardstackObjectConfig extends LightningElement {
                 highlights: [],
                 sections: cfg.recordCard.sections.map((s, i) => this.makeSection(
                     s.label || s.title || `Section ${i + 1}`,
-                    this.enrichFields(s.fields || [])
+                    this.enrichFields(s.fields || []), s.columns
                 ))
             };
         }
         const flat = this.enrichFields(this.extractFields(cfg));
         return {
-            highlights: [],
+            highlights: this.enrichHighlights(cfg.highlights || []),
             sections: flat.length
                 ? [this.makeSection(`${this.objectShortLabel()} Information`, flat)]
                 : []
@@ -333,8 +346,35 @@ export default class CardstackObjectConfig extends LightningElement {
         return [];
     }
 
-    makeSection(label, fields) {
-        return { key: this.uid(), label: label || 'Section', fields: fields || [] };
+    makeSection(label, fields, columns) {
+        const count = [1, 2, 3].includes(Number(columns)) ? Number(columns)
+            : (fields || []).some(f => f.column === 'center') ? 3 : 2;
+        return { key: this.uid(), label: label || 'Section', columns: count,
+            fields: (fields || []).map(f => ({ ...f, column: count === 1 ? 'full'
+                : count === 2 && f.column === 'center' ? 'right' : f.column })) };
+    }
+
+    get sectionColumnOptions() {
+        return [{ label: '1 column', value: '1' }, { label: '2 columns', value: '2' }, { label: '3 columns', value: '3' }];
+    }
+
+    sectionColumnNames(section) {
+        return section.columns === 1 ? ['full'] : section.columns === 3 ? ['left', 'center', 'right'] : ['left', 'right'];
+    }
+
+    get paletteFields() {
+        return this.groupedFields.flatMap(g => g.fields.map(f => ({ ...f,
+            draggable: f.added ? 'false' : 'true', paletteClass: f.added ? 'palette-field palette-used' : 'palette-field' })));
+    }
+
+    handleSectionColumnsChange(e) {
+        const section = this.workingSections.find(s => s.key === e.currentTarget.dataset.key);
+        const count = Number(e.detail.value);
+        if (!section || ![1, 2, 3].includes(count)) return;
+        section.columns = count;
+        section.fields = section.fields.map(f => ({ ...f, column: count === 1 ? 'full'
+            : count === 2 && f.column === 'center' ? 'right' : f.column }));
+        this.refreshSectionMeta(); this.syncPreview();
     }
 
     /** Attach per-section "move to" options (other sections). Called after any section change. */
@@ -395,11 +435,11 @@ export default class CardstackObjectConfig extends LightningElement {
     }
 
     normalizeColumn(c) {
-        return (c === 'left' || c === 'right' || c === 'full') ? c : 'full';
+        return (c === 'left' || c === 'center' || c === 'right' || c === 'full') ? c : 'full';
     }
 
     columnLabel(c) {
-        return c === 'left' ? 'Left' : c === 'right' ? 'Right' : 'Full width';
+        return c === 'left' ? 'Left' : c === 'center' ? 'Middle' : c === 'right' ? 'Right' : 'Full width';
     }
 
     uid() {
@@ -414,6 +454,7 @@ export default class CardstackObjectConfig extends LightningElement {
             })),
             sections: this.workingSections.map(s => ({
                 label: s.label,
+                columns: s.columns,
                 fields: s.fields.map(f => ({
                     api: f.api, label: f.label, type: f.type,
                     editable: f.editable, column: f.column
@@ -434,6 +475,9 @@ export default class CardstackObjectConfig extends LightningElement {
         return this.pretty(this.buildLayoutJson());
     }
 
+    get previewToggleLabel() { return this.showPreview ? 'Hide preview' : 'Preview card'; }
+    togglePreview() { this.showPreview = !this.showPreview; }
+
     // ---------- Builder interactions ----------
 
     handleAudienceChange(e) {
@@ -451,7 +495,7 @@ export default class CardstackObjectConfig extends LightningElement {
         const used = new Set(this.workingHighlights.map(h => (h.api || '').toUpperCase()));
         const data = this.wiredFieldsResult?.data || [];
         return data
-            .filter(f => !used.has((f.api || '').toUpperCase()))
+            .filter(f => !this.usedApis.has((f.api || '').toUpperCase()))
             .map(f => ({ label: `${f.label} (${f.api})`, value: f.api }))
             .slice(0, 100);
     }
@@ -462,7 +506,7 @@ export default class CardstackObjectConfig extends LightningElement {
 
     handleAddHighlight(e) {
         const api = e.detail.value;
-        if (!api) return;
+        if (!api || this.isFieldAdded(api)) return;
         if (this.workingHighlights.length >= 7) {
             this.toast('Highlights full', 'Up to 7 highlight fields.', 'info');
             return;
@@ -482,7 +526,14 @@ export default class CardstackObjectConfig extends LightningElement {
     // ----- Sections -----
 
     get sectionViews() {
-        return this.workingSections || [];
+        return (this.workingSections || []).map(s => ({ ...s,
+            columnValue: String(s.columns), hasMultipleColumns: s.columns !== 1,
+            gridClass: 'section-grid columns-' + s.columns,
+            fullFields: s.fields.filter(f => f.column === 'full'),
+            columnViews: this.sectionColumnNames(s).map(column => ({ key: column,
+                label: this.columnLabel(column), sectionKey: s.key,
+                fields: s.fields.filter(f => f.column === column) }))
+        }));
     }
 
     get hasSections() {
@@ -597,8 +648,11 @@ export default class CardstackObjectConfig extends LightningElement {
         if (!found) return;
         const arr = [...found.section.fields];
         const i = found.index;
-        const j = i + dir;
-        if (i < 0 || j < 0 || j >= arr.length) return;
+        if (i < 0) return;
+        const positions = arr.map((f, index) => f.column === arr[i].column ? index : -1).filter(index => index >= 0);
+        const target = positions.indexOf(i) + dir;
+        if (target < 0 || target >= positions.length) return;
+        const j = positions[target];
         [arr[i], arr[j]] = [arr[j], arr[i]];
         found.section.fields = arr;
         this.refreshSectionMeta();
@@ -667,43 +721,85 @@ export default class CardstackObjectConfig extends LightningElement {
 
     // HTML5 drag-to-order (within a section)
     handleDragStart(e) {
-        this.dragKey = e.currentTarget.dataset.key;
-        this.dragSectionKey = e.currentTarget.dataset.section;
+        const ds = e.currentTarget.dataset;
+        this.dragApi = ds.api || null;
+        this.dragKey = ds.key || null;
+        this.dragSectionKey = ds.section || null;
+        if (this.dragApi && this.isFieldAdded(this.dragApi)) { e.preventDefault(); return; }
         e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', this.dragApi || this.dragKey || '');
+        e.stopPropagation();
     }
 
     handleDragOver(e) {
-        e.preventDefault();
+        e.preventDefault(); e.stopPropagation();
         e.dataTransfer.dropEffect = 'move';
         e.currentTarget.classList.add('drag-over');
     }
 
-    handleDragLeave(e) {
-        e.currentTarget.classList.remove('drag-over');
-    }
+    handleDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
 
     handleDrop(e) {
-        e.preventDefault();
+        e.preventDefault(); e.stopPropagation();
+        e.currentTarget.classList.remove('drag-over');
         const ds = e.currentTarget.dataset;
-        if (!this.dragKey || this.dragKey === ds.key || this.dragSectionKey !== ds.section) return;
-        const found = this.findField(this.dragKey, this.dragSectionKey);
-        if (!found) return;
-        const arr = [...found.section.fields];
-        const from = arr.findIndex(f => f.key === this.dragKey);
-        const to = arr.findIndex(f => f.key === ds.key);
-        if (from < 0 || to < 0) return;
-        const [moved] = arr.splice(from, 1);
-        arr.splice(to, 0, moved);
-        found.section.fields = arr;
-        this.dragKey = null;
-        this.dragSectionKey = null;
-        this.refreshSectionMeta();
-        this.syncPreview();
+        if (this.dragKey && this.dragKey === ds.key) { this.handleDragEnd(); return; }
+        const highlightTarget = ds.section === 'highlights';
+        const target = this.workingSections.find(s => s.key === ds.section);
+        if ((!highlightTarget && !target) || (highlightTarget && this.highlightsFull && this.dragSectionKey !== 'highlights')) {
+            this.handleDragEnd(); return;
+        }
+        let field;
+        if (this.dragApi) {
+            if (this.isFieldAdded(this.dragApi) || !this.fieldMap[this.dragApi.toUpperCase()]) { this.handleDragEnd(); return; }
+            [field] = this.enrichFields([{ api: this.dragApi }]);
+        } else if (this.dragSectionKey === 'highlights') {
+            field = this.workingHighlights.find(f => f.key === this.dragKey);
+            if (field) this.workingHighlights = this.workingHighlights.filter(f => f.key !== this.dragKey);
+        } else {
+            const source = this.findField(this.dragKey, this.dragSectionKey);
+            if (source && source.index >= 0) {
+                [field] = source.section.fields.splice(source.index, 1);
+                source.section.fields = [...source.section.fields];
+            }
+        }
+        if (!field) { this.handleDragEnd(); return; }
+        if (highlightTarget) {
+            field = { ...field, rowClass: field.valid ? 'hl-chip' : 'hl-chip hl-invalid' };
+            const index = this.workingHighlights.findIndex(f => f.key === ds.key);
+            const fields = [...this.workingHighlights]; fields.splice(index < 0 ? fields.length : index, 0, field);
+            this.workingHighlights = fields;
+        } else {
+            const allowed = [...this.sectionColumnNames(target), 'full'];
+            const column = allowed.includes(ds.column) ? ds.column : allowed[0];
+            field = { ...field, column, rowClass: field.valid ? 'layout-row' : 'layout-row row-invalid' };
+            const fields = [...target.fields]; const index = fields.findIndex(f => f.key === ds.key);
+            fields.splice(index < 0 ? fields.length : index, 0, field); target.fields = fields;
+        }
+        this.handleDragEnd(); this.refreshSectionMeta(); this.syncPreview();
     }
 
-    handleDragEnd() {
-        this.dragKey = null;
-        this.dragSectionKey = null;
+    handleDragEnd() { this.dragApi = null; this.dragKey = null; this.dragSectionKey = null; }
+
+    handleFieldEdit(e) {
+        const { key, section, action, value } = e.detail;
+        const found = this.findField(key, section);
+        if (!found || found.index < 0) return;
+        if (action === 'remove') { this.removeField(key, section); return; }
+        if (action === 'up' || action === 'down') { this.moveField(key, section, action === 'up' ? -1 : 1); return; }
+        if (action === 'section') {
+            const target = this.workingSections.find(s => s.key === value);
+            if (!target || target.key === section) return;
+            const [moved] = found.section.fields.splice(found.index, 1);
+            moved.column = this.sectionColumnNames(target).includes(moved.column) ? moved.column : 'full';
+            target.fields = [...target.fields, moved];
+        } else {
+            const field = found.section.fields[found.index];
+            if (action === 'label') field.label = value || field.api;
+            if (action === 'editable') field.editable = value;
+            if (action === 'column') field.column = value;
+        }
+        this.refreshSectionMeta(); this.syncPreview();
     }
 
     // ---------- Validation ----------
@@ -736,16 +832,17 @@ export default class CardstackObjectConfig extends LightningElement {
     }
 
     get canStage() {
-        return !!this.selectedObject && this.totalFieldCount > 0 && !this.hasInvalidFields;
+        return !!this.selectedObject && (this.totalFieldCount > 0 || this.workingHighlights.length > 0) && !this.hasInvalidFields;
     }
 
     canonicalLayout(hl, sections) {
         return JSON.stringify({
-            h: (hl || []).map(x => (x.api || '').toUpperCase()),
+            h: (hl || []).map(x => [(x.api || '').toUpperCase(), x.label || '']),
             s: (sections || []).map(s => ({
                 label: s.label || '',
+                columns: s.columns,
                 f: (s.fields || []).map(f =>
-                    (f.api || '').toUpperCase() + '|' + !!f.editable + '|' + (f.column || 'full'))
+                    (f.api || '').toUpperCase() + '|' + (f.label || '') + '|' + !!f.editable + '|' + (f.column || 'full'))
             }))
         });
     }
@@ -790,7 +887,8 @@ export default class CardstackObjectConfig extends LightningElement {
         return {
             added, removed, moved, hlAdded, hlRemoved,
             hasLive: !!(this.staging.layout?.liveValue),
-            empty: !added.length && !removed.length && !moved.length && !hlAdded.length && !hlRemoved.length
+            structureChanged: this.canonicalLayout(this.workingHighlights, this.workingSections) !== this.canonicalLayout(live.highlights, live.sections),
+            empty: this.canonicalLayout(this.workingHighlights, this.workingSections) === this.canonicalLayout(live.highlights, live.sections)
         };
     }
 
@@ -866,15 +964,12 @@ export default class CardstackObjectConfig extends LightningElement {
     get previewSectionViews() {
         return (this._previewSections || []).map(s => {
             const rows = (s.fields || []).map(f => ({ ...f, sample: this.sampleValue(f) }));
-            const full = rows.filter(r => (r.column || 'full') === 'full');
-            const left = rows.filter(r => (r.column || 'full') === 'left');
-            const right = rows.filter(r => (r.column || 'full') === 'right');
-            return {
-                key: s.key, label: s.label,
-                fullRows: full, leftRows: left, rightRows: right,
-                usesColumns: left.length > 0 || right.length > 0,
-                hasRows: rows.length > 0
-            };
+            return { key: s.key, label: s.label,
+                fullRows: rows.filter(r => (r.column || 'full') === 'full'),
+                gridClass: 'preview-cols columns-' + s.columns,
+                columnViews: this.sectionColumnNames(s).filter(c => c !== 'full').map(column => ({ key: column,
+                    rows: rows.filter(r => r.column === column) })),
+                usesColumns: s.columns !== 1 && rows.some(r => r.column !== 'full'), hasRows: rows.length > 0 };
         });
     }
 
@@ -899,8 +994,8 @@ export default class CardstackObjectConfig extends LightningElement {
             this.toast('Invalid fields', 'Remove or fix the highlighted fields before staging.', 'error');
             return;
         }
-        if (!this.totalFieldCount) {
-            this.toast('Empty layout', 'Add at least one field to a section.', 'error');
+        if (!this.totalFieldCount && !this.workingHighlights.length) {
+            this.toast('Empty layout', 'Add at least one highlight or section field.', 'error');
             return;
         }
         try {
