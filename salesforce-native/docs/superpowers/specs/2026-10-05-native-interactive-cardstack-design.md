@@ -1,6 +1,8 @@
 # Cardstack native: interactive Salesforce work inside AI UI
 
-Written design and delivery roadmap, October 5, 2026. For review before implementation planning. Supersedes the Salesforce launch-link design as the primary product experience.
+Written design and delivery roadmap, October 5, 2026. **Architecture under review; not approved for implementation.** Supersedes the Salesforce launch-link design as the primary product experience.
+
+Official-documentation research found that HXL is documented as output-only UI configuration, with agent-directed buttons but no established general editable-form path for external clients. The interpreter-first architecture below is therefore a proposal to reassess, not a selected implementation. First evaluate supported task actions backed by autolaunched flows or invocable Apex, and resolve editable UI feasibility. See [supported architecture research](../../supported-ai-ui-options-research.md).
 
 ## Product outcome
 
