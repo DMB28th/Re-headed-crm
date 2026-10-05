@@ -112,7 +112,7 @@
             <apiSource>API_CATALOG</apiSource>
             <operation>CardstackGetRecordAction</operation>
         </apiDefinition>
-        <descriptionOverride>Show a CRM record card for a single record. Pass id when known, otherwise a name query.</descriptionOverride>
+        <descriptionOverride>Show a CRM record card using exactly one input per call. For several records call this tool separately for each; batching cannot render cards. Pass id when known, otherwise a name query.</descriptionOverride>
         <destructive>false</destructive>
         <idempotent>true</idempotent>
         <openWorld>false</openWorld>
@@ -208,7 +208,7 @@
             <apiSource>API_CATALOG</apiSource>
             <operation>CardstackCompleteTaskAction</operation>
         </apiDefinition>
-        <descriptionOverride>Mark a CRM follow-up task as completed. Pass the confirmToken from preview when the rep checked it off.</descriptionOverride>
+        <descriptionOverride>Complete a task only after the user approves Preview Complete Task and supplies its required confirmation token. Published Task policy must allow Status editing. Do not submit without user confirmation.</descriptionOverride>
         <destructive>false</destructive>
         <idempotent>true</idempotent>
         <openWorld>false</openWorld>
@@ -240,7 +240,7 @@
             <apiSource>API_CATALOG</apiSource>
             <operation>CardstackUpdateRecordAction</operation>
         </apiDefinition>
-        <descriptionOverride>Write field changes to a CRM record. Pass the confirmToken from preview when the rep confirmed the diff.</descriptionOverride>
+        <descriptionOverride>Save only the exact changes the user approved in Preview Update, using its required confirmation token. Published object and field write policy, current access, and record version are enforced. Do not submit without user confirmation.</descriptionOverride>
         <destructive>false</destructive>
         <idempotent>false</idempotent>
         <openWorld>false</openWorld>
@@ -248,22 +248,6 @@
         <returnDirect>false</returnDirect>
         <toolName>CardstackUpdateRecordAction</toolName>
         <toolTitle>Cardstack Update Record</toolTitle>
-        <uiResource>cardstackResult</uiResource>
-    </tools>
-    <tools>
-        <apiDefinition>
-            <apiIdentifier>aa:apex-CardstackCreateRecordAction</apiIdentifier>
-            <apiSource>API_CATALOG</apiSource>
-            <operation>CardstackCreateRecordAction</operation>
-        </apiDefinition>
-        <descriptionOverride>Create a new CRM record. Read-only fields are not accepted.</descriptionOverride>
-        <destructive>false</destructive>
-        <idempotent>false</idempotent>
-        <openWorld>false</openWorld>
-        <readOnly>false</readOnly>
-        <returnDirect>false</returnDirect>
-        <toolName>CardstackCreateRecordAction</toolName>
-        <toolTitle>Cardstack Create Record</toolTitle>
         <uiResource>cardstackResult</uiResource>
     </tools>
     <tools>

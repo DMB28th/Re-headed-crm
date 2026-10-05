@@ -13,9 +13,12 @@ global with sharing class CardstackGetRecordAction {
 
     @InvocableMethod(
         label='Cardstack Get Record'
-        description='Show a CRM record card for a single record. Pass id when known, otherwise a name query. Use when the user asks to show, see, or look up a specific record.'
+        description='Show a CRM record card for a single record. Pass id when known, otherwise a name query. Use exactly one input per call so its interactive card renders. For several records call this tool separately for each. Use when the user asks to show, see, or look up a specific record.'
     )
     global static List<GetRecordResponse> getRecord(List<GetRecordRequest> requests) {
+        if (requests == null || requests.size()!=1) {
+            throw new CardstackException('Record cards require exactly one input per call. Call this tool separately for each record.');
+        }
         List<GetRecordResponse> responses = new List<GetRecordResponse>();
         for (GetRecordRequest req : requests) {
             responses.add(doGetRecord(req));

@@ -101,3 +101,26 @@ test('moving a flagged field through Highlights and save/reload retains its sett
     assert.equal(restored.required,!!settings.required); assert.equal(restored.readOnly,!!settings.readOnly); assert.equal(restored.editable,settings.editable);
   }
 });
+
+test('highlight flags are unsaved changes and unknown published metadata survives staging', () => {
+  const b = builder();
+  const json = JSON.stringify({ futureSetting: { version: 2 }, highlights: [{api:'Industry',editable:true}], permissions: {writeEnabled:true,fieldDenylist:[],futureRule:'keep'} });
+  b.parseWorkingModel(json); b.staging={layout:{liveValue:json}};
+  assert.equal(b.isDirty,false);
+  b.workingHighlights[0].readOnly=true;
+  assert.equal(b.isDirty,true);
+  const saved=JSON.parse(b.buildLayoutJson());
+  assert.equal(saved.futureSetting.version,2);
+  assert.equal(saved.permissions.futureRule,'keep');
+});
+
+test('removing migrated fields cannot resurrect their old edit permissions', () => {
+  for (const legacy of [{fields:[{api:'Phone',editable:true}]}, {recordCard:{sections:[{fields:[{api:'Phone',editable:true}]}],futureSetting:'keep'}}]) {
+    const b=builder();b.parseWorkingModel(JSON.stringify({...legacy,permissions:{writeEnabled:true}}));
+    b.workingSections=[];b.workingHighlights=b.enrichHighlights([{api:'Industry',readOnly:true}]);
+    const json=b.buildLayoutJson();const saved=JSON.parse(json);
+    assert.equal(saved.fields,undefined);assert.equal(saved.recordCard?.sections,undefined);
+    assert.equal(b.parseLayoutOnly(json).sections.length,0);
+    if(legacy.recordCard)assert.equal(saved.recordCard.futureSetting,'keep');
+  }
+});

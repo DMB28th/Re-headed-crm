@@ -1,5 +1,14 @@
 @IsTest
 private class CardstackPreviewUpdateActionTest {
+    @TestSetup static void publishedWritePolicy() {
+        PermissionSet ps=[SELECT Id FROM PermissionSet WHERE Name='Cardstack_Admin' LIMIT 1];
+        if ([SELECT count() FROM PermissionSetAssignment WHERE AssigneeId=:UserInfo.getUserId() AND PermissionSetId=:ps.Id]==0) insert new PermissionSetAssignment(AssigneeId=UserInfo.getUserId(),PermissionSetId=ps.Id);
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+            insert new Cardstack_Config__c(Name='layout:Account:default',Is_Active__c=true,
+                Value__c='{"permissions":{"writeEnabled":true},"fields":[{"api":"Name","editable":true},{"api":"Industry","editable":true},{"api":"Description","editable":true},{"api":"NumberOfEmployees","editable":true}]}');
+        }
+    }
+
 
     private static CardstackPreviewUpdateAction.PatchEntry patch(String field, String value) {
         CardstackPreviewUpdateAction.PatchEntry p =
@@ -11,6 +20,8 @@ private class CardstackPreviewUpdateActionTest {
 
     @IsTest
     static void previewComputesDiffAndMintsToken() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+
         Account a = new Account(Name = 'Upd Acme', Industry = 'Technology');
         insert a;
 
@@ -38,10 +49,14 @@ private class CardstackPreviewUpdateActionTest {
 
         Account after = [SELECT Industry FROM Account WHERE Id = :a.Id WITH USER_MODE];
         System.assertEquals('Technology', after.Industry, 'preview writes nothing');
-    }
+
+        }
+}
 
     @IsTest
     static void noOpPatchThrows() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+
         Account a = new Account(Name = 'Upd Noop', Industry = 'Technology');
         insert a;
 
@@ -59,10 +74,14 @@ private class CardstackPreviewUpdateActionTest {
         } catch (CardstackPreviewUpdateAction.CardstackException e) {
             System.assert(e.getMessage().contains('Nothing to change'), e.getMessage());
         }
-    }
+
+        }
+}
 
     @IsTest
     static void unknownFieldThrows() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+
         Account a = new Account(Name = 'Upd Bad Field');
         insert a;
 
@@ -80,10 +99,14 @@ private class CardstackPreviewUpdateActionTest {
         } catch (CardstackPreviewUpdateAction.CardstackException e) {
             System.assert(e.getMessage().contains('Unknown field'), e.getMessage());
         }
-    }
+
+        }
+}
 
     @IsTest
     static void readOnlyFieldThrows() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+
         Account a = new Account(Name = 'Upd ReadOnly');
         insert a;
 
@@ -101,5 +124,7 @@ private class CardstackPreviewUpdateActionTest {
         } catch (CardstackPreviewUpdateAction.CardstackException e) {
             System.assert(e.getMessage().contains('not writable'), e.getMessage());
         }
-    }
+
+        }
+}
 }

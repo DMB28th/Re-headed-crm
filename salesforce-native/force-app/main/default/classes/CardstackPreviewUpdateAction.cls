@@ -36,7 +36,7 @@ global with sharing class CardstackPreviewUpdateAction {
         Map<String, Schema.SObjectField> fields = d.fields.getMap();
 
         // Fetch current values for the patched fields (deduplicated).
-        Set<String> fieldSet = new Set<String>{ 'Id', 'Name' };
+        Set<String> fieldSet = new Set<String>{ 'Id', 'Name', 'SystemModstamp' };
         for (PatchEntry p : req.changes) {
             if (String.isBlank(p.fieldApiName) || !fields.containsKey(p.fieldApiName.trim())) {
                 throw new CardstackException('Unknown field: ' + p.fieldApiName);
@@ -46,6 +46,10 @@ global with sharing class CardstackPreviewUpdateAction {
             }
             fieldSet.add(p.fieldApiName.trim());
         }
+        CardstackPolicyService.Policy policy=CardstackPolicyService.resolve(objectName);
+        CardstackPolicyService.validateChanges(policy,req.changes);
+        CardstackConfirmToken.updateSubject(objectName,req.recordId,req.changes,policy.revision); // rejects duplicates
+        for (CardstackPolicyService.FieldPolicy field:policy.fields.values()) if (field.required) fieldSet.add(field.apiName);
         List<String> fieldNames = new List<String>(fieldSet);
         String recId = req.recordId;
         List<SObject> rows = Database.query(
@@ -56,6 +60,7 @@ global with sharing class CardstackPreviewUpdateAction {
             throw new CardstackException('Record not found: ' + req.recordId);
         }
         SObject rec = rows[0];
+        CardstackPolicyService.validateResult(policy,rec,req.changes);
 
         // Diff: only fields that actually change. Keep coerced values for the trial.
         List<DiffRow> diffs = new List<DiffRow>();
@@ -103,11 +108,9 @@ global with sharing class CardstackPreviewUpdateAction {
             Database.rollback(sp);
         }
 
-        // Token bound to the changed fields.
-        changedFields.sort();
-        String subject = 'update:' + objectName + ':' + req.recordId + ':'
-            + String.join(changedFields, ',');
-        CardstackConfirmToken.ConfirmToken minted = CardstackConfirmToken.mint(subject);
+        // Bind the complete submitted patch, actor, published policy, and reviewed record version.
+        String subject=CardstackConfirmToken.updateSubject(objectName,req.recordId,req.changes,policy.revision);
+        CardstackConfirmToken.ConfirmToken minted=CardstackConfirmToken.mintRecord(subject,req.recordId,CardstackConfirmToken.recordVersion(rec,req.changes));
 
         PreviewUpdateResponse res = new PreviewUpdateResponse();
         res.objectName = objectName;
@@ -148,7 +151,7 @@ global with sharing class CardstackPreviewUpdateAction {
     }
 
     private static Object coerceValue(Schema.DescribeFieldResult fdr, String raw) {
-        if (raw == null || raw == 'null') {
+        if (raw == null) {
             return null;
         }
         Schema.DisplayType dt = fdr.getType();

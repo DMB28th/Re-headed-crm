@@ -1,8 +1,18 @@
 @IsTest
 private class CardstackCompleteTaskActionTest {
+    @TestSetup static void publishedTaskPolicy() {
+        PermissionSet ps=[SELECT Id FROM PermissionSet WHERE Name='Cardstack_Admin' LIMIT 1];
+        if ([SELECT count() FROM PermissionSetAssignment WHERE AssigneeId=:UserInfo.getUserId() AND PermissionSetId=:ps.Id]==0) insert new PermissionSetAssignment(AssigneeId=UserInfo.getUserId(),PermissionSetId=ps.Id);
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+            insert new Cardstack_Config__c(Name='layout:Task:default',Is_Active__c=true,Value__c='{"permissions":{"writeEnabled":true},"fields":[{"api":"Status","editable":true}]}');
+        }
+    }
+
 
     @IsTest
     static void completeWithValidTokenMarksRepConfirmed() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+
         Task t = new Task(Subject = 'Complete Me', Status = 'Not Started');
         insert t;
 
@@ -30,28 +40,28 @@ private class CardstackCompleteTaskActionTest {
 
         Task after = [SELECT Status FROM Task WHERE Id = :t.Id WITH USER_MODE];
         System.assertEquals('Completed', after.Status);
-    }
 
-    @IsTest
-    static void completeWithoutTokenMarksModelInitiated() {
-        Task t = new Task(Subject = 'Complete Model', Status = 'Not Started');
-        insert t;
+        }
+}
 
-        CardstackCompleteTaskAction.CompleteTaskRequest req =
-            new CardstackCompleteTaskAction.CompleteTaskRequest();
-        req.taskId = t.Id;
+    @IsTest static void completeWithoutTokenIsDenied() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
 
-        List<CardstackCompleteTaskAction.CompleteTaskResponse> resps =
-            CardstackCompleteTaskAction.completeTask(
-                new List<CardstackCompleteTaskAction.CompleteTaskRequest>{ req });
+        Task t=new Task(Subject='Unconfirmed',Status='Not Started'); insert t;
+        CardstackCompleteTaskAction.CompleteTaskRequest req=new CardstackCompleteTaskAction.CompleteTaskRequest(); req.taskId=t.Id;
+        Boolean rejected=false;
+        try { CardstackCompleteTaskAction.completeTask(new List<CardstackCompleteTaskAction.CompleteTaskRequest>{req}); }
+        catch (CardstackConfirmToken.CardstackException e) {rejected=true;}
+        System.assert(rejected);
+        System.assertEquals('Not Started',[SELECT Status FROM Task WHERE Id=:t.Id].Status);
 
-        System.assertEquals('model', resps[0].confirmedBy);
-        Task after = [SELECT Status FROM Task WHERE Id = :t.Id WITH USER_MODE];
-        System.assertEquals('Completed', after.Status);
-    }
+        }
+}
 
     @IsTest
     static void badTokenAborts() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+
         Task t = new Task(Subject = 'Complete Bad Token', Status = 'Not Started');
         insert t;
 
@@ -70,16 +80,21 @@ private class CardstackCompleteTaskActionTest {
 
         Task after = [SELECT Status FROM Task WHERE Id = :t.Id WITH USER_MODE];
         System.assertEquals('Not Started', after.Status, 'bad token → nothing written');
-    }
+
+        }
+}
 
     @IsTest
     static void doubleCompleteThrows() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+
         Task t = new Task(Subject = 'Complete Twice', Status = 'Completed');
         insert t;
 
         CardstackCompleteTaskAction.CompleteTaskRequest req =
             new CardstackCompleteTaskAction.CompleteTaskRequest();
         req.taskId = t.Id;
+        req.confirmToken=CardstackConfirmToken.mint('complete:'+t.Id+':'+CardstackPolicyService.resolve('Task').revision).token;
 
         try {
             CardstackCompleteTaskAction.completeTask(
@@ -88,10 +103,14 @@ private class CardstackCompleteTaskActionTest {
         } catch (CardstackCompleteTaskAction.CardstackException e) {
             System.assert(e.getMessage().contains('already completed'), e.getMessage());
         }
-    }
+
+        }
+}
 
     @IsTest
     static void dmlFailureReturnsStructuredErrorNotException() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+
         Task t = new Task(Subject = 'Complete DmlFail', Status = 'Not Started');
         insert t;
         t.Status = 'Completed';
@@ -123,16 +142,23 @@ private class CardstackCompleteTaskActionTest {
         // Task untouched in the database.
         Task after = [SELECT Status FROM Task WHERE Id = :t.Id WITH USER_MODE];
         System.assertEquals('Not Started', after.Status);
-    }
+
+        }
+}
 
     @IsTest
     static void successResponseHasDmlFlags() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+
         Task t = new Task(Subject = 'Complete Flags', Status = 'Not Started');
         insert t;
 
         CardstackCompleteTaskAction.CompleteTaskRequest req =
             new CardstackCompleteTaskAction.CompleteTaskRequest();
         req.taskId = t.Id;
+        CardstackPreviewCompleteTaskAction.PreviewCompleteTaskRequest preq=new CardstackPreviewCompleteTaskAction.PreviewCompleteTaskRequest(); preq.taskId=t.Id;
+        req.confirmToken=CardstackPreviewCompleteTaskAction.preview(new List<CardstackPreviewCompleteTaskAction.PreviewCompleteTaskRequest>{preq})[0].confirmToken;
+
 
         CardstackCompleteTaskAction.CompleteTaskResponse res =
             CardstackCompleteTaskAction.completeTask(
@@ -140,5 +166,7 @@ private class CardstackCompleteTaskActionTest {
 
         System.assertEquals(false, res.dmlFailed);
         System.assertEquals(true, res.showSuccess);
-    }
+
+        }
+}
 }

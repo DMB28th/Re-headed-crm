@@ -4,7 +4,7 @@ Plan date: October 5, 2026. This replaces the interpreter-first sequencing in th
 
 ## Product decision
 
-Admins use Cardstack Studio in Salesforce to configure record cards and approved processes. Users view and edit records, review changes, confirm saves, and complete supported processes inside Claude or ChatGPT. Opening Salesforce remains an explicitly labeled fallback, not the normal experience or a successful in-chat completion.
+Admins use Cardstack Studio in Salesforce to configure record cards and approved processes. Users view and edit records, review changes, confirm saves, and complete supported processes inside Claude or ChatGPT. For the community beta, clearly labeled Salesforce record and flow handoffs are supported outcomes. Full editable in-chat forms remain the preferred next milestone, and are not claimed as shipped.
 
 Keep all runtime hosting in Salesforce as the default requirement. A hosted service outside Salesforce would be a separate architecture decision, never a quiet substitution.
 
@@ -91,3 +91,9 @@ See HXL-confidence-assessment.md and HXL-runtime-input-tests.md for the detailed
 ## Execution
 
 Implement in this chat, sequentially by milestone. Start with published policy and mandatory server-owned confirmation, alongside the bounded adapter authentication task. Use focused tests per change, real client QA at the transport milestones, and the full suite before release. Create later subsystem plans only when the preceding milestone has fixed their interfaces; no full-interpreter port before the first complete record edit.
+
+## Community-beta execution update — October 5
+
+The initial delivered slice reuses Studio’s `permissions.writeEnabled` and explicit per-field settings, adds a published policy resolver, and replaces stateless org-ID-derived tokens with private server-owned confirmations. Preview/update and task-completion tools enforce the user, policy, exact submitted values, record freshness, and repeat-safe receipts. A full Editing/Review/Back/Cancel/Resume interaction UI is still a later milestone, not a capability of this confirmation slice. Native read cards and labeled Salesforce flow launches remain the release surface. The unconfirmed create-record tool is excluded from the community MCP definition.
+
+Structured HXL record rendering passed a single-input Claude call with real three-column and one-column sections. A batched three-record call could not render; the record tool now requires separate calls. Multi-field editable HXL submission, ChatGPT parity, and a native Screen Flow interpreter are not release claims.

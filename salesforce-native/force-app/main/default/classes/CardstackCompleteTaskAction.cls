@@ -3,8 +3,7 @@
  *
  * Marks a CRM follow-up task as completed. This is a write. Pass the
  * confirmToken from crm_preview_complete_task when the rep checked it off;
- * without one the write is recorded as model-initiated. A bad token aborts
- * rather than downgrading.
+ * confirmation is mandatory and binds the connected user and published policy.
  *
  * Security: `with sharing` + WITH_USER_MODE.
  */
@@ -27,24 +26,26 @@ global with sharing class CardstackCompleteTaskAction {
             throw new CardstackException('taskId is required.');
         }
 
-        // Verified BEFORE the write — a bad token aborts.
-        Boolean repConfirmed = false;
-        if (!String.isBlank(req.confirmToken)) {
-            CardstackConfirmToken.verify(req.confirmToken, 'complete:' + req.taskId);
-            repConfirmed = true;
-        }
+        CardstackPolicyService.Policy policy=CardstackPolicyService.resolve('Task');
+        CardstackPreviewUpdateAction.PatchEntry statusChange=new CardstackPreviewUpdateAction.PatchEntry(); statusChange.fieldApiName='Status';statusChange.newValue='Completed';
+        CardstackPolicyService.validateChanges(policy,new List<CardstackPreviewUpdateAction.PatchEntry>{statusChange});
+        Cardstack_Confirmation__c confirmation=CardstackConfirmToken.locked(req.confirmToken,'complete:'+req.taskId+':'+policy.revision);
+        if (confirmation.Receipt__c!=null) return (CompleteTaskResponse)JSON.deserialize(confirmation.Receipt__c,CompleteTaskResponse.class);
+        Boolean repConfirmed=true;
 
-        List<Task> tasks = [
-            SELECT Id, Subject, Status FROM Task
-            WHERE Id = :req.taskId WITH USER_MODE LIMIT 1
-        ];
+        Set<String> fields=new Set<String>{'Id','Subject','Status','SystemModstamp'};
+        for (CardstackPolicyService.FieldPolicy field:policy.fields.values()) if (field.required) fields.add(field.apiName);
+        String taskId=req.taskId;
+        List<Task> tasks=Database.query('SELECT '+String.join(new List<String>(fields),',')+' FROM Task WHERE Id=:taskId WITH USER_MODE LIMIT 1 FOR UPDATE');
         if (tasks.isEmpty()) {
             throw new CardstackException('Task not found: ' + req.taskId);
         }
         Task t = tasks[0];
+        CardstackPolicyService.validateResult(policy,t,new List<CardstackPreviewUpdateAction.PatchEntry>{statusChange});
         if (t.Status == 'Completed') {
             throw new CardstackException('Task is already completed.');
         }
+        CardstackConfirmToken.assertFresh(confirmation,JSON.serialize(new List<Object>{t.SystemModstamp,t.Subject,t.Status}));
         String beforeStatus = t.Status;
 
         t.Status = 'Completed';
@@ -81,6 +82,7 @@ global with sharing class CardstackCompleteTaskAction {
         res.showSuccess = true;
         res.summary = 'Completed task "' + t.Subject + '". Logged as '
             + (repConfirmed ? 'rep-confirmed' : 'model-initiated') + '.';
+        CardstackConfirmToken.complete(confirmation,res);
         return res;
     }
 
@@ -128,7 +130,7 @@ global with sharing class CardstackCompleteTaskAction {
         @InvocableVariable(label='Task ID' description='Id of the task to complete.' required=true)
         public String taskId;
 
-        @InvocableVariable(label='Confirm Token' description='Token from Preview Complete Task, proving the rep checked this off. Do not invent one.')
+        @InvocableVariable(label='Confirm Token' description='Required token from Preview Complete Task after user confirmation. Do not invent one.' required=true)
         public String confirmToken;
     }
 

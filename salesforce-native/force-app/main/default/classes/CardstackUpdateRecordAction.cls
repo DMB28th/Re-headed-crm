@@ -2,9 +2,8 @@
  * Cardstack native port of `crm_update_record`.
  *
  * Writes field changes to a CRM record. Only updateable fields are writable.
- * Pass the confirmToken from crm_preview_update when the rep confirmed the
- * diff — the token is verified BEFORE the write, and a bad token aborts
- * rather than downgrading. Returns per-field outcomes.
+ * Pass the confirmToken from crm_preview_update after the user confirms the exact diff. Confirmation is mandatory;
+ * the connected user, published policy, values, and record version are verified. Returns per-field outcomes.
  *
  * Security: `with sharing` + WITH_USER_MODE (via `as user` DML).
  */
@@ -12,7 +11,7 @@ global with sharing class CardstackUpdateRecordAction {
 
     @InvocableMethod(
         label='Cardstack Update Record'
-        description='Write field changes to a CRM record. Pass the confirmToken from Preview Update when the rep confirmed the diff. Returns per-field outcomes.'
+        description='Write field changes to a CRM record. Requires the confirmToken from Preview Update for the exact user-confirmed changes. Returns per-field outcomes.'
     )
     global static List<UpdateRecordResponse> updateRecord(List<UpdateRecordRequest> requests) {
         List<UpdateRecordResponse> responses = new List<UpdateRecordResponse>();
@@ -35,19 +34,20 @@ global with sharing class CardstackUpdateRecordAction {
             Schema.getGlobalDescribe().get(objectName).getDescribe();
         Map<String, Schema.SObjectField> fields = d.fields.getMap();
 
-        // Verify token BEFORE the write when provided.
-        Boolean repConfirmed = false;
-        if (!String.isBlank(req.confirmToken)) {
-            List<String> changedFields = new List<String>();
-            for (CardstackPreviewUpdateAction.PatchEntry p : req.changes) {
-                changedFields.add(p.fieldApiName.trim());
-            }
-            changedFields.sort();
-            String subject = 'update:' + objectName + ':' + req.recordId + ':'
-                + String.join(changedFields, ',');
-            CardstackConfirmToken.verify(req.confirmToken, subject);
-            repConfirmed = true;
-        }
+        CardstackPolicyService.Policy policy=CardstackPolicyService.resolve(objectName);
+        CardstackPolicyService.validateChanges(policy,req.changes);
+        String subject=CardstackConfirmToken.updateSubject(objectName,req.recordId,req.changes,policy.revision);
+        Cardstack_Confirmation__c confirmation=CardstackConfirmToken.locked(req.confirmToken,subject);
+        if (confirmation.Receipt__c!=null) return (UpdateRecordResponse)JSON.deserialize(confirmation.Receipt__c,UpdateRecordResponse.class);
+        String recordId=req.recordId;
+        Set<String> reviewFields=new Set<String>{'Id','SystemModstamp'};
+        for (CardstackPreviewUpdateAction.PatchEntry entry:req.changes) reviewFields.add(entry.fieldApiName.trim());
+        for (CardstackPolicyService.FieldPolicy field:policy.fields.values()) if (field.required) reviewFields.add(field.apiName);
+        List<SObject> reviewed=Database.query('SELECT '+String.join(new List<String>(reviewFields),',')+' FROM '+objectName+' WHERE Id=:recordId WITH USER_MODE LIMIT 1 FOR UPDATE');
+        if (reviewed.isEmpty()) throw new CardstackException('Record not found.');
+        CardstackConfirmToken.assertFresh(confirmation,CardstackConfirmToken.recordVersion(reviewed[0],req.changes));
+        CardstackPolicyService.validateResult(policy,reviewed[0],req.changes);
+        Boolean repConfirmed=true;
 
         SObject rec = Schema.getGlobalDescribe().get(objectName).newSObject();
         rec.put('Id', req.recordId);
@@ -107,7 +107,7 @@ global with sharing class CardstackUpdateRecordAction {
                 String soql = 'SELECT ' + String.join(changedFields, ', ')
                     + ' FROM ' + objectName + ' WHERE Id = :recordId WITH USER_MODE LIMIT 1';
                 // Bind recordId via local var for the dynamic query.
-                String recordId = req.recordId;
+
                 List<SObject> existing = Database.query(soql);
                 if (!existing.isEmpty()) {
                     for (String f : changedFields) {
@@ -167,6 +167,7 @@ global with sharing class CardstackUpdateRecordAction {
         }
         res.summary = 'Updated ' + okCount + ' field(s) on ' + req.recordId
             + '. Logged as ' + (repConfirmed ? 'rep-confirmed' : 'model-initiated') + '.';
+        CardstackConfirmToken.complete(confirmation,res);
         return res;
     }
 
@@ -257,7 +258,7 @@ global with sharing class CardstackUpdateRecordAction {
     }
 
     private static Object coerceValue(Schema.DescribeFieldResult fdr, String raw) {
-        if (raw == null || raw == 'null') {
+        if (raw == null) {
             return null;
         }
         Schema.DisplayType dt = fdr.getType();
@@ -287,7 +288,7 @@ global with sharing class CardstackUpdateRecordAction {
         @InvocableVariable(label='Changes' description='Field changes as field-api-name → new-value pairs.' required=true)
         public List<CardstackPreviewUpdateAction.PatchEntry> changes;
 
-        @InvocableVariable(label='Confirm Token' description='Token from Preview Update, proving the rep confirmed the diff. Do not invent one.')
+        @InvocableVariable(label='Confirm Token' description='Required token from Preview Update for these exact user-confirmed changes. Do not invent one.' required=true)
         public String confirmToken;
     }
 

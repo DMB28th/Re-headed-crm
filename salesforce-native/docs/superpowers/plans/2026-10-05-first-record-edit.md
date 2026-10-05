@@ -2,7 +2,7 @@
 
 > **For agentic workers:** Use superpowers:executing-plans to implement this plan task-by-task in this chat. Steps use checkbox syntax for tracking. Do not delegate product edits without user authorization.
 
-**Goal:** Complete one governed, persistent Salesforce record edit inside chat, with an interchangeable UI adapter.
+**Goal:** Ship a useful community beta with governed CRM interaction, existing HXL cards, and clearly labeled Salesforce record/flow handoffs. Add richer in-chat editing through interchangeable adapters as transport support is proven.
 
 **Architecture:** Apex owns published field policy, interaction state, validation, confirmation, and persistence. Native HXL or a Salesforce-hosted custom MCP App renders the same versioned model. Client transport readiness is a separate release gate; backend implementation proceeds independently.
 
@@ -33,7 +33,7 @@
 
 All paths below are relative to `salesforce-native/force-app/main/default/` unless stated otherwise. New Apex classes/tests include matching API 67 `.cls-meta.xml` files.
 
-`CardstackPolicyService.cls` owns published layout normalization and field exposure. Its interface is `resolve(String objectApiName) -> Policy`, where Policy contains `objectApiName`, `revision`, `editEnabled`, and `fields: Map<String,FieldPolicy>`. FieldPolicy contains canonical `apiName`, `dataType`, `required`, and `readOnly`. It resolves the active `layout:{Object}:default` configuration and current Salesforce field access. Missing `editEnabled` means false for legacy layouts.
+`CardstackPolicyService.cls` owns published layout normalization and field exposure. Its interface is `resolve(String objectApiName) -> Policy`, where Policy contains `objectApiName`, `revision`, `editEnabled`, and `fields: Map<String,FieldPolicy>`. FieldPolicy contains canonical `apiName`, `dataType`, `required`, and `readOnly`. It resolves the active `layout:{Object}:default` configuration and current Salesforce field access. Use the existing `permissions.writeEnabled` opt-in; missing means false for legacy layouts. Require each field’s explicit `editable` flag.
 
 `CardstackInteractionService.cls` owns the record-edit state machine. Interfaces:
 
@@ -49,7 +49,7 @@ InteractionView is the canonical v1 JSON model: `schemaVersion:1`, `kind:'record
 
 ## Task 1: Published editable field policy
 
-**Files:** Create `classes/CardstackPolicyService.cls` and `CardstackPolicyServiceTest.cls`; modify `lwc/cardstackObjectConfig/cardstackObjectConfig.js` and `.html` to author `editEnabled`; reuse `CardstackConfigService` published access and existing record layout normalization patterns. Inspect `CardstackGetRecordAction` field normalization before extracting shared code; preserve its current read response.
+**Files:** Create `classes/CardstackPolicyService.cls` and `CardstackPolicyServiceTest.cls`; modify `lwc/cardstackObjectConfig/cardstackObjectConfig.js` and `.html` to preserve and explain the existing write policy; reuse `CardstackConfigService` published access and existing record layout normalization patterns. Inspect `CardstackGetRecordAction` field normalization before extracting shared code; preserve its current read response.
 
 - [ ] Add tests `publishedPolicyExcludesDrafts`, `legacyLayoutDoesNotEnableEditing`, `readOnlyOverridesEditability`, `unknownOrInaccessibleFieldsCannotBeExposed`. Assertions: draft-only configuration grants no editing; omitted editEnabled is false; readOnly=true never becomes writable; required settings do not bypass Salesforce access. Include flat and sectioned existing layout shapes.
 - [ ] Run focused tests and verify failure before implementing the new service.
@@ -101,4 +101,27 @@ InteractionView is the canonical v1 JSON model: `schemaVersion:1`, `kind:'record
 
 Start Tasks 1–2 immediately after plan review; resolve Task 4 authentication as a bounded independent gate, without parallel product edits. Task 3 depends on Tasks 1–2; full client acceptance depends on all four. Task 5 closes the milestone.
 
-A blocked adapter does not block policy/configuration implementation, but it blocks claiming a completed editable beta. No broad Screen Flow interpreter implementation precedes the first successful record edit. If a hosting change becomes necessary, bring a concrete tested alternative and its exact tradeoff to the user.
+A blocked adapter does not block the community beta. Describe actual supported client interactions; use clearly labeled Salesforce handoffs where richer in-chat input is unproved. No broad Screen Flow interpreter implementation precedes the first successful record edit. If a hosting change becomes necessary, bring a concrete tested alternative and its exact tradeoff to the user.
+
+## Execution rulings — 2026-10-05
+
+- Latest user direction authorizes building and releasing a useful foundation across HXL, record pages, and flows. Full in-chat Screen Flow completion is a future capability, not a community-beta gate.
+- Source already has `permissions.writeEnabled`, field `editable`, `required`, and `readOnly`. Reuse these controls instead of adding a competing `editEnabled` authoring property.
+- Native managed worktree creation returned “Not a git repository” for this projectless chat. Work on the clean repository on `cardstack-community-beta`; integrate to main after verification.
+- Baseline: 18 local Studio model tests pass; preceding full org suite: 128 pass.
+- Task 1 regression first: changing a Highlights field’s flags currently does not mark the layout dirty; add real model regression and preserve unknown configuration metadata when staging.
+
+## Delivered community-beta slice
+
+- Published `permissions.writeEnabled` and explicit `editable` are enforced by `CardstackPolicyService`; restrictive duplicate flags, readOnly, denylist, Salesforce update access, and required resulting values are respected.
+- `Cardstack_Confirmation__c` replaces the planned larger interaction object for this release slice: random key hash, actor, subject hash, record-version hash, expiry, and saved receipt. Full editable interaction operations and resume/back/cancel UI remain future work.
+- Preview/update and task completion require durable confirmations, reject missing/tampered/stale inputs, bind policy changes, and return stored receipts for successful retries. The unconfirmed legacy create-record tool is omitted from the community MCP definition.
+- Studio preserves unknown metadata while stripping superseded migrated field representations. Highlights flags count as unsaved changes. Existing permissions controls explain publication and field opt-in.
+- Single-input structured HXL record rendering and the named My-owner list passed live Claude read QA. Batch record inputs are rejected with guidance to call separately. General editable forms and Screen Flow completion are deferred, so Task 4’s custom-transport work is not a community-beta dependency.
+- Native Beta 0.1.0.4 built with 82% Apex coverage. Final installation and real-client save receipts are recorded in the release report, rather than inferred from deployment.
+
+Next milestone: canonical typed record-edit model and direct multi-field form submission on a proven client adapter, with Back/Cancel/Resume and explicit validation. Then published guided processes/autolaunched-flow actions, mapped variables, record buttons, and example phrases. A Screen Flow component interpreter remains optional and supported-component-bounded; native Salesforce launch cards cover unsupported interviews.
+
+## Live edit acceptance still open
+
+The native Claude catalogue refreshed successfully after server reactivation. The disposable Account lookup rendered, but Preview Update returned "No approval received" twice during browser QA. No confirmation token or live save receipt was obtained. This release therefore does not claim end-to-end Claude editing acceptance despite passing Apex tests. The original published Account layout was restored and the disposable Account was removed; both were independently queried. Resolve client approval delivery and repeat preview/confirm/read-back before presenting chat editing as verified.

@@ -25,20 +25,24 @@ global with sharing class CardstackPreviewCompleteTaskAction {
         if (String.isBlank(req.taskId)) {
             throw new CardstackException('taskId is required.');
         }
-        List<Task> tasks = [
-            SELECT Id, Subject, Status, ActivityDate, WhatId, WhoId
-            FROM Task WHERE Id = :req.taskId WITH USER_MODE LIMIT 1
-        ];
+        CardstackPolicyService.Policy policy=CardstackPolicyService.resolve('Task');
+        CardstackPreviewUpdateAction.PatchEntry statusChange=new CardstackPreviewUpdateAction.PatchEntry(); statusChange.fieldApiName='Status';statusChange.newValue='Completed';
+        CardstackPolicyService.validateChanges(policy,new List<CardstackPreviewUpdateAction.PatchEntry>{statusChange});
+        Set<String> fields=new Set<String>{'Id','Subject','Status','SystemModstamp','ActivityDate','WhatId','WhoId'};
+        for (CardstackPolicyService.FieldPolicy field:policy.fields.values()) if (field.required) fields.add(field.apiName);
+        String taskId=req.taskId;
+        List<Task> tasks=Database.query('SELECT '+String.join(new List<String>(fields),',')+' FROM Task WHERE Id=:taskId WITH USER_MODE LIMIT 1');
         if (tasks.isEmpty()) {
             throw new CardstackException('Task not found: ' + req.taskId);
         }
         Task t = tasks[0];
+        CardstackPolicyService.validateResult(policy,t,new List<CardstackPreviewUpdateAction.PatchEntry>{statusChange});
         if (t.Status == 'Completed') {
             throw new CardstackException('Task is already completed.');
         }
 
         CardstackConfirmToken.ConfirmToken minted =
-            CardstackConfirmToken.mint('complete:' + t.Id);
+            CardstackConfirmToken.mintRecord('complete:' + t.Id+':'+policy.revision,t.Id,JSON.serialize(new List<Object>{t.SystemModstamp,t.Subject,t.Status}));
 
         PreviewCompleteTaskResponse res = new PreviewCompleteTaskResponse();
         res.taskId = t.Id;

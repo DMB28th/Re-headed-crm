@@ -287,6 +287,7 @@ export default class CardstackObjectConfig extends LightningElement {
     parseWorkingModel(jsonStr) {
         let cfg = {};
         try { cfg = JSON.parse(jsonStr || '{}'); } catch { /* fall through */ }
+        this.preservedLayout = cfg;
         this.workingActions = (cfg.actions || []).map((a, i) => this.normalizeAction(a, i));
         this.workingPermissions = {
             writeEnabled: !!cfg.permissions?.writeEnabled,
@@ -452,7 +453,16 @@ export default class CardstackObjectConfig extends LightningElement {
     }
 
     buildLayoutJson() {
+        const preserved = { ...(this.preservedLayout || {}) };
+        // These known legacy shapes are replaced by the current sections model.
+        delete preserved.fields;
+        if (preserved.recordCard) {
+            preserved.recordCard = { ...preserved.recordCard };
+            delete preserved.recordCard.sections;
+            delete preserved.recordCard.fields;
+        }
         return JSON.stringify({
+            ...preserved,
             name: this.audience,
             highlights: this.workingHighlights.map(h => ({
                 api: h.api, label: h.label, type: h.type,
@@ -471,6 +481,7 @@ export default class CardstackObjectConfig extends LightningElement {
                 description: a.description, enabled: a.enabled
             })),
             permissions: {
+                ...(this.preservedLayout?.permissions || {}),
                 writeEnabled: !!this.workingPermissions.writeEnabled,
                 fieldDenylist: [...this.workingPermissions.fieldDenylist]
             }
@@ -854,7 +865,7 @@ export default class CardstackObjectConfig extends LightningElement {
 
     canonicalLayout(hl, sections) {
         return JSON.stringify({
-            h: (hl || []).map(x => [(x.api || '').toUpperCase(), x.label || '']),
+            h: (hl || []).map(x => [(x.api || '').toUpperCase(), x.label || '', !!x.editable, !!x.required, !!x.readOnly]),
             s: (sections || []).map(s => ({
                 label: s.label || '',
                 columns: s.columns,

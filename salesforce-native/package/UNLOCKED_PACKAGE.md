@@ -1,29 +1,33 @@
-# Cardstack beta distribution
+# Cardstack community beta 0.1.0.4
 
-Validated beta **0.1.0.2**, 81% Apex coverage. [Install beta](https://login.salesforce.com/packaging/installPackage.apexp?p0=04tg8000000QF0DAAW).
+[Install the core beta](https://login.salesforce.com/packaging/installPackage.apexp?p0=04tg8000000QJyHAAW).
 
-Keep versions **beta**. Do not run `sf package version promote`.
+This unpromoted unlocked beta contains Apex tools, Studio, configuration, audit, and private confirmation storage. It built successfully with 82% Apex coverage and installed successfully in a fresh Developer scratch org. All 139 packaged Apex tests passed there; all 144 Apex tests passed in the development org, including five org-only probe tests. Studio model tests passed 20/20.
 
-The Dev Hub is `cardstack-spike2`; package ID is `0Hog80000004dFhCAI`. Source is consolidated in `force-app/`. The full package attempt failed because HXL widgets were unavailable in Salesforce's validation org. The core beta excludes widgets, Lightning types, MCP definitions, and org-specific OAuth metadata.
+Keep this version beta. Do not promote it. Dev Hub: cardstack-spike2. Package: 0Hog80000004dFhCAI. Source of truth: salesforce-native/force-app/.
 
-```sh
-python3 scripts/build-package.py --core-only /absolute/path/to/new-stage
-cd /absolute/path/to/new-stage
-sf package version create --package Cardstack --installation-key-bypass --code-coverage --definition-file config/package-org.json --target-dev-hub cardstack-spike2 --api-version 67.0
-```
+## Native companion setup
 
-Use the returned `04t` ID to form `https://login.salesforce.com/packaging/installPackage.apexp?p0=04t...`. An install link is valid only after the request succeeds.
+HXL widgets, Lightning types, and the Hosted MCP definition remain a separate companion deployment. Package validation orgs did not provide HXL, and McpServerDefinition is not supported in unlocked packages. The current setup requires Salesforce CLI and an org with HXL and Hosted MCP enabled; it is not yet one-link onboarding.
 
-After core installation, an admin enables the HXL beta and Hosted MCP, configures an External Client App for the subscriber org, deploys companion widgets and Lightning types, and then deploys the Cardstack MCP definition. Connect Claude to `https://api.salesforce.com/platform/mcp/v1/custom/Cardstack` and refresh its tools list. Assign package permission sets and required Apex/CRM/MCP access. The current companion workflow requires Salesforce CLI; it does not yet meet the intended one-link admin-first installation experience.
+After core installation, assign Cardstack Admin to administrators and Cardstack User plus required CRM/Apex/MCP access to connected users. Configure a subscriber-org External Client App and OAuth connector. Deploy companion metadata from this project using package/companion.xml and API 67.0, then activate the Cardstack Hosted MCP definition. Connect Claude to https://api.salesforce.com/platform/mcp/v1/custom/Cardstack and refresh the connector tools list after definition changes. The community definition exposes 16 tools; create-record is excluded until it has preview-and-confirm support. There is no delete-record tool.
 
-For companion deployment, use `package/companion.xml` from the authoritative project, API 67.0, and a fresh opaque login. Restore the subscriber External Client App JWT setting to ON after deployment. OAuth secrets and local client-app metadata are never included in the companion archive.
+API 67 Metadata deployment in the development org requires disabling JWT access tokens temporarily, obtaining a fresh opaque CLI login, deploying, and restoring JWT ON. Subscriber settings must be handled for their own app. Never distribute OAuth secrets or development-org app metadata.
 
-## Deferred packaging work
+## What this beta delivers
 
-Investigate a supported way to provision HXL in package validation orgs, move widget/Lightning-type metadata into the package, and automate subscriber MCP/OAuth onboarding. McpServerDefinition currently has no unlocked-package support in the official metadata coverage report. Track platform changes before claiming a complete single-link package.
+Studio configures highlights, sections with one/two/three columns, field flags, flow launch cards, drafts, and publication. Claude rendered a real structured record card and account results. Record retrieval takes exactly one input per call; call separately for multiple records.
 
-References: [Metadata coverage](https://developer.salesforce.com/docs/success/metadata-coverage-report/references), [HXL prerequisites](https://developer.salesforce.com/docs/platform/hxl/guide/prerequisites.html).
+Record edits and task completion require published object write permission and explicit editable fields, connected-user access, a preview, and its exact confirmation. Confirmations expire, bind the actor, policy, changes, and record snapshot, and retain receipts for successful retries. Required, read-only, and denied fields are enforced server-side. Preview Update retains its existing trial DML with rollback to predict validation errors; it does not commit the CRM edit.
 
-## Layout repair after beta 0.1.0.2
+The beta uses conversational editing with preview/result cards. Multi-field editable chat forms and a Screen Flow interpreter are future milestones. Flow launch cards currently open Salesforce. Named-view fallback does not promise arbitrary saved-view filters, sort order, or columns. ChatGPT parity is not verified for this release.
 
-The current source adds the Classic-style palette/canvas builder with per-section 1/2/3-column choices and `cardstackRecordV2` structured chat rendering. Beta 0.1.0.2 predates this repair. A new package version was blocked by the Dev Hub daily package-version-create limit on October 5, 2026; no replacement install URL is claimed. Deploy current native metadata to apply the repair until another unpromoted beta can be built.
+## Rebuilding
+
+Run python3 scripts/build-package.py --core-only /absolute/path/to/new-stage. From that stage, create an unpromoted package version with --installation-key-bypass --code-coverage --definition-file config/package-org.json --target-dev-hub cardstack-spike2 --api-version 67.0. Only publish an install URL after the request succeeds.
+
+Track supported HXL packaging and automate subscriber MCP/OAuth setup before claiming a complete admin-first single-link install.
+
+## Live edit acceptance still open
+
+The native Claude catalogue refreshed successfully after server reactivation. The disposable Account lookup rendered, but Preview Update returned "No approval received" twice during browser QA. No confirmation token or live save receipt was obtained. This release therefore does not claim end-to-end Claude editing acceptance despite passing Apex tests. The original published Account layout was restored and the disposable Account was removed; both were independently queried. Resolve client approval delivery and repeat preview/confirm/read-back before presenting chat editing as verified.

@@ -375,8 +375,9 @@
                 <lightning-tab label="Permissions" value="permissions">
                     <div class="slds-m-top_small">
                         <p class="slds-text-color_weak slds-m-bottom_small">
-                            Write policy for {selectedObjectLabel}, from the layout's
-                            <code>permissions</code> block.
+                            Allow chat edits for {selectedObjectLabel} only after publishing.
+                            Each field must also have editing enabled in the layout.
+                            Read-only fields and the denylist remain protected; Salesforce access still applies.
                         </p>
                         <template if:true={permissions}>
                             <lightning-input

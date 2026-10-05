@@ -1,8 +1,15 @@
 @IsTest
 private class CardstackFlowStartActionTest {
+    @TestSetup static void grantConfigPermissions() {
+        PermissionSet ps=[SELECT Id FROM PermissionSet WHERE Name='Cardstack_Admin' LIMIT 1];
+        if ([SELECT count() FROM PermissionSetAssignment WHERE AssigneeId=:UserInfo.getUserId() AND PermissionSetId=:ps.Id]==0) insert new PermissionSetAssignment(AssigneeId=UserInfo.getUserId(),PermissionSetId=ps.Id);
+    }
+
 
     @IsTest
     static void unknownFlowThrows() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+
         Account a = new Account(Name = 'Flow Acme');
         insert a;
 
@@ -18,10 +25,14 @@ private class CardstackFlowStartActionTest {
         } catch (CardstackFlowStartAction.CardstackException e) {
             System.assert(e.getMessage().contains('Flow not found'), e.getMessage());
         }
-    }
+
+        }
+}
 
     @IsTest
     static void missingRecordIdThrows() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+
         CardstackFlowStartAction.FlowStartRequest req =
             new CardstackFlowStartAction.FlowStartRequest();
         req.flowApiName = 'Some_Flow';
@@ -33,10 +44,14 @@ private class CardstackFlowStartActionTest {
         } catch (CardstackFlowStartAction.CardstackException e) {
             System.assert(e.getMessage().contains('recordId is required'), e.getMessage());
         }
-    }
+
+        }
+}
 
     @IsTest
     static void missingFlowApiNameThrows() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+
         Account a = new Account(Name = 'Flow Missing Name');
         insert a;
 
@@ -51,10 +66,14 @@ private class CardstackFlowStartActionTest {
         } catch (CardstackFlowStartAction.CardstackException e) {
             System.assert(e.getMessage().contains('flowApiName is required'), e.getMessage());
         }
-    }
+
+        }
+}
 
     @IsTest
     static void guidedCardFieldsPresent() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+
         // Verify the guided conversational card fields exist on the response.
         CardstackFlowStartAction.FlowStartResponse res =
             new CardstackFlowStartAction.FlowStartResponse();
@@ -78,22 +97,32 @@ private class CardstackFlowStartActionTest {
         System.assertEquals(false, res.isQuickAction);
         System.assertEquals(false, res.hasAnswers);
         System.assertNotEquals(null, res.suggestedReplies);
-    }
+
+        }
+}
     @IsTest
     static void publishedLaunchLabelOverridesDefinitionAndDraftDoesNot() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+
         Cardstack_Config__c cfg = new Cardstack_Config__c(Name = 'flows', Is_Active__c = true,
             Value__c = '[{"apiName":"Review","label":"Approval review"}]');
         insert cfg;
         CardstackConfigService.saveDraft('flows', '[{"apiName":"Review","label":"Unpublished name"}]');
         System.assertEquals('Approval review', CardstackFlowStartAction.launchLabel('Review', 'Salesforce name'));
         System.assertEquals('Other flow', CardstackFlowStartAction.launchLabel('Other', 'Other flow'));
-    }
+
+        }
+}
     @IsTest
     static void invalidLaunchConfigurationFallsBackToSalesforceName() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+
         Cardstack_Config__c cfg = new Cardstack_Config__c(Name = 'flows', Is_Active__c = true, Value__c = '{bad');
         insert cfg;
         System.assertEquals('Salesforce name', CardstackFlowStartAction.launchLabel('Review', 'Salesforce name'));
         cfg.Value__c = '[{"flowApiName":"Review","label":"Legacy card"}]'; update cfg;
         System.assertEquals('Legacy card', CardstackFlowStartAction.launchLabel('Review', 'Salesforce name'));
-    }
+
+        }
+}
 }

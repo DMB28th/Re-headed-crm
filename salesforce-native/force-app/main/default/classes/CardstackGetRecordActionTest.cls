@@ -173,4 +173,12 @@ private class CardstackGetRecordActionTest {
             System.assertEquals(0, ((List<Object>) section.get('fullFields')).size());
         }
     }
+    @IsTest static void multipleInputsCannotProduceAnUnrenderableEnvelope() {
+        CardstackGetRecordAction.GetRecordRequest one=new CardstackGetRecordAction.GetRecordRequest();
+        one.objectName='Account';one.query='Never queried';
+        Boolean rejected=false;
+        try {CardstackGetRecordAction.getRecord(new List<CardstackGetRecordAction.GetRecordRequest>{one,one});}
+        catch(CardstackGetRecordAction.CardstackException e) {rejected=e.getMessage().contains('exactly one input');}
+        System.assert(rejected,'Caller must split cards into separate tool calls');
+    }
 }

@@ -46,4 +46,16 @@ private class CardstackConfirmTokenTest {
             System.assert(true, 'rejected: ' + e.getMessage());
         }
     }
+    @IsTest static void expiryAndActorAreEnforced() {
+        CardstackConfirmToken.ConfirmToken minted=CardstackConfirmToken.mint('test');
+        Cardstack_Confirmation__c row=[SELECT Id,Expires_At__c,Actor_Id__c FROM Cardstack_Confirmation__c WITH SYSTEM_MODE LIMIT 1];
+        row.Actor_Id__c='005000000000000AAA'; update as system row;
+        Boolean rejected=false;
+        try {CardstackConfirmToken.verify(minted.token,'test');} catch(CardstackConfirmToken.CardstackException e){rejected=true;}
+        System.assert(rejected);
+        row.Actor_Id__c=UserInfo.getUserId(); row.Expires_At__c=Datetime.now().addMinutes(-1); update as system row;
+        rejected=false;
+        try {CardstackConfirmToken.verify(minted.token,'test');} catch(CardstackConfirmToken.CardstackException e){rejected=true;}
+        System.assert(rejected);
+    }
 }
