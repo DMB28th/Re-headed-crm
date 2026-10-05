@@ -1,0 +1,23 @@
+{
+  "description" : "Output values for CardstackPreviewUpdateAction",
+  "title" : "cardstackPreviewUpdateOutputValues",
+  "lightning:type" : "lightning__objectType",
+  "properties" : {
+    "summary" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Summary"
+    },
+    "changes" : {
+      "lightning:type" : "@apexClassType/c__CardstackPreviewUpdateAction$DiffRow",
+      "title" : "Changes"
+    },
+    "hasPredictedErrors" : {
+      "lightning:type" : "lightning__booleanType",
+      "title" : "Has Predicted Errors"
+    },
+    "predictedErrors" : {
+      "lightning:type" : "@apexClassType/c__CardstackDmlError$DmlErrorDetail",
+      "title" : "Predicted Errors"
+    }
+  }
+}

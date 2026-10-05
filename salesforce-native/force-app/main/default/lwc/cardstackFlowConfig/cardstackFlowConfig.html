@@ -1,0 +1,54 @@
+<template>
+    <div class="slds-p-around_small">
+        <template if:true={showWizard}>
+            <c-cardstack-flow-wizard onwizarddone={handleWizardDone}></c-cardstack-flow-wizard>
+        </template>
+        <template if:false={showWizard}>
+            <div class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center slds-m-bottom_small">
+                <p class="slds-text-color_weak">
+                    Flow render policies — how each Salesforce flow renders in chat
+                    (auto-run, form-first, or confirmation). Stored under the
+                    <code>flows</code> config key.
+                </p>
+                <lightning-button
+                    label="New flow"
+                    variant="brand"
+                    icon-name="utility:add"
+                    onclick={openWizard}>
+                </lightning-button>
+            </div>
+            <template if:true={staging}>
+                <lightning-badge label={statusLabel} class={statusClass}></lightning-badge>
+            </template>
+        <lightning-textarea
+            label="Flow render modes JSON (draft)"
+            value={draftValue}
+            onchange={handleEdit}
+            class="slds-m-top_small json-editor">
+        </lightning-textarea>
+        <div class="slds-m-top_small">
+            <lightning-button
+                label="Stage Draft"
+                variant="brand"
+                onclick={stage}
+                class="slds-m-right_x-small">
+            </lightning-button>
+            <lightning-button label="Load Live" onclick={loadLive}></lightning-button>
+        </div>
+        <div class="slds-m-top_medium">
+            <h3 class="slds-text-heading_small slds-m-bottom_small">Current policies</h3>
+            <template if:true={flowRows.length}>
+                <lightning-datatable
+                    key-field="apiName"
+                    data={flowRows}
+                    columns={columns}
+                    hide-checkbox-column>
+                </lightning-datatable>
+            </template>
+            <template if:false={flowRows.length}>
+                <p class="slds-text-color_weak">No flow policies configured yet.</p>
+            </template>
+        </div>
+        </template>
+    </div>
+</template>

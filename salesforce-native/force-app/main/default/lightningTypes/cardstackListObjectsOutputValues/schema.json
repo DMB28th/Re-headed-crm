@@ -1,0 +1,23 @@
+{
+  "description" : "Output values for CardstackListObjectsAction",
+  "title" : "cardstackListObjectsOutputValues",
+  "lightning:type" : "lightning__objectType",
+  "properties" : {
+    "summary" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Summary"
+    },
+    "count" : {
+      "lightning:type" : "lightning__numberType",
+      "title" : "Count"
+    },
+    "objects" : {
+      "lightning:type" : "@apexClassType/c__CardstackListObjectsAction$ObjectSummary",
+      "title" : "Objects"
+    },
+    "columns" : {
+      "lightning:type" : "@apexClassType/c__CardstackListObjectsAction$TableColumn",
+      "title" : "Columns"
+    }
+  }
+}

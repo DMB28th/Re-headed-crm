@@ -1,0 +1,27 @@
+{
+  "description" : "Output values for CardstackListViewsAction",
+  "lightning:type" : "lightning__objectType",
+  "properties" : {
+    "columns" : {
+      "lightning:type" : "@apexClassType/c__CardstackListViewsAction$TableColumn",
+      "title" : "Columns"
+    },
+    "count" : {
+      "lightning:type" : "lightning__numberType",
+      "title" : "Count"
+    },
+    "objectName" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Object Name"
+    },
+    "summary" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Summary"
+    },
+    "views" : {
+      "lightning:type" : "@apexClassType/c__CardstackListViewsAction$ViewSummary",
+      "title" : "Views"
+    }
+  },
+  "title" : "cardstackListViewsOutputValues"
+}

@@ -1,0 +1,75 @@
+{
+ "type": "lightning__agentforceWidget",
+ "contentBody": {
+  "widgetBody": {
+   "definition": "tile/widget",
+   "children": [
+    {
+     "definition": "tile/column",
+     "attributes": {
+      "gap": "sm"
+     },
+     "children": [
+      {
+       "definition": "tile/text",
+       "attributes": {
+        "text": "{!$attrs.summary}",
+        "variant": "h3"
+       }
+      },
+      {
+       "definition": "tile/column",
+       "attributes": {
+        "gap": "xs"
+       },
+       "meta": {
+        "forEach": "{!$attrs.rows}",
+        "forItem": "$row"
+       },
+       "children": [
+        {
+         "definition": "tile/container",
+         "attributes": {
+          "padding": "sm"
+         },
+         "children": [
+          {
+           "definition": "tile/column",
+           "attributes": {
+            "gap": "xs"
+           },
+           "children": [
+            {
+             "definition": "tile/text",
+             "attributes": {
+              "text": "{!$row.name}",
+              "variant": "h4",
+              "weight": "semibold"
+             }
+            },
+            {
+             "definition": "tile/text",
+             "attributes": {
+              "text": "{!$row.detail}",
+              "variant": "caption"
+             }
+            },
+            {
+             "definition": "tile/link",
+             "attributes": {
+              "text": "Open in Salesforce",
+              "url": "{!$row.recordUrl}"
+             }
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

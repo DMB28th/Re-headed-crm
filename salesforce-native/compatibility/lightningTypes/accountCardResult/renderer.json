@@ -1,0 +1,26 @@
+{
+  "renderer" : {
+    "componentOverrides" : {
+      "$" : {
+        "definition" : "@widget/c/accountCard",
+        "attributes" : {
+          "accountId" : "{!$attrs.outputValues.accountInfo.accountId}",
+          "name" : "{!$attrs.outputValues.accountInfo.name}",
+          "industry" : "{!$attrs.outputValues.accountInfo.industry}",
+          "accountType" : "{!$attrs.outputValues.accountInfo.accountType}",
+          "phone" : "{!$attrs.outputValues.accountInfo.phone}",
+          "website" : "{!$attrs.outputValues.accountInfo.website}",
+          "ownerName" : "{!$attrs.outputValues.accountInfo.ownerName}",
+          "annualRevenue" : "{!$attrs.outputValues.accountInfo.annualRevenue}",
+          "recordUrl" : "{!$attrs.outputValues.accountInfo.recordUrl}",
+          "isHighValue" : "{!$attrs.outputValues.accountInfo.isHighValue}",
+          "needsAttention" : "{!$attrs.outputValues.accountInfo.needsAttention}",
+          "missingFields" : "{!$attrs.outputValues.accountInfo.missingFields}",
+          "healthLabel" : "{!$attrs.outputValues.accountInfo.healthLabel}",
+          "healthVariant" : "{!$attrs.outputValues.accountInfo.healthVariant}",
+          "description" : "{!$attrs.outputValues.accountInfo.description}"
+        }
+      }
+    }
+  }
+}

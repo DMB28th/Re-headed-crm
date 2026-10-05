@@ -1,0 +1,82 @@
+<template>
+    <div class="slds-p-around_small">
+        <p class="slds-text-color_weak slds-m-bottom_small">
+            Custom screens available to the flow runtime. Stored under the
+            <code>screens</code> config key as a JSON array.
+        </p>
+        <template if:true={staging}>
+            <lightning-badge label={statusLabel} class={statusClass}></lightning-badge>
+        </template>
+
+        <div class="slds-grid slds-gutters slds-m-top_small">
+            <div class="slds-col slds-size_1-of-3">
+                <h3 class="slds-text-heading_small slds-m-bottom_small">Screens</h3>
+                <template if:true={screenList.length}>
+                    <ul class="slds-has-dividers_around-space">
+                        <template for:each={screenList} for:item="s">
+                            <li key={s.name} class="slds-item">
+                                <a href="javascript:void(0);" data-name={s.name} onclick={selectScreen}>
+                                    {s.label} ({s.name})
+                                </a>
+                            </li>
+                        </template>
+                    </ul>
+                </template>
+                <template if:false={screenList.length}>
+                    <p class="slds-text-color_weak">No screens defined.</p>
+                </template>
+                <lightning-button
+                    label="New Screen"
+                    onclick={newScreen}
+                    class="slds-m-top_small">
+                </lightning-button>
+            </div>
+            <div class="slds-col slds-size_2-of-3">
+                <template if:true={editing}>
+                    <lightning-input
+                        label="Screen name (API)"
+                        value={editing.name}
+                        onchange={handleNameEdit}
+                        class="slds-m-bottom_small">
+                    </lightning-input>
+                    <lightning-input
+                        label="Label"
+                        value={editing.label}
+                        onchange={handleLabelEdit}
+                        class="slds-m-bottom_small">
+                    </lightning-input>
+                    <lightning-textarea
+                        label="Screen definition JSON"
+                        value={editingJson}
+                        onchange={handleJsonEdit}
+                        class="json-editor">
+                    </lightning-textarea>
+                    <div class="slds-m-top_small">
+                        <lightning-button
+                            label="Save to Draft"
+                            variant="brand"
+                            onclick={saveScreen}
+                            class="slds-m-right_x-small">
+                        </lightning-button>
+                        <lightning-button
+                            label="Delete Screen"
+                            variant="destructive-text"
+                            onclick={deleteScreen}>
+                        </lightning-button>
+                    </div>
+                </template>
+                <template if:false={editing}>
+                    <p class="slds-text-color_weak">Select a screen to edit, or create a new one.</p>
+                </template>
+            </div>
+        </div>
+
+        <div class="slds-m-top_medium">
+            <lightning-button
+                label="Stage All Screens Draft"
+                variant="brand"
+                onclick={stage}>
+            </lightning-button>
+        </div>
+    </div>
+</template>

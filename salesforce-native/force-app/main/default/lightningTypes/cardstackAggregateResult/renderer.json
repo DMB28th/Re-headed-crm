@@ -1,0 +1,13 @@
+{
+  "renderer" : {
+    "componentOverrides" : {
+      "$" : {
+        "definition" : "@widget/c/cardstackKpi",
+        "attributes" : {
+          "summary" : "{!$attrs.outputValues.summary}",
+          "buckets" : "{!$attrs.outputValues.buckets}"
+        }
+      }
+    }
+  }
+}

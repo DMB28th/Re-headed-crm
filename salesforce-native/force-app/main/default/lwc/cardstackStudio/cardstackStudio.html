@@ -1,0 +1,31 @@
+<template>
+    <lightning-card title="Cardstack Studio" icon-name="standard:apps">
+        <p class="slds-p-horizontal_small slds-text-color_weak slds-m-bottom_small">
+            Configure record cards, lists, flows, and the home card your team sees in chat.
+            Changes are staged as drafts until published.
+        </p>
+        <lightning-tabset variant="scoped" active-tab-value={activeTab}>
+            <lightning-tab label="Dashboard" value="dashboard" icon-name="standard:dashboard">
+                <c-cardstack-dashboard onnavigatetab={handleNavigateTab}></c-cardstack-dashboard>
+            </lightning-tab>
+            <lightning-tab label="Objects" value="objects" icon-name="standard:object">
+                <c-cardstack-object-config></c-cardstack-object-config>
+            </lightning-tab>
+            <lightning-tab label="Flows" value="flows" icon-name="standard:flow">
+                <c-cardstack-flow-config></c-cardstack-flow-config>
+            </lightning-tab>
+            <lightning-tab label="Home Card" value="home" icon-name="standard:home">
+                <c-cardstack-home-card-config></c-cardstack-home-card-config>
+            </lightning-tab>
+            <lightning-tab label="Custom Screens" value="screens" icon-name="standard:screen">
+                <c-cardstack-custom-screens></c-cardstack-custom-screens>
+            </lightning-tab>
+            <lightning-tab label="Audit Log" value="audit" icon-name="standard:log_a_call">
+                <c-cardstack-audit-viewer></c-cardstack-audit-viewer>
+            </lightning-tab>
+            <lightning-tab label="Publish Center" value="publish" icon-name="standard:publish">
+                <c-cardstack-publish-center></c-cardstack-publish-center>
+            </lightning-tab>
+        </lightning-tabset>
+    </lightning-card>
+</template>

@@ -1,0 +1,15 @@
+{
+  "description" : "Output values for CardstackAggregateAction",
+  "title" : "cardstackAggregateOutputValues",
+  "lightning:type" : "lightning__objectType",
+  "properties" : {
+    "summary" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Summary"
+    },
+    "buckets" : {
+      "lightning:type" : "@apexClassType/c__CardstackAggregateAction$AggregateRow",
+      "title" : "Buckets"
+    }
+  }
+}

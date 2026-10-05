@@ -1,0 +1,69 @@
+<template>
+    <div class="slds-box slds-theme_shade slds-m-bottom_medium">
+        <div class="slds-grid slds-grid_align-spread slds-m-bottom_small">
+            <div>
+                <p class="slds-text-heading_small">Get Cardstack running</p>
+                <p class="slds-text-body_small slds-text-color_weak">{doneCount} of {totalCount} complete</p>
+            </div>
+            <div>
+                <lightning-button-icon
+                    icon-name={collapseIcon}
+                    alternative-text="Collapse"
+                    title="Collapse"
+                    onclick={toggleCollapse}>
+                </lightning-button-icon>
+                <template if:true={allDone}>
+                    <lightning-button
+                        label="Dismiss"
+                        variant="base"
+                        onclick={dismiss}
+                        class="slds-m-left_x-small">
+                    </lightning-button>
+                </template>
+            </div>
+        </div>
+
+        <div class="slds-progress-bar slds-progress-bar_circular slds-m-bottom_medium" role="progressbar">
+            <span class="slds-progress-bar__value" style={progressStyle}>
+                <span class="slds-assistive-text">Progress: {progressPct}%</span>
+            </span>
+        </div>
+
+        <template if:false={collapsed}>
+            <ul class="slds-has-dividers_bottom-space">
+                <template for:each={items} for:item="item">
+                    <li key={item.id} class="slds-item slds-p-vertical_x-small">
+                        <div class="slds-grid slds-grid_vertical-align-center">
+                            <div class="slds-m-right_small">
+                                <template if:true={item.done}>
+                                    <lightning-icon icon-name="action:approval" size="small" alternative-text="Done"></lightning-icon>
+                                </template>
+                                <template if:false={item.done}>
+                                    <lightning-icon icon-name="action:close" size="small" alternative-text="Pending"></lightning-icon>
+                                </template>
+                            </div>
+                            <div class="slds-col">
+                                <p class="slds-text-body_regular">
+                                    <template if:true={item.done}><s>{item.label}</s></template>
+                                    <template if:false={item.done}>{item.label}</template>
+                                </p>
+                                <p class="slds-text-body_small slds-text-color_weak">{item.detail}</p>
+                            </div>
+                            <div>
+                                <template if:true={item.tab}>
+                                    <lightning-button label="Go" variant="base" data-tab={item.tab} onclick={goToTab}></lightning-button>
+                                </template>
+                                <template if:true={item.showManualButton}>
+                                    <lightning-button label="Mark done" variant="base" data-id={item.id} onclick={markDone}></lightning-button>
+                                </template>
+                            </div>
+                        </div>
+                    </li>
+                </template>
+            </ul>
+            <p class="slds-text-body_small slds-text-color_weak slds-m-top_small">
+                MCP server URL: <code>https://api.salesforce.com/platform/mcp/v1/custom/Cardstack</code>
+            </p>
+        </template>
+    </div>
+</template>

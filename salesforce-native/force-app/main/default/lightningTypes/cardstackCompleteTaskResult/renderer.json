@@ -1,0 +1,16 @@
+{
+  "renderer" : {
+    "componentOverrides" : {
+      "$" : {
+        "definition" : "@widget/c/cardstackResult",
+        "attributes" : {
+          "summary" : "{!$attrs.outputValues.summary}",
+          "dmlFailed" : "{!$attrs.outputValues.dmlFailed}",
+          "showSuccess" : "{!$attrs.outputValues.showSuccess}",
+          "dmlErrorSummary" : "{!$attrs.outputValues.dmlErrorSummary}",
+          "dmlErrors" : "{!$attrs.outputValues.dmlErrors}"
+        }
+      }
+    }
+  }
+}

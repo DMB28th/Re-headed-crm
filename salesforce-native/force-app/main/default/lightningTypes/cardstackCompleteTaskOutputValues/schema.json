@@ -1,0 +1,27 @@
+{
+  "description" : "Output values for CardstackCompleteTaskAction",
+  "title" : "cardstackCompleteTaskOutputValues",
+  "lightning:type" : "lightning__objectType",
+  "properties" : {
+    "summary" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Summary"
+    },
+    "dmlFailed" : {
+      "lightning:type" : "lightning__booleanType",
+      "title" : "DML Failed"
+    },
+    "showSuccess" : {
+      "lightning:type" : "lightning__booleanType",
+      "title" : "Show Success"
+    },
+    "dmlErrorSummary" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "DML Error Summary"
+    },
+    "dmlErrors" : {
+      "lightning:type" : "@apexClassType/c__CardstackDmlError$DmlErrorDetail",
+      "title" : "DML Errors"
+    }
+  }
+}

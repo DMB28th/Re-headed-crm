@@ -1,0 +1,15 @@
+{
+  "renderer": {
+    "componentOverrides": {
+      "$": {
+        "definition": "@widget/c/cardstackRecord",
+        "attributes": {
+          "recordName": "{!$attrs.outputValues.recordName}",
+          "objectName": "{!$attrs.outputValues.objectName}",
+          "fields": "{!$attrs.outputValues.fields}",
+          "recordUrl": "{!$attrs.outputValues.recordUrl}"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "renderer" : {
+    "componentOverrides" : {
+      "$" : {
+        "definition" : "@widget/c/cardstackResult",
+        "attributes" : {
+          "summary" : "{!$attrs.outputValues.summary}"
+        }
+      }
+    }
+  }
+}

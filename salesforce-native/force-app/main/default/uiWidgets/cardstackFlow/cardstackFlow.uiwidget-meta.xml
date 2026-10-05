@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<UiWidgetBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <masterLabel>Cardstack Flow</masterLabel>
+    <description>Cardstack widget: cardstackFlow</description>
+    <widgetType>JSON</widgetType>
+</UiWidgetBundle>

@@ -1,0 +1,54 @@
+<template>
+    <div class="slds-p-around_small">
+        <div class="slds-grid slds-gutters">
+            <div class="slds-col slds-size_2-of-3">
+                <p class="slds-text-color_weak slds-m-bottom_small">
+                    The home dashboard card users see on "open my CRM". Stored under the
+                    <code>homecard</code> config key.
+                </p>
+                <template if:true={staging}>
+                    <lightning-badge label={statusLabel} class={statusClass}></lightning-badge>
+                </template>
+                <lightning-textarea
+                    label="Home card JSON (draft)"
+                    value={draftValue}
+                    onchange={handleEdit}
+                    class="slds-m-top_small json-editor">
+                </lightning-textarea>
+                <div class="slds-m-top_small">
+                    <lightning-button
+                        label="Stage Draft"
+                        variant="brand"
+                        onclick={stage}
+                        class="slds-m-right_x-small">
+                    </lightning-button>
+                    <lightning-button label="Load Live" onclick={loadLive}></lightning-button>
+                </div>
+            </div>
+            <div class="slds-col slds-size_1-of-3">
+                <h3 class="slds-text-heading_small slds-m-bottom_small">Preview</h3>
+                <div class="slds-box slds-theme_default">
+                    <template if:true={preview.title}>
+                        <p class="slds-text-heading_small slds-m-bottom_x-small">{preview.title}</p>
+                    </template>
+                    <template if:true={preview.subtitle}>
+                        <p class="slds-text-color_weak slds-m-bottom_small">{preview.subtitle}</p>
+                    </template>
+                    <template for:each={preview.sections} for:item="s">
+                        <div key={s.label} class="slds-m-bottom_small">
+                            <p class="slds-text-title_caps">{s.label}</p>
+                            <template for:each={s.items} for:item="it">
+                                <p key={it.label} class="slds-text-body_small">
+                                    {it.label}: <strong>{it.value}</strong>
+                                </p>
+                            </template>
+                        </div>
+                    </template>
+                    <template if:false={preview.title}>
+                        <p class="slds-text-color_weak">Nothing to preview — enter valid JSON.</p>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>

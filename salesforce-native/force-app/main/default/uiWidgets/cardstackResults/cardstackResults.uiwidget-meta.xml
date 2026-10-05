@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<UiWidgetBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <masterLabel>Cardstack Results</masterLabel>
+    <description>Cardstack spike: renders account search results as a scannable list with industry badges, revenue, and per-row links into Salesforce.</description>
+    <widgetType>JSON</widgetType>
+</UiWidgetBundle>

@@ -1,0 +1,24 @@
+{
+  "renderer" : {
+    "componentOverrides" : {
+      "$" : {
+        "definition" : "@widget/c/cardstackFlow",
+        "attributes" : {
+          "summary" : "{!$attrs.outputValues.summary}",
+          "flowLabel" : "{!$attrs.outputValues.actionLabel}",
+          "flowUrl" : "{!$attrs.outputValues.recordUrl}",
+          "status" : "{!$attrs.outputValues.status}",
+          "statusVariant" : "{!$attrs.outputValues.statusVariant}",
+          "stepText" : "{!$attrs.outputValues.stepText}",
+          "stepLabel" : "{!$attrs.outputValues.stepLabel}",
+          "nextPrompt" : "{!$attrs.outputValues.nextPrompt}",
+          "isQuickAction" : "{!$attrs.outputValues.isQuickAction}",
+          "hasAnswers" : "{!$attrs.outputValues.hasAnswers}",
+          "errorMessage" : "{!$attrs.outputValues.errorMessage}",
+          "actionSessionId" : "{!$attrs.outputValues.actionSessionId}",
+          "suggestedReplies" : "{!$attrs.outputValues.suggestedReplies}"
+        }
+      }
+    }
+  }
+}

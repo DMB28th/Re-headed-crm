@@ -1,0 +1,71 @@
+{
+  "description" : "Output values for CardstackFlowContinueAction",
+  "title" : "cardstackFlowContinueOutputValues",
+  "lightning:type" : "lightning__objectType",
+  "properties" : {
+    "summary" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Summary"
+    },
+    "flowLabel" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Flow Label"
+    },
+    "flowUrl" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Flow Url"
+    },
+    "status" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Status"
+    },
+    "statusVariant" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Status Variant"
+    },
+    "currentStep" : {
+      "lightning:type" : "lightning__numberType",
+      "title" : "Current Step"
+    },
+    "totalSteps" : {
+      "lightning:type" : "lightning__numberType",
+      "title" : "Total Steps"
+    },
+    "stepLabel" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Step Label"
+    },
+    "stepText" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Step Text"
+    },
+    "nextPrompt" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Next Prompt"
+    },
+    "isQuickAction" : {
+      "lightning:type" : "lightning__booleanType",
+      "title" : "Is Quick Action"
+    },
+    "hasAnswers" : {
+      "lightning:type" : "lightning__booleanType",
+      "title" : "Has Answers"
+    },
+    "errorMessage" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Error Message"
+    },
+    "answers" : {
+      "lightning:type" : "@apexClassType/c__CardstackFlowContinueAction$AnswerRow",
+      "title" : "Answers"
+    },
+    "actionSessionId" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Action Session ID"
+    },
+    "suggestedReplies" : {
+      "lightning:type" : "@apexClassType/c__CardstackFlowStartAction$SuggestedReply",
+      "title" : "Suggested Replies"
+    }
+  }
+}

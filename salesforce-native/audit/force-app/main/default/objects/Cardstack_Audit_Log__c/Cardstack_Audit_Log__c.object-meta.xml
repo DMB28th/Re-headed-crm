@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <deploymentStatus>Deployed</deploymentStatus>
+    <description>Native audit log for Cardstack MCP tool invocations. Append-only; records who ran which tool against which record and when.</description>
+    <enableActivities>false</enableActivities>
+    <enableBulkApi>true</enableBulkApi>
+    <enableFeeds>false</enableFeeds>
+    <enableHistory>false</enableHistory>
+    <enableReports>true</enableReports>
+    <enableSearch>false</enableSearch>
+    <enableStreamingApi>true</enableStreamingApi>
+    <label>Cardstack Audit Log</label>
+    <nameField>
+        <displayFormat>CAL-{000000}</displayFormat>
+        <label>Audit Number</label>
+        <type>AutoNumber</type>
+    </nameField>
+    <pluralLabel>Cardstack Audit Logs</pluralLabel>
+    <sharingModel>ReadWrite</sharingModel>
+    <visibility>Public</visibility>
+</CustomObject>

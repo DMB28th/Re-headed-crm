@@ -1,0 +1,67 @@
+{
+  "description" : "Output values for CardstackQuickActionStartAction",
+  "title" : "cardstackQuickActionStartOutputValues",
+  "lightning:type" : "lightning__objectType",
+  "properties" : {
+    "summary" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Summary"
+    },
+    "status" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Status"
+    },
+    "statusVariant" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Status Variant"
+    },
+    "currentStep" : {
+      "lightning:type" : "lightning__numberType",
+      "title" : "Current Step"
+    },
+    "totalSteps" : {
+      "lightning:type" : "lightning__numberType",
+      "title" : "Total Steps"
+    },
+    "stepLabel" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Step Label"
+    },
+    "stepText" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Step Text"
+    },
+    "nextPrompt" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Next Prompt"
+    },
+    "isQuickAction" : {
+      "lightning:type" : "lightning__booleanType",
+      "title" : "Is Quick Action"
+    },
+    "hasAnswers" : {
+      "lightning:type" : "lightning__booleanType",
+      "title" : "Has Answers"
+    },
+    "errorMessage" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Error Message"
+    },
+    "actionLabel" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Action Label"
+    },
+    "recordUrl" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Record Url"
+    },
+    "actionSessionId" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Action Session ID"
+    },
+    "suggestedReplies" : {
+      "lightning:type" : "@apexClassType/c__CardstackFlowStartAction$SuggestedReply",
+      "title" : "Suggested Replies"
+    }
+  }
+}

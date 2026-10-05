@@ -1,0 +1,107 @@
+<template>
+    <div class="slds-p-around_small">
+        <!-- Setup checklist (only when incomplete and not dismissed) -->
+        <template if:true={showChecklist}>
+            <c-cardstack-setup-checklist onchecklistchange={handleChecklistChange}></c-cardstack-setup-checklist>
+        </template>
+
+        <template if:true={data}>
+            <div class="slds-grid slds-gutters slds-wrap slds-m-bottom_medium">
+                <!-- Org status -->
+                <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3 slds-m-bottom_small">
+                    <div class="slds-box slds-theme_default dash-card">
+                        <p class="slds-text-title_caps slds-m-bottom_small">Org Status</p>
+                        <p class="slds-text-heading_small slds-m-bottom_x-small">{org.orgName}</p>
+                        <p class="slds-text-body_small slds-text-color_weak slds-m-bottom_small">{org.orgId}</p>
+                        <lightning-badge label="Connected" class="slds-badge slds-theme_success"></lightning-badge>
+                        <span class="slds-m-left_x-small slds-text-body_small slds-text-color_weak">{org.userName}</span>
+                    </div>
+                </div>
+
+                <!-- Config coverage -->
+                <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3 slds-m-bottom_small">
+                    <div class="slds-box slds-theme_default dash-card">
+                        <p class="slds-text-title_caps slds-m-bottom_small">Card Coverage</p>
+                        <p class="slds-text-heading_large slds-m-bottom_x-small">{coverageText}</p>
+                        <p class="slds-text-body_small slds-text-color_weak slds-m-bottom_small">objects have chat cards</p>
+                        <div class="slds-progress-bar slds-progress-bar_circular" role="progressbar">
+                            <span class="slds-progress-bar__value" style={coverageBarStyle}>
+                                <span class="slds-assistive-text">Progress: {coveragePct}%</span>
+                            </span>
+                        </div>
+                        <div class="slds-m-top_small">
+                            <lightning-button label="Configure Objects" variant="base" onclick={goToObjects}></lightning-button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pending drafts -->
+                <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3 slds-m-bottom_small">
+                    <div class="slds-box slds-theme_default dash-card">
+                        <p class="slds-text-title_caps slds-m-bottom_small">Pending Drafts</p>
+                        <p class="slds-text-heading_large slds-m-bottom_x-small">{pendingDraftCount}</p>
+                        <p class="slds-text-body_small slds-text-color_weak slds-m-bottom_small">staged, awaiting publish</p>
+                        <template if:true={hasPendingDrafts}>
+                            <ul class="slds-m-bottom_small">
+                                <template for:each={pendingDrafts} for:item="d">
+                                    <li key={d.id} class="slds-text-body_small slds-truncate" title={d.key}>{d.key}</li>
+                                </template>
+                            </ul>
+                        </template>
+                        <div class="slds-m-top_small">
+                            <lightning-button label="Open Publish Center" variant="base" onclick={goToPublish}></lightning-button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick actions -->
+            <div class="slds-grid slds-gutters slds-m-bottom_medium">
+                <div class="slds-col slds-size_1-of-1">
+                    <div class="slds-box slds-theme_default dash-card">
+                        <div class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center">
+                            <div>
+                                <p class="slds-text-heading_small slds-m-bottom_xx-small">Set up a flow for chat</p>
+                                <p class="slds-text-body_small slds-text-color_weak">Pick a Salesforce flow, decide what chat collects, preview the card — three steps.</p>
+                            </div>
+                            <lightning-button label="New flow" variant="brand" icon-name="utility:add" onclick={newFlow}></lightning-button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent activity -->
+            <div class="slds-box slds-theme_default">
+                <div class="slds-grid slds-grid_align-spread slds-m-bottom_small">
+                    <p class="slds-text-title_caps">Recent Activity</p>
+                    <lightning-button label="View Audit Log" variant="base" onclick={goToAudit}></lightning-button>
+                </div>
+                <template if:true={recentActivity.length}>
+                    <lightning-datatable
+                        key-field="key"
+                        data={recentActivity}
+                        columns={activityColumns}
+                        hide-checkbox-column>
+                    </lightning-datatable>
+                </template>
+                <template if:false={recentActivity.length}>
+                    <p class="slds-text-color_weak">No tool activity yet. Chat with Claude to see invocations here.</p>
+                </template>
+            </div>
+        </template>
+
+        <template if:true={error}>
+            <div class="slds-notify slds-notify_alert slds-theme_alert-texture slds-theme_error" role="alert">
+                <p>{error}</p>
+            </div>
+        </template>
+
+        <template if:false={data}>
+            <template if:false={error}>
+                <div class="slds-align_absolute-center slds-p-vertical_large">
+                    <lightning-spinner alternative-text="Loading dashboard"></lightning-spinner>
+                </div>
+            </template>
+        </template>
+    </div>
+</template>

@@ -1,0 +1,15 @@
+{
+  "renderer" : {
+    "componentOverrides" : {
+      "$" : {
+        "definition" : "@widget/c/cardstackTableV2",
+        "attributes" : {
+          "summary" : "{!$attrs.outputValues.summary}",
+          "count" : "{!$attrs.outputValues.count}",
+          "rows" : "{!$attrs.outputValues.objects}",
+          "columns" : "{!$attrs.outputValues.columns}"
+        }
+      }
+    }
+  }
+}

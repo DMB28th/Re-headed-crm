@@ -1,0 +1,62 @@
+<template>
+    <div class="slds-p-around_small">
+        <p class="slds-text-color_weak slds-m-bottom_medium">
+            Cardstack runs natively in this org — no external CRM connection to manage.
+            This is the org identity chat tools execute against.
+        </p>
+
+        <template if:true={info}>
+            <div class="slds-grid slds-gutters slds-m-bottom_large">
+                <div class="slds-col slds-size_1-of-2">
+                    <div class="slds-box">
+                        <p class="slds-text-title_caps slds-m-bottom_small">Salesforce Org</p>
+                        <dl class="slds-dl_horizontal">
+                            <dt class="slds-dl_horizontal__label">Org</dt>
+                            <dd class="slds-dl_horizontal__detail">{info.orgName}</dd>
+                            <dt class="slds-dl_horizontal__label">Org ID</dt>
+                            <dd class="slds-dl_horizontal__detail">{info.orgId}</dd>
+                            <dt class="slds-dl_horizontal__label">Instance</dt>
+                            <dd class="slds-dl_horizontal__detail">{info.instance}</dd>
+                            <dt class="slds-dl_horizontal__label">Type</dt>
+                            <dd class="slds-dl_horizontal__detail">{orgType}</dd>
+                            <dt class="slds-dl_horizontal__label">Status</dt>
+                            <dd class="slds-dl_horizontal__detail">
+                                <lightning-badge label="Connected" class="slds-badge slds-theme_success"></lightning-badge>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+                <div class="slds-col slds-size_1-of-2">
+                    <div class="slds-box">
+                        <p class="slds-text-title_caps slds-m-bottom_small">Signed In</p>
+                        <dl class="slds-dl_horizontal">
+                            <dt class="slds-dl_horizontal__label">User</dt>
+                            <dd class="slds-dl_horizontal__detail">{info.userName}</dd>
+                            <dt class="slds-dl_horizontal__label">CRM</dt>
+                            <dd class="slds-dl_horizontal__detail">Salesforce (native)</dd>
+                            <dt class="slds-dl_horizontal__label">Label</dt>
+                            <dd class="slds-dl_horizontal__detail">{info.label}</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+
+            <h3 class="slds-text-heading_small slds-m-bottom_small">Hosted MCP Servers</h3>
+            <template if:true={servers.length}>
+                <lightning-datatable
+                    key-field="developerName"
+                    data={servers}
+                    columns={serverColumns}
+                    hide-checkbox-column>
+                </lightning-datatable>
+            </template>
+            <template if:false={servers.length}>
+                <p class="slds-text-color_weak">No MCP server definitions found in this org.</p>
+            </template>
+        </template>
+
+        <template if:true={error}>
+            <p class="slds-text-color_error">{error}</p>
+        </template>
+    </div>
+</template>

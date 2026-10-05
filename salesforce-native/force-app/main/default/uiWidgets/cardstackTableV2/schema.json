@@ -1,0 +1,62 @@
+{
+  "title": "Cardstack Table V2",
+  "description": "Cardstack table widget rendering record cards.",
+  "type": "object",
+  "properties": {
+    "attributes": {
+      "lightning:type": "lightning__objectType",
+      "properties": {
+        "summary": {
+          "lightning:type": "lightning__textType",
+          "title": "Summary"
+        },
+        "count": {
+          "lightning:type": "lightning__numberType",
+          "title": "Count"
+        },
+        "rows": {
+          "lightning:type": "lightning__objectType",
+          "title": "Rows",
+          "type": "object",
+          "properties": {
+            "recordId": {
+              "lightning:type": "lightning__textType",
+              "title": "Record ID"
+            },
+            "name": {
+              "lightning:type": "lightning__textType",
+              "title": "Name"
+            },
+            "detail": {
+              "lightning:type": "lightning__textType",
+              "title": "Detail"
+            },
+            "recordUrl": {
+              "lightning:type": "lightning__textType",
+              "title": "Record URL"
+            },
+            "cells": {
+              "lightning:type": "lightning__textType",
+              "title": "Cells"
+            }
+          }
+        },
+        "columns": {
+          "lightning:type": "lightning__objectType",
+          "title": "Columns",
+          "type": "object",
+          "properties": {
+            "label": {
+              "lightning:type": "lightning__textType",
+              "title": "Label"
+            },
+            "apiName": {
+              "lightning:type": "lightning__textType",
+              "title": "API Name"
+            }
+          }
+        }
+      }
+    }
+  }
+}

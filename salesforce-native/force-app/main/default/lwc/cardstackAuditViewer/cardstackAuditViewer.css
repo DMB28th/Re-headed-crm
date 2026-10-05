@@ -1,0 +1,14 @@
+.row-header {
+    cursor: pointer;
+}
+.row-header:hover {
+    background-color: #f3f2f2;
+}
+.diff-before {
+    color: #c23934;
+    text-decoration: line-through;
+}
+.diff-after {
+    color: #027e46;
+    font-weight: 700;
+}

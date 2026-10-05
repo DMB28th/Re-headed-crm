@@ -1,0 +1,23 @@
+.diff-added {
+    color: #027e46;
+}
+.diff-removed {
+    color: #c23934;
+}
+.diff-moved {
+    color: #8a6d00;
+}
+.diff-line {
+    color: #706e6b;
+}
+.diff-summary p {
+    margin-bottom: 0.25rem;
+}
+.draft-age {
+    font-weight: 700;
+    color: #181818;
+}
+.json-editor textarea {
+    font-family: monospace;
+    min-height: 200px;
+}

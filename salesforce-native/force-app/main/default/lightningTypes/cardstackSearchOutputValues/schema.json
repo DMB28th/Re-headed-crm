@@ -1,0 +1,21 @@
+{
+  "description" : "Payload returned by the CardstackSearchAction invocable action",
+  "lightning:tags" : [ "mcp" ],
+  "lightning:type" : "lightning__objectType",
+  "properties" : {
+    "count" : {
+      "lightning:type" : "lightning__numberType",
+      "title" : "Count"
+    },
+    "results" : {
+      "lightning:type" : "@apexClassType/c__CardstackSearchAction$SearchResultRow",
+      "title" : "Results"
+    },
+    "summary" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Summary"
+    }
+  },
+  "title" : "Cardstack Search Output Values",
+  "unevaluatedProperties" : false
+}

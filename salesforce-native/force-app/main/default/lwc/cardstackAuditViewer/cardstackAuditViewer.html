@@ -1,0 +1,188 @@
+<template>
+    <div class="slds-p-around_small">
+        <!-- Filters -->
+        <div class="slds-grid slds-gutters slds-wrap slds-m-bottom_medium">
+            <div class="slds-col slds-size_1-of-1 slds-medium-size_3-of-12">
+                <lightning-input
+                    label="Search"
+                    placeholder="Action, details, record ID…"
+                    value={searchTerm}
+                    onchange={handleSearchInput}>
+                </lightning-input>
+            </div>
+            <div class="slds-col slds-size_1-of-2 slds-medium-size_2-of-12">
+                <lightning-combobox
+                    label="Tool"
+                    placeholder="All tools"
+                    options={toolOptions}
+                    value={toolFilter}
+                    onchange={handleToolChange}>
+                </lightning-combobox>
+            </div>
+            <div class="slds-col slds-size_1-of-2 slds-medium-size_2-of-12">
+                <lightning-combobox
+                    label="User"
+                    placeholder="All users"
+                    options={userOptions}
+                    value={userFilter}
+                    onchange={handleUserChange}>
+                </lightning-combobox>
+            </div>
+            <div class="slds-col slds-size_1-of-2 slds-medium-size_2-of-12">
+                <lightning-input
+                    type="date"
+                    label="From"
+                    value={fromDate}
+                    onchange={handleFromDate}>
+                </lightning-input>
+            </div>
+            <div class="slds-col slds-size_1-of-2 slds-medium-size_2-of-12">
+                <lightning-input
+                    type="date"
+                    label="To"
+                    value={toDate}
+                    onchange={handleToDate}>
+                </lightning-input>
+            </div>
+            <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-12 slds-m-top_large">
+                <lightning-button
+                    label="Refresh"
+                    icon-name="utility:refresh"
+                    onclick={refresh}>
+                </lightning-button>
+            </div>
+            <div class="slds-col slds-size_1-of-2 slds-medium-size_1-of-12">
+                <lightning-combobox
+                    label="Rows"
+                    options={limitOptions}
+                    value={limitSize}
+                    onchange={handleLimitChange}>
+                </lightning-combobox>
+            </div>
+        </div>
+
+        <div class="slds-grid slds-grid_align-spread slds-m-bottom_small">
+            <p class="slds-text-color_weak">{rows.length} row(s), newest first. Click a row for details.</p>
+            <lightning-button
+                label="Export CSV"
+                icon-name="utility:download"
+                onclick={exportCsv}
+                disabled={exportDisabled}>
+            </lightning-button>
+        </div>
+
+        <!-- Rows -->
+        <template if:true={rows.length}>
+            <ul class="slds-has-dividers_around-space">
+                <template for:each={rows} for:item="r">
+                    <li key={r.Id} class="slds-item">
+                        <div class="slds-grid slds-grid_vertical-align-center slds-p-around_x-small row-header"
+                             data-id={r.Id} onclick={toggleRow}>
+                            <div class="slds-col slds-size_2-of-12">
+                                <p class="slds-text-body_small" title={r.fullTime}>{r.relativeTime}</p>
+                            </div>
+                            <div class="slds-col slds-size_2-of-12">
+                                <lightning-badge label={r.Action__c} class={r.actionBadgeClass}></lightning-badge>
+                            </div>
+                            <div class="slds-col slds-size_3-of-12">
+                                <p class="slds-text-body_small slds-truncate" title={r.Tool_Name__c}>{r.Tool_Name__c}</p>
+                            </div>
+                            <div class="slds-col slds-size_2-of-12">
+                                <p class="slds-text-body_small slds-truncate" title={r.userName}>{r.userName}</p>
+                            </div>
+                            <div class="slds-col slds-size_2-of-12">
+                                <p class="slds-text-body_small slds-truncate" title={r.Record_Id__c}>{r.Record_Id__c}</p>
+                            </div>
+                            <div class="slds-col slds-size_1-of-12 slds-text-align_right">
+                                <lightning-icon
+                                    icon-name={r.expandIcon}
+                                    size="x-small"
+                                    alternative-text="Expand">
+                                </lightning-icon>
+                            </div>
+                        </div>
+
+                        <!-- Expanded detail -->
+                        <template if:true={r.expanded}>
+                            <div class="slds-box slds-m-around_x-small slds-theme_shade">
+                                <div class="slds-grid slds-gutters slds-m-bottom_small">
+                                    <div class="slds-col">
+                                        <p class="slds-text-title">When</p>
+                                        <p class="slds-text-body_small">{r.fullTime}</p>
+                                    </div>
+                                    <div class="slds-col">
+                                        <p class="slds-text-title">Record</p>
+                                        <p class="slds-text-body_small">{r.Record_Id__c}</p>
+                                    </div>
+                                    <template if:true={r.confirmedBy}>
+                                        <div class="slds-col">
+                                            <p class="slds-text-title">Confirmed by</p>
+                                            <p class="slds-text-body_small">{r.confirmedBy}</p>
+                                        </div>
+                                    </template>
+                                </div>
+
+                                <!-- Before/after diff for writes -->
+                                <template if:true={r.hasDiff}>
+                                    <p class="slds-text-title slds-m-bottom_x-small">Changes</p>
+                                    <table class="slds-table slds-table_cell-buffer slds-table_bordered">
+                                        <thead>
+                                            <tr class="slds-line-height_reset">
+                                                <th scope="col"><div class="slds-truncate">Field</div></th>
+                                                <th scope="col"><div class="slds-truncate">Before</div></th>
+                                                <th scope="col"><div class="slds-truncate">After</div></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <template for:each={r.diffRows} for:item="d">
+                                                <tr key={d.field} class="slds-hint-parent">
+                                                    <td><div class="slds-truncate">{d.field}</div></td>
+                                                    <td>
+                                                        <div class="slds-truncate diff-before" title={d.before}>{d.before}</div>
+                                                    </td>
+                                                    <td>
+                                                        <div class="slds-truncate diff-after" title={d.after}>{d.after}</div>
+                                                    </td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </template>
+
+                                <!-- Created fields (no before) -->
+                                <template if:true={r.hasCreatedFields}>
+                                    <p class="slds-text-title slds-m-bottom_x-small">Created with</p>
+                                    <table class="slds-table slds-table_cell-buffer slds-table_bordered">
+                                        <thead>
+                                            <tr class="slds-line-height_reset">
+                                                <th scope="col"><div class="slds-truncate">Field</div></th>
+                                                <th scope="col"><div class="slds-truncate">Value</div></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <template for:each={r.createdRows} for:item="c">
+                                                <tr key={c.field} class="slds-hint-parent">
+                                                    <td><div class="slds-truncate">{c.field}</div></td>
+                                                    <td><div class="slds-truncate diff-after" title={c.value}>{c.value}</div></td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </template>
+
+                                <!-- Fallback: raw details -->
+                                <template if:false={r.hasStructuredDetail}>
+                                    <p class="slds-text-title slds-m-bottom_x-small">Details</p>
+                                    <p class="slds-text-body_small">{r.Details__c}</p>
+                                </template>
+                            </div>
+                        </template>
+                    </li>
+                </template>
+            </ul>
+        </template>
+        <template if:false={rows.length}>
+            <p class="slds-text-color_weak">No audit rows match. Tool invocations and Studio publishes log here.</p>
+        </template>
+    </div>
+</template>

@@ -1,0 +1,23 @@
+{
+  "description" : "Output values for CardstackLookupSearchAction",
+  "title" : "cardstackLookupSearchOutputValues",
+  "lightning:type" : "lightning__objectType",
+  "properties" : {
+    "summary" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Summary"
+    },
+    "count" : {
+      "lightning:type" : "lightning__numberType",
+      "title" : "Count"
+    },
+    "matches" : {
+      "lightning:type" : "@apexClassType/c__CardstackLookupSearchAction$LookupMatch",
+      "title" : "Matches"
+    },
+    "columns" : {
+      "lightning:type" : "@apexClassType/c__CardstackLookupSearchAction$TableColumn",
+      "title" : "Columns"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "description": "Invocable-action result envelope for CardstackListViewAction MCP tool",
+  "title": "cardstackListViewResultV3",
+  "lightning:type": "lightning__objectType",
+  "lightning:tags": [
+    "mcp"
+  ],
+  "properties": {
+    "actionName": {
+      "lightning:type": "lightning__textType",
+      "title": "Action Name"
+    },
+    "isSuccess": {
+      "lightning:type": "lightning__booleanType",
+      "title": "Is Success"
+    },
+    "outputValues": {
+      "lightning:type": "c__cardstackListViewOutputValuesV2",
+      "title": "Output Values"
+    }
+  },
+  "unevaluatedProperties": false
+}

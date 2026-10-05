@@ -1,0 +1,164 @@
+<template>
+    <div class="slds-p-around_small">
+        <div class="slds-grid slds-grid_align-spread slds-m-bottom_medium">
+            <div class="slds-grid slds-gutters">
+                <div class="slds-col">
+                    <lightning-combobox
+                        label="Status"
+                        options={statusOptions}
+                        value={statusFilter}
+                        onchange={handleStatusChange}>
+                    </lightning-combobox>
+                </div>
+                <div class="slds-col slds-m-top_large">
+                    <lightning-button
+                        label="Refresh"
+                        icon-name="utility:refresh"
+                        onclick={refresh}>
+                    </lightning-button>
+                </div>
+            </div>
+            <div class="slds-m-top_large">
+                <template if:true={hasPendingDrafts}>
+                    <lightning-button
+                        label="Publish All"
+                        variant="brand"
+                        icon-name="utility:publish"
+                        onclick={askPublishAll}>
+                    </lightning-button>
+                </template>
+            </div>
+        </div>
+
+        <template if:true={pendingDrafts.length}>
+            <h3 class="slds-text-heading_small slds-m-bottom_small">
+                Pending drafts ({pendingDrafts.length})
+            </h3>
+            <template for:each={pendingDrafts} for:item="d">
+                <div key={d.Id} class="slds-box slds-m-bottom_small">
+                    <div class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center">
+                        <div>
+                            <p class="slds-text-heading_small">{d.Name}</p>
+                            <p class="slds-text-color_weak slds-text-body_small">
+                                <span class="draft-age">{d.ageText}</span>
+                                <template if:true={d.createdBy}> by {d.createdBy}</template>
+                                · <span class="slds-text-title">{d.configKey}</span>
+                            </p>
+                        </div>
+                        <div>
+                            <lightning-button
+                                label="Publish"
+                                variant="brand"
+                                data-id={d.Id}
+                                onclick={publish}
+                                class="slds-m-right_x-small">
+                            </lightning-button>
+                            <lightning-button
+                                label="Roll Back"
+                                variant="destructive-text"
+                                data-id={d.Id}
+                                onclick={askRollback}>
+                            </lightning-button>
+                        </div>
+                    </div>
+
+                    <!-- Visual diff summary -->
+                    <template if:true={d.diffSummary}>
+                        <div class="slds-m-top_small diff-summary">
+                            <template for:each={d.diffSummary} for:item="line">
+                                <p key={line.key} class={line.cssClass}>
+                                    <lightning-icon icon-name={line.icon} size="x-small" class="slds-m-right_x-small"></lightning-icon>
+                                    {line.text}
+                                </p>
+                            </template>
+                        </div>
+                    </template>
+                    <template if:true={d.diffLoading}>
+                        <p class="slds-text-color_weak slds-m-top_small">
+                            <lightning-spinner size="small" alternative-text="Loading diff"></lightning-spinner>
+                            Comparing with live…
+                        </p>
+                    </template>
+
+                    <!-- Collapsible raw JSON -->
+                    <div class="slds-m-top_small">
+                        <lightning-button
+                            label={d.jsonToggleLabel}
+                            variant="base"
+                            icon-name={d.jsonToggleIcon}
+                            data-id={d.Id}
+                            onclick={toggleJson}>
+                        </lightning-button>
+                        <template if:true={d.showJson}>
+                            <lightning-textarea
+                                label="Raw JSON"
+                                value={d.prettyValue}
+                                readonly
+                                class="slds-m-top_x-small json-editor">
+                            </lightning-textarea>
+                        </template>
+                    </div>
+                </div>
+            </template>
+        </template>
+
+        <template if:true={otherDrafts.length}>
+            <h3 class="slds-text-heading_small slds-m-top_medium slds-m-bottom_small">
+                History
+            </h3>
+            <lightning-datatable
+                key-field="Id"
+                data={otherDrafts}
+                columns={columns}
+                hide-checkbox-column>
+            </lightning-datatable>
+        </template>
+
+        <template if:false={drafts.length}>
+            <p class="slds-text-color_weak">No drafts found. Stage changes from any Studio section first.</p>
+        </template>
+
+        <!-- Rollback confirm -->
+        <template if:true={confirmRollbackId}>
+            <section class="slds-modal slds-fade-in-open">
+                <div class="slds-modal__container">
+                    <div class="slds-modal__header">
+                        <h2 class="slds-text-heading_medium">Roll back draft?</h2>
+                    </div>
+                    <div class="slds-modal__content slds-p-around_medium">
+                        <p>The draft will be discarded. The live config is untouched.</p>
+                    </div>
+                    <div class="slds-modal__footer">
+                        <lightning-button label="Cancel" onclick={cancelRollback} class="slds-m-right_x-small"></lightning-button>
+                        <lightning-button label="Roll Back" variant="destructive" onclick={rollback}></lightning-button>
+                    </div>
+                </div>
+            </section>
+            <div class="slds-backdrop slds-backdrop_open"></div>
+        </template>
+
+        <!-- Publish all confirm -->
+        <template if:true={confirmPublishAll}>
+            <section class="slds-modal slds-fade-in-open">
+                <div class="slds-modal__container">
+                    <div class="slds-modal__header">
+                        <h2 class="slds-text-heading_medium">Publish all drafts?</h2>
+                    </div>
+                    <div class="slds-modal__content slds-p-around_medium">
+                        <p class="slds-m-bottom_small">The following drafts will go live:</p>
+                        <ul class="slds-list_dotted">
+                            <template for:each={pendingDrafts} for:item="d">
+                                <li key={d.Id}>{d.Name} <span class="slds-text-color_weak">({d.configKey})</span></li>
+                            </template>
+                        </ul>
+                    </div>
+                    <div class="slds-modal__footer">
+                        <lightning-button label="Cancel" onclick={cancelPublishAll} class="slds-m-right_x-small"></lightning-button>
+                        <lightning-button label="Publish All" variant="brand" onclick={publishAll}></lightning-button>
+                    </div>
+                </div>
+            </section>
+            <div class="slds-backdrop slds-backdrop_open"></div>
+        </template>
+    </div>
+</template>

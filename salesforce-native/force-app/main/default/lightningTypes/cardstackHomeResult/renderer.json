@@ -1,0 +1,15 @@
+{
+  "renderer" : {
+    "componentOverrides" : {
+      "$" : {
+        "definition" : "@widget/c/cardstackHome",
+        "attributes" : {
+          "summary" : "{!$attrs.outputValues.summary}",
+          "tasks" : "{!$attrs.outputValues.tasks}",
+          "openOpportunityCount" : "{!$attrs.outputValues.openOpportunityCount}",
+          "openPipelineTotal" : "{!$attrs.outputValues.openPipelineTotal}"
+        }
+      }
+    }
+  }
+}

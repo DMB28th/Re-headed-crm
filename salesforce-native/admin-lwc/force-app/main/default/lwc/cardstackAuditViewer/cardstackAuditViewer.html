@@ -1,0 +1,51 @@
+<template>
+    <div class="slds-p-around_small">
+        <div class="slds-grid slds-gutters slds-m-bottom_medium">
+            <div class="slds-col slds-size_1-of-4">
+                <lightning-input
+                    label="Search"
+                    placeholder="Action, details, record ID…"
+                    value={searchTerm}
+                    onchange={handleSearchInput}>
+                </lightning-input>
+            </div>
+            <div class="slds-col slds-size_1-of-4">
+                <lightning-combobox
+                    label="Tool"
+                    placeholder="All tools"
+                    options={toolOptions}
+                    value={toolFilter}
+                    onchange={handleToolChange}>
+                </lightning-combobox>
+            </div>
+            <div class="slds-col slds-size_1-of-4">
+                <lightning-combobox
+                    label="Rows"
+                    options={limitOptions}
+                    value={limitSize}
+                    onchange={handleLimitChange}>
+                </lightning-combobox>
+            </div>
+            <div class="slds-col slds-size_1-of-4 slds-m-top_large">
+                <lightning-button
+                    label="Refresh"
+                    icon-name="utility:refresh"
+                    onclick={refresh}>
+                </lightning-button>
+            </div>
+        </div>
+
+        <template if:true={rows.length}>
+            <lightning-datatable
+                key-field="Id"
+                data={rows}
+                columns={columns}
+                hide-checkbox-column>
+            </lightning-datatable>
+            <p class="slds-text-color_weak slds-m-top_x-small">{rows.length} row(s), newest first.</p>
+        </template>
+        <template if:false={rows.length}>
+            <p class="slds-text-color_weak">No audit rows match. Tool invocations and Studio publishes log here.</p>
+        </template>
+    </div>
+</template>

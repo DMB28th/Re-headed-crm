@@ -1,0 +1,189 @@
+<template>
+    <div class="slds-p-around_small">
+        <div class="slds-grid slds-gutters slds-m-bottom_medium">
+            <div class="slds-col slds-size_1-of-3">
+                <lightning-combobox
+                    label="CRM Object"
+                    placeholder="Select an object"
+                    options={objectOptions}
+                    value={selectedObject}
+                    onchange={handleObjectChange}>
+                </lightning-combobox>
+            </div>
+            <div class="slds-col slds-size_1-of-3">
+                <lightning-combobox
+                    label="Audience"
+                    options={audienceOptions}
+                    value={audience}
+                    onchange={handleAudienceChange}>
+                </lightning-combobox>
+            </div>
+        </div>
+
+        <template if:true={selectedObject}>
+            <lightning-tabset variant="scoped">
+                <!-- Layouts -->
+                <lightning-tab label="Layouts" value="layouts">
+                    <div class="slds-m-top_small">
+                        <p class="slds-text-color_weak slds-m-bottom_small">
+                            Record card layout for {selectedObjectLabel}. Edit the JSON draft, then stage it for publish.
+                        </p>
+                        <template if:true={staging.layout}>
+                            <lightning-badge
+                                label={layoutStatusLabel}
+                                class={layoutStatusClass}>
+                            </lightning-badge>
+                        </template>
+                        <lightning-textarea
+                            label="Layout JSON (draft)"
+                            value={draftValues.layout}
+                            onchange={handleDraftEdit}
+                            data-key="layout"
+                            class="slds-m-top_small json-editor">
+                        </lightning-textarea>
+                        <div class="slds-m-top_small">
+                            <lightning-button
+                                label="Stage Draft"
+                                variant="brand"
+                                onclick={stageLayout}
+                                class="slds-m-right_x-small">
+                            </lightning-button>
+                            <lightning-button
+                                label="Load Live"
+                                onclick={loadLiveLayout}>
+                            </lightning-button>
+                        </div>
+                    </div>
+                </lightning-tab>
+
+                <!-- Lists -->
+                <lightning-tab label="Lists" value="lists">
+                    <div class="slds-m-top_small">
+                        <p class="slds-text-color_weak slds-m-bottom_small">
+                            Chat list views and exposures for {selectedObjectLabel}.
+                        </p>
+                        <template if:true={staging.lists}>
+                            <lightning-badge
+                                label={listsStatusLabel}
+                                class={listsStatusClass}>
+                            </lightning-badge>
+                        </template>
+                        <lightning-textarea
+                            label="Lists JSON (draft)"
+                            value={draftValues.lists}
+                            onchange={handleDraftEdit}
+                            data-key="lists"
+                            class="slds-m-top_small json-editor">
+                        </lightning-textarea>
+                        <div class="slds-m-top_small">
+                            <lightning-button
+                                label="Stage Draft"
+                                variant="brand"
+                                onclick={stageLists}
+                                class="slds-m-right_x-small">
+                            </lightning-button>
+                            <lightning-button
+                                label="Load Live"
+                                onclick={loadLiveLists}>
+                            </lightning-button>
+                        </div>
+                    </div>
+                </lightning-tab>
+
+                <!-- Actions -->
+                <lightning-tab label="Actions" value="actions">
+                    <div class="slds-m-top_small">
+                        <p class="slds-text-color_weak slds-m-bottom_small">
+                            Card actions for {selectedObjectLabel} live inside the layout JSON
+                            (<code>actions</code> array). Enable/disable actions here without editing JSON.
+                        </p>
+                        <template if:true={actionToggles.length}>
+                            <lightning-datatable
+                                key-field="name"
+                                data={actionToggles}
+                                columns={actionColumns}
+                                onsave={handleActionToggleSave}
+                                draft-values={actionDraftValues}>
+                            </lightning-datatable>
+                        </template>
+                        <template if:false={actionToggles.length}>
+                            <p class="slds-text-color_weak">
+                                No actions found in the live layout. Stage a layout with an
+                                <code>actions</code> array first.
+                            </p>
+                        </template>
+                    </div>
+                </lightning-tab>
+
+                <!-- Assignment -->
+                <lightning-tab label="Assignment" value="assignment">
+                    <div class="slds-m-top_small">
+                        <p class="slds-text-color_weak slds-m-bottom_small">
+                            Who sees which layout. Audiences map to layout keys; the default
+                            audience applies to everyone.
+                        </p>
+                        <lightning-datatable
+                            key-field="audience"
+                            data={assignmentRows}
+                            columns={assignmentColumns}>
+                        </lightning-datatable>
+                        <div class="slds-m-top_small">
+                            <lightning-input
+                                label="New audience name"
+                                value={newAudience}
+                                onchange={handleNewAudienceInput}
+                                class="slds-m-bottom_small">
+                            </lightning-input>
+                            <lightning-button
+                                label="Add Audience"
+                                variant="brand"
+                                onclick={addAudience}>
+                            </lightning-button>
+                        </div>
+                    </div>
+                </lightning-tab>
+
+                <!-- Permissions -->
+                <lightning-tab label="Permissions" value="permissions">
+                    <div class="slds-m-top_small">
+                        <p class="slds-text-color_weak slds-m-bottom_small">
+                            Write policy for {selectedObjectLabel}, from the layout's
+                            <code>permissions</code> block.
+                        </p>
+                        <template if:true={permissions}>
+                            <lightning-input
+                                type="toggle"
+                                label="Writes from chat enabled"
+                                checked={permissions.writeEnabled}
+                                onchange={handleWriteToggle}>
+                            </lightning-input>
+                            <lightning-textarea
+                                label="Field denylist (one API name per line)"
+                                value={denylistText}
+                                onchange={handleDenylistEdit}
+                                class="slds-m-top_small">
+                            </lightning-textarea>
+                            <lightning-button
+                                label="Stage Permissions"
+                                variant="brand"
+                                onclick={stagePermissions}
+                                class="slds-m-top_small">
+                            </lightning-button>
+                        </template>
+                        <template if:false={permissions}>
+                            <p class="slds-text-color_weak">
+                                No permissions block in the live layout yet.
+                            </p>
+                        </template>
+                    </div>
+                </lightning-tab>
+            </lightning-tabset>
+        </template>
+
+        <template if:false={selectedObject}>
+            <div class="slds-illustration slds-illustration_small slds-m-top_large">
+                <p class="slds-text-color_weak">Select a CRM object above to configure its cards, lists, actions, and permissions.</p>
+            </div>
+        </template>
+    </div>
+</template>

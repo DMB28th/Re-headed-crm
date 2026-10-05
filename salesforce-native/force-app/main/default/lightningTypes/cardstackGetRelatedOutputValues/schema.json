@@ -1,0 +1,23 @@
+{
+  "description" : "Output values for CardstackGetRelatedAction",
+  "title" : "cardstackGetRelatedOutputValues",
+  "lightning:type" : "lightning__objectType",
+  "properties" : {
+    "summary" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Summary"
+    },
+    "count" : {
+      "lightning:type" : "lightning__numberType",
+      "title" : "Count"
+    },
+    "rows" : {
+      "lightning:type" : "@apexClassType/c__CardstackGetRelatedAction$RelatedRow",
+      "title" : "Rows"
+    },
+    "columns" : {
+      "lightning:type" : "@apexClassType/c__CardstackGetRelatedAction$TableColumn",
+      "title" : "Columns"
+    }
+  }
+}

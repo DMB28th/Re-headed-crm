@@ -1,0 +1,12 @@
+{
+  "renderer" : {
+    "componentOverrides" : {
+      "$" : {
+        "definition" : "@widget/c/cardstackConfirm",
+        "attributes" : {
+          "summary" : "{!$attrs.outputValues.summary}"
+        }
+      }
+    }
+  }
+}

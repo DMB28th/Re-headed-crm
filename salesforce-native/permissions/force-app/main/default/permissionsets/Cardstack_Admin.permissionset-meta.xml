@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Full administrative access to the Cardstack package: manage configuration, drafts, audit log, and Studio.</description>
+    <label>Cardstack Admin</label>
+    <applicationVisibilities>
+        <application>Cardstack_Studio</application>
+        <visible>true</visible>
+    </applicationVisibilities>
+    <tabVisibilities>
+        <tab>Cardstack_Studio</tab>
+        <visibility>DefaultOn</visibility>
+    </tabVisibilities>
+    <classAccesses>
+        <apexClass>CardstackConfigService</apexClass>
+        <enabled>true</enabled>
+    </classAccesses>
+    <classAccesses>
+        <apexClass>CardstackAuditService</apexClass>
+        <enabled>true</enabled>
+    </classAccesses>
+    <classAccesses>
+        <apexClass>CardstackStudioController</apexClass>
+        <enabled>true</enabled>
+    </classAccesses>
+
+    <objectPermissions>
+        <allowCreate>true</allowCreate>
+        <allowDelete>true</allowDelete>
+        <allowEdit>true</allowEdit>
+        <allowRead>true</allowRead>
+        <modifyAllRecords>false</modifyAllRecords>
+        <object>Cardstack_Config__c</object>
+        <viewAllRecords>false</viewAllRecords>
+    </objectPermissions>
+    <objectPermissions>
+        <allowCreate>true</allowCreate>
+        <allowDelete>true</allowDelete>
+        <allowEdit>true</allowEdit>
+        <allowRead>true</allowRead>
+        <modifyAllRecords>false</modifyAllRecords>
+        <object>Cardstack_Config_Draft__c</object>
+        <viewAllRecords>false</viewAllRecords>
+    </objectPermissions>
+    <objectPermissions>
+        <allowCreate>true</allowCreate>
+        <allowDelete>false</allowDelete>
+        <allowEdit>false</allowEdit>
+        <allowRead>true</allowRead>
+        <modifyAllRecords>false</modifyAllRecords>
+        <object>Cardstack_Audit_Log__c</object>
+        <viewAllRecords>true</viewAllRecords>
+    </objectPermissions>
+
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Cardstack_Config__c.Value__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Cardstack_Config__c.Description__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Cardstack_Config__c.Is_Active__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Cardstack_Config_Draft__c.Draft_Value__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Cardstack_Audit_Log__c.Tool_Name__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Cardstack_Audit_Log__c.User__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Cardstack_Audit_Log__c.Record_Id__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Cardstack_Audit_Log__c.Details__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+
+    <!-- Apex classes -->
+
+    <!-- Cardstack_Config__c: full CRUD -->
+
+    <!-- Cardstack_Config_Draft__c: full CRUD -->
+
+    <!-- Cardstack_Audit_Log__c: read + create (append-only; no edit/delete) -->
+</PermissionSet>

@@ -1,0 +1,11 @@
+{
+  "description" : "Output values for CardstackPreviewCompleteTaskAction",
+  "title" : "cardstackPreviewCompleteTaskOutputValues",
+  "lightning:type" : "lightning__objectType",
+  "properties" : {
+    "summary" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Summary"
+    }
+  }
+}

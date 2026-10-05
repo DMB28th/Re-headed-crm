@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>End-user access to the Cardstack package: execute MCP Apex tools and read published configuration. No admin (no draft/publish, no config edits).</description>
+    <label>Cardstack User</label>
+    <applicationVisibilities>
+        <application>Cardstack_Studio</application>
+        <visible>true</visible>
+    </applicationVisibilities>
+    <tabVisibilities>
+        <tab>Cardstack_Studio</tab>
+        <visibility>DefaultOn</visibility>
+    </tabVisibilities>
+    <classAccesses>
+        <apexClass>CardstackConfigService</apexClass>
+        <enabled>true</enabled>
+    </classAccesses>
+    <classAccesses>
+        <apexClass>CardstackAuditService</apexClass>
+        <enabled>true</enabled>
+    </classAccesses>
+
+    <objectPermissions>
+        <allowCreate>false</allowCreate>
+        <allowDelete>false</allowDelete>
+        <allowEdit>false</allowEdit>
+        <allowRead>true</allowRead>
+        <modifyAllRecords>false</modifyAllRecords>
+        <object>Cardstack_Config__c</object>
+        <viewAllRecords>false</viewAllRecords>
+    </objectPermissions>
+    <objectPermissions>
+        <allowCreate>false</allowCreate>
+        <allowDelete>false</allowDelete>
+        <allowEdit>false</allowEdit>
+        <allowRead>false</allowRead>
+        <modifyAllRecords>false</modifyAllRecords>
+        <object>Cardstack_Config_Draft__c</object>
+        <viewAllRecords>false</viewAllRecords>
+    </objectPermissions>
+    <objectPermissions>
+        <allowCreate>false</allowCreate>
+        <allowDelete>false</allowDelete>
+        <allowEdit>false</allowEdit>
+        <allowRead>false</allowRead>
+        <modifyAllRecords>false</modifyAllRecords>
+        <object>Cardstack_Audit_Log__c</object>
+        <viewAllRecords>false</viewAllRecords>
+    </objectPermissions>
+
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>Cardstack_Config__c.Value__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>Cardstack_Config__c.Description__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>Cardstack_Config__c.Is_Active__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+
+    <!-- Apex: execute only (tools + read paths) -->
+    <!-- Note: CardstackStudioController is intentionally NOT granted.
+         Studio is admin-only. -->
+
+    <!-- Cardstack_Config__c: read published configs only -->
+
+    <!-- Cardstack_Config_Draft__c: no access -->
+
+    <!-- Cardstack_Audit_Log__c: no direct access (service writes only) -->
+</PermissionSet>

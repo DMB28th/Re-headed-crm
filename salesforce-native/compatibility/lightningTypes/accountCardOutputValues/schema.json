@@ -1,0 +1,13 @@
+{
+  "title" : "Account Card Output Values",
+  "description" : "Payload returned by the AccountCardAction invocable action",
+  "lightning:type" : "lightning__objectType",
+  "unevaluatedProperties" : false,
+  "lightning:tags" : [ "mcp" ],
+  "properties" : {
+    "accountInfo" : {
+      "title" : "Account Info",
+      "lightning:type" : "@apexClassType/c__AccountCardAction$AccountInfo"
+    }
+  }
+}

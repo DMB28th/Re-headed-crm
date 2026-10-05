@@ -1,0 +1,40 @@
+{
+ "description": "Output values for CardstackListViewAction",
+ "title": "cardstackListViewOutputValues",
+ "type": "object",
+ "lightning:type": "lightning__objectType",
+ "properties": {
+  "summary": {
+   "lightning:type": "lightning__textType",
+   "title": "Summary"
+  },
+  "count": {
+   "lightning:type": "lightning__numberType",
+   "title": "Count"
+  },
+  "rows": {
+   "lightning:type": "@apexClassType/c__CardstackListViewAction$ViewRow",
+   "title": "Rows"
+  },
+  "columns": {
+   "lightning:type": "@apexClassType/c__CardstackListViewAction$TableColumn",
+   "title": "Columns"
+  },
+  "viewId": {
+   "lightning:type": "lightning__textType",
+   "title": "View ID"
+  },
+  "viewName": {
+   "lightning:type": "lightning__textType",
+   "title": "View Name"
+  },
+  "usedRealView": {
+   "lightning:type": "lightning__textType",
+   "title": "Used Real View"
+  },
+  "fallbackNote": {
+   "lightning:type": "lightning__textType",
+   "title": "Fallback Note"
+  }
+ }
+}

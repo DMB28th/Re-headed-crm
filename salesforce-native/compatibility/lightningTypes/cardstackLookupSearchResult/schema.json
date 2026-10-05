@@ -1,0 +1,21 @@
+{
+  "description" : "Invocable-action result envelope for CardstackLookupSearchAction MCP tool",
+  "title" : "cardstackLookupSearchResult",
+  "lightning:type" : "lightning__objectType",
+  "lightning:tags" : [ "mcp" ],
+  "properties" : {
+    "actionName" : {
+      "lightning:type" : "lightning__textType",
+      "title" : "Action Name"
+    },
+    "isSuccess" : {
+      "lightning:type" : "lightning__booleanType",
+      "title" : "Is Success"
+    },
+    "outputValues" : {
+      "lightning:type" : "c__cardstackLookupSearchOutputValues",
+      "title" : "Output Values"
+    }
+  },
+  "unevaluatedProperties" : false
+}

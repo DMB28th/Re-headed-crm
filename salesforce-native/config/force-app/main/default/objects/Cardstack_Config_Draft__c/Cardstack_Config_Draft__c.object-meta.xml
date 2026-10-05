@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <deploymentStatus>Deployed</deploymentStatus>
+    <description>Draft changes to Cardstack configuration. Drafts are staged, then published (applied to the live config) or rolled back (discarded).</description>
+    <enableActivities>false</enableActivities>
+    <enableBulkApi>true</enableBulkApi>
+    <enableFeeds>false</enableFeeds>
+    <enableHistory>true</enableHistory>
+    <enableReports>true</enableReports>
+    <enableSearch>false</enableSearch>
+    <enableStreamingApi>true</enableStreamingApi>
+    <label>Cardstack Config Draft</label>
+    <nameField>
+        <displayFormat>CD-{000000}</displayFormat>
+        <label>Draft Number</label>
+        <type>AutoNumber</type>
+    </nameField>
+    <pluralLabel>Cardstack Config Drafts</pluralLabel>
+    <sharingModel>ReadWrite</sharingModel>
+    <visibility>Public</visibility>
+</CustomObject>

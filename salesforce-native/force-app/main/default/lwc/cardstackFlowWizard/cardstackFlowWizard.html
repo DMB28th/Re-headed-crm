@@ -1,0 +1,208 @@
+<template>
+    <div class="slds-p-around_medium wizard">
+        <!-- Progress indicator -->
+        <div class="slds-m-bottom_medium">
+            <ol class="slds-progress slds-progress_shade">
+                <li class={step1Class}>
+                    <span class="slds-progress__marker"><span class="slds-assistive-text">Step 1</span></span>
+                    <span class="slds-progress__label">Pick flow</span>
+                </li>
+                <li class={step2Class}>
+                    <span class="slds-progress__marker"><span class="slds-assistive-text">Step 2</span></span>
+                    <span class="slds-progress__label">Configure</span>
+                </li>
+                <li class={step3Class}>
+                    <span class="slds-progress__marker"><span class="slds-assistive-text">Step 3</span></span>
+                    <span class="slds-progress__label">Preview &amp; save</span>
+                </li>
+            </ol>
+        </div>
+
+        <!-- ============ STEP 1: pick flow ============ -->
+        <template if:true={isStep1}>
+            <h2 class="slds-text-heading_medium slds-m-bottom_x-small">Which flow should chat be able to run?</h2>
+            <p class="slds-text-color_weak slds-m-bottom_medium">
+                Pick an active Salesforce flow. You'll decide how it behaves in chat on the next step.
+            </p>
+            <lightning-input
+                type="search"
+                label="Search flows"
+                variant="label-hidden"
+                placeholder="Type to search by name…"
+                value={flowSearch}
+                onchange={handleFlowSearch}
+                class="slds-m-bottom_small flow-search">
+            </lightning-input>
+            <template if:true={flowsLoading}>
+                <div class="slds-align_absolute-center slds-p-vertical_large">
+                    <lightning-spinner alternative-text="Loading flows" size="medium"></lightning-spinner>
+                </div>
+            </template>
+            <template if:false={flowsLoading}>
+                <template if:true={hasFlows}>
+                    <ul class="flow-list">
+                        <template for:each={filteredFlows} for:item="f">
+                            <li key={f.apiName}
+                                data-apiname={f.apiName}
+                                onclick={handlePickFlow}
+                                class={f.rowClass}>
+                                <div class="slds-media">
+                                    <div class="slds-media__figure">
+                                        <lightning-icon icon-name="standard:flow" size="small"></lightning-icon>
+                                    </div>
+                                    <div class="slds-media__body">
+                                        <p class="slds-text-body_regular"><strong>{f.label}</strong></p>
+                                        <p class="slds-text-body_small slds-text-color_weak mono">{f.apiName}</p>
+                                        <template if:true={f.description}>
+                                            <p class="slds-text-body_small slds-text-color_weak slds-truncate" title={f.description}>{f.description}</p>
+                                        </template>
+                                    </div>
+                                    <div class="slds-media__figure slds-media__figure_reverse">
+                                        <template if:true={f.selected}>
+                                            <lightning-icon icon-name="utility:check" size="small" variant="success"></lightning-icon>
+                                        </template>
+                                    </div>
+                                </div>
+                            </li>
+                        </template>
+                    </ul>
+                    <template if:false={filteredFlows.length}>
+                        <p class="slds-text-color_weak slds-p-vertical_medium">No flows match "{flowSearch}".</p>
+                    </template>
+                </template>
+                <template if:false={hasFlows}>
+                    <div class="slds-illustration slds-illustration_small">
+                        <p class="slds-text-color_weak">No active flows found in this org. Activate a flow in Setup first.</p>
+                    </div>
+                </template>
+            </template>
+            <div class="slds-m-top_medium slds-grid slds-grid_align-spread">
+                <lightning-button label="Cancel" onclick={cancel}></lightning-button>
+                <lightning-button label="Continue" variant="brand" onclick={goToStep2} disabled={cannotGoToStep2}></lightning-button>
+            </div>
+        </template>
+
+        <!-- ============ STEP 2: configure ============ -->
+        <template if:true={isStep2}>
+            <h2 class="slds-text-heading_medium slds-m-bottom_x-small">How should "{selectedFlow.label}" behave in chat?</h2>
+            <p class="slds-text-color_weak slds-m-bottom_medium mono">{selectedFlow.apiName}</p>
+
+            <lightning-input
+                label="Chat label"
+                value={flowLabel}
+                onchange={handleLabelInput}
+                placeholder="e.g. Create follow-up task"
+                class="slds-m-bottom_small"
+                required>
+            </lightning-input>
+            <lightning-radio-group
+                label="When someone asks for this in chat"
+                options={renderModeOptions}
+                value={renderMode}
+                onchange={handleRenderModeChange}
+                type="radio"
+                class="slds-m-bottom_medium">
+            </lightning-radio-group>
+
+            <h3 class="slds-text-heading_small slds-m-bottom_small">Flow inputs</h3>
+            <template if:true={inputsLoading}>
+                <lightning-spinner size="small" alternative-text="Loading inputs"></lightning-spinner>
+            </template>
+            <template if:false={inputsLoading}>
+                <template if:true={hasInputs}>
+                    <p class="slds-text-color_weak slds-text-body_small slds-m-bottom_small">
+                        For each input, choose whether chat collects it from the user or uses a fixed value.
+                    </p>
+                    <template for:each={inputMappings} for:item="m">
+                        <div key={m.apiName} class="slds-box slds-box_xx-small slds-m-bottom_small input-card">
+                            <div class="slds-grid slds-gutters slds-grid_vertical-align-center">
+                                <div class="slds-col slds-size_1-of-3">
+                                    <p><strong>{m.label}</strong>
+                                        <template if:true={m.required}>
+                                            <span class="slds-text-color_error"> *</span>
+                                        </template>
+                                    </p>
+                                    <p class="slds-text-body_small slds-text-color_weak mono">{m.apiName} · {m.dataType}</p>
+                                </div>
+                                <div class="slds-col slds-size_1-of-3">
+                                    <lightning-input
+                                        type="toggle"
+                                        label="Collect from chat"
+                                        checked={m.collectFromChat}
+                                        data-api={m.apiName}
+                                        onchange={handleInputCollectToggle}>
+                                    </lightning-input>
+                                </div>
+                                <div class="slds-col slds-size_1-of-3">
+                                    <template if:false={m.collectFromChat}>
+                                        <lightning-input
+                                            label="Fixed value"
+                                            value={m.defaultValue}
+                                            data-api={m.apiName}
+                                            onchange={handleInputDefault}
+                                            placeholder="Default value">
+                                        </lightning-input>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </template>
+                <template if:false={hasInputs}>
+                    <p class="slds-text-color_weak">This flow has no input variables — it can run as-is.</p>
+                </template>
+            </template>
+
+            <div class="slds-m-top_medium slds-grid slds-grid_align-spread">
+                <lightning-button label="Back" onclick={goBack}></lightning-button>
+                <lightning-button label="Preview" variant="brand" onclick={goToStep3} disabled={cannotGoToStep3}></lightning-button>
+            </div>
+        </template>
+
+        <!-- ============ STEP 3: preview & save ============ -->
+        <template if:true={isStep3}>
+            <h2 class="slds-text-heading_medium slds-m-bottom_x-small">This is what chat users will see</h2>
+            <p class="slds-text-color_weak slds-m-bottom_medium">
+                Preview of the flow card. Sample values stand in for real data.
+            </p>
+            <div class="slds-box slds-theme_default mock-flow-card slds-m-bottom_medium">
+                <div class="slds-media slds-m-bottom_small">
+                    <div class="slds-media__figure">
+                        <lightning-icon icon-name="standard:flow" size="medium"></lightning-icon>
+                    </div>
+                    <div class="slds-media__body">
+                        <p class="slds-text-heading_small">{flowLabel}</p>
+                        <p class="slds-text-body_small slds-text-color_weak">{renderModeLabel}</p>
+                    </div>
+                </div>
+                <template if:true={previewInputs.length}>
+                    <p class="slds-text-title_caps slds-m-bottom_x-small">Chat will ask for</p>
+                    <ul class="slds-m-bottom_small">
+                        <template for:each={previewInputs} for:item="p">
+                            <li key={p.apiName} class="slds-text-body_small slds-p-vertical_xx-small">
+                                {p.label}
+                                <template if:true={p.required}>
+                                    <span class="slds-text-color_error"> *</span>
+                                </template>
+                                <span class="slds-text-color_weak"> — {p.dataType}</span>
+                            </li>
+                        </template>
+                    </ul>
+                </template>
+                <template if:false={previewInputs.length}>
+                    <p class="slds-text-color_weak slds-text-body_small slds-m-bottom_small">No inputs to collect — runs directly.</p>
+                </template>
+                <div class="slds-text-align_right">
+                    <lightning-button label="Run flow" variant="brand" disabled></lightning-button>
+                </div>
+            </div>
+            <div class="slds-m-top_medium slds-grid slds-grid_align-spread">
+                <lightning-button label="Back" onclick={goBack}></lightning-button>
+                <div>
+                    <lightning-button label="Cancel" onclick={cancel} class="slds-m-right_x-small"></lightning-button>
+                    <lightning-button label="Stage draft" variant="brand" onclick={stagePolicy} disabled={saving}></lightning-button>
+                </div>
+            </div>
+        </template>
+    </div>
+</template>

@@ -1,0 +1,349 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<McpServerDefinition xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Cardstack: native Salesforce MCP tools for CRM — search, aggregate, record cards, tasks, updates, flows, and quick actions, all with interactive HXL widgets. No external servers.</description>
+    <masterLabel>Cardstack</masterLabel>
+    <resources>
+        <description>Renders Cardstack CRM object list.</description>
+        <resourceName>cardstackTable</resourceName>
+        <resourceTitle>Cardstack Table</resourceTitle>
+        <resourceUri>ui://widget/lightningType/c__cardstackListObjectsResultV2</resourceUri>
+    </resources>
+    <resources>
+        <description>Renders Cardstack aggregate buckets as KPI cards.</description>
+        <resourceName>cardstackKpi</resourceName>
+        <resourceTitle>Cardstack KPI</resourceTitle>
+        <resourceUri>ui://widget/lightningType/c__cardstackAggregateResult</resourceUri>
+    </resources>
+    <resources>
+        <description>Renders a Cardstack CRM record card.</description>
+        <resourceName>cardstackRecord</resourceName>
+        <resourceTitle>Cardstack Record</resourceTitle>
+        <resourceUri>ui://widget/lightningType/c__cardstackGetRecordResult</resourceUri>
+    </resources>
+    <resources>
+        <description>Renders Cardstack related-record lists.</description>
+        <resourceName>cardstackTableRelatedV2</resourceName>
+        <resourceTitle>Cardstack Related Table</resourceTitle>
+        <resourceUri>ui://widget/lightningType/c__cardstackGetRelatedResultV2</resourceUri>
+    </resources>
+    <resources>
+        <description>Renders Cardstack lookup search matches.</description>
+        <resourceName>cardstackTableLookupV2</resourceName>
+        <resourceTitle>Cardstack Lookup Table</resourceTitle>
+        <resourceUri>ui://widget/lightningType/c__cardstackLookupSearchResultV2</resourceUri>
+    </resources>
+    <resources>
+        <description>Renders Cardstack list-view results.</description>
+        <resourceName>cardstackTableListViewV2</resourceName>
+        <resourceTitle>Cardstack List View Table</resourceTitle>
+        <resourceUri>ui://widget/lightningType/c__cardstackListViewResultV3</resourceUri>
+    </resources>
+    <resources>
+        <description>Renders the list of available Salesforce list views.</description>
+        <resourceName>cardstackTableListViewsV2</resourceName>
+        <resourceTitle>Cardstack List Views Table</resourceTitle>
+        <resourceUri>ui://widget/lightningType/c__cardstackListViewsResultV2</resourceUri>
+    </resources>
+    <resources>
+        <description>Renders the Cardstack home dashboard.</description>
+        <resourceName>cardstackHome</resourceName>
+        <resourceTitle>Cardstack Home</resourceTitle>
+        <resourceUri>ui://widget/lightningType/c__cardstackHomeResult</resourceUri>
+    </resources>
+    <resources>
+        <description>Renders Cardstack confirmation cards.</description>
+        <resourceName>cardstackConfirm</resourceName>
+        <resourceTitle>Cardstack Confirm</resourceTitle>
+        <resourceUri>ui://widget/lightningType/c__cardstackPreviewCompleteTaskResult</resourceUri>
+    </resources>
+    <resources>
+        <description>Renders Cardstack update diff previews.</description>
+        <resourceName>cardstackConfirmUpdate</resourceName>
+        <resourceTitle>Cardstack Update Confirm</resourceTitle>
+        <resourceUri>ui://widget/lightningType/c__cardstackPreviewUpdateResult</resourceUri>
+    </resources>
+    <resources>
+        <description>Renders Cardstack action results.</description>
+        <resourceName>cardstackResult</resourceName>
+        <resourceTitle>Cardstack Result</resourceTitle>
+        <resourceUri>ui://widget/lightningType/c__cardstackCompleteTaskResult</resourceUri>
+    </resources>
+    <resources>
+        <description>Renders Cardstack flow launch cards.</description>
+        <resourceName>cardstackFlow</resourceName>
+        <resourceTitle>Cardstack Flow</resourceTitle>
+        <resourceUri>ui://widget/lightningType/c__cardstackFlowStartResult</resourceUri>
+    </resources>
+    <tools>
+        <apiDefinition>
+            <apiIdentifier>aa:apex-CardstackListObjectsAction</apiIdentifier>
+            <apiSource>API_CATALOG</apiSource>
+            <operation>CardstackListObjectsAction</operation>
+        </apiDefinition>
+        <descriptionOverride>List the CRM objects available in this Salesforce org with their labels and key fields.</descriptionOverride>
+        <destructive>false</destructive>
+        <idempotent>true</idempotent>
+        <openWorld>false</openWorld>
+        <readOnly>true</readOnly>
+        <returnDirect>false</returnDirect>
+        <toolName>CardstackListObjectsAction</toolName>
+        <toolTitle>Cardstack List Objects</toolTitle>
+        <uiResource>cardstackTable</uiResource>
+    </tools>
+    <tools>
+        <apiDefinition>
+            <apiIdentifier>aa:apex-CardstackAggregateAction</apiIdentifier>
+            <apiSource>API_CATALOG</apiSource>
+            <operation>CardstackAggregateAction</operation>
+        </apiDefinition>
+        <descriptionOverride>Count records and sum a numeric field across all matching records, optionally grouped by a field. Use for total pipeline, deals by stage, count by owner.</descriptionOverride>
+        <destructive>false</destructive>
+        <idempotent>true</idempotent>
+        <openWorld>false</openWorld>
+        <readOnly>true</readOnly>
+        <returnDirect>false</returnDirect>
+        <toolName>CardstackAggregateAction</toolName>
+        <toolTitle>Cardstack Aggregate</toolTitle>
+        <uiResource>cardstackKpi</uiResource>
+    </tools>
+    <tools>
+        <apiDefinition>
+            <apiIdentifier>aa:apex-CardstackGetRecordAction</apiIdentifier>
+            <apiSource>API_CATALOG</apiSource>
+            <operation>CardstackGetRecordAction</operation>
+        </apiDefinition>
+        <descriptionOverride>Show a CRM record card for a single record. Pass id when known, otherwise a name query.</descriptionOverride>
+        <destructive>false</destructive>
+        <idempotent>true</idempotent>
+        <openWorld>false</openWorld>
+        <readOnly>true</readOnly>
+        <returnDirect>false</returnDirect>
+        <toolName>CardstackGetRecordAction</toolName>
+        <toolTitle>Cardstack Get Record</toolTitle>
+        <uiResource>cardstackRecord</uiResource>
+    </tools>
+    <tools>
+        <apiDefinition>
+            <apiIdentifier>aa:apex-CardstackGetRelatedAction</apiIdentifier>
+            <apiSource>API_CATALOG</apiSource>
+            <operation>CardstackGetRelatedAction</operation>
+        </apiDefinition>
+        <descriptionOverride>Fetch related records for a parent record (pagination for record-card related lists).</descriptionOverride>
+        <destructive>false</destructive>
+        <idempotent>true</idempotent>
+        <openWorld>false</openWorld>
+        <readOnly>true</readOnly>
+        <returnDirect>false</returnDirect>
+        <toolName>CardstackGetRelatedAction</toolName>
+        <toolTitle>Cardstack Get Related</toolTitle>
+        <uiResource>cardstackTableRelatedV2</uiResource>
+    </tools>
+    <tools>
+        <apiDefinition>
+            <apiIdentifier>aa:apex-CardstackLookupSearchAction</apiIdentifier>
+            <apiSource>API_CATALOG</apiSource>
+            <operation>CardstackLookupSearchAction</operation>
+        </apiDefinition>
+        <descriptionOverride>Typeahead search for a reference-field lookup: find records of a target object by name.</descriptionOverride>
+        <destructive>false</destructive>
+        <idempotent>true</idempotent>
+        <openWorld>false</openWorld>
+        <readOnly>true</readOnly>
+        <returnDirect>false</returnDirect>
+        <toolName>CardstackLookupSearchAction</toolName>
+        <toolTitle>Cardstack Lookup Search</toolTitle>
+        <uiResource>cardstackTableLookupV2</uiResource>
+    </tools>
+    <tools>
+        <apiDefinition>
+            <apiIdentifier>aa:apex-CardstackListViewAction</apiIdentifier>
+            <apiSource>API_CATALOG</apiSource>
+            <operation>CardstackListViewAction</operation>
+        </apiDefinition>
+        <descriptionOverride>List CRM records with ad-hoc filters as an interactive results table. Use for saved-view-style asks.</descriptionOverride>
+        <destructive>false</destructive>
+        <idempotent>true</idempotent>
+        <openWorld>false</openWorld>
+        <readOnly>true</readOnly>
+        <returnDirect>false</returnDirect>
+        <toolName>CardstackListViewAction</toolName>
+        <toolTitle>Cardstack List View</toolTitle>
+        <uiResource>cardstackTableListViewV2</uiResource>
+    </tools>
+    <tools>
+        <apiDefinition>
+            <apiIdentifier>aa:apex-CardstackHomeAction</apiIdentifier>
+            <apiSource>API_CATALOG</apiSource>
+            <operation>CardstackHomeAction</operation>
+        </apiDefinition>
+        <descriptionOverride>Open the CRM home card: open follow-up tasks, recently touched records, and pipeline summary.</descriptionOverride>
+        <destructive>false</destructive>
+        <idempotent>true</idempotent>
+        <openWorld>false</openWorld>
+        <readOnly>true</readOnly>
+        <returnDirect>false</returnDirect>
+        <toolName>CardstackHomeAction</toolName>
+        <toolTitle>Cardstack Home</toolTitle>
+        <uiResource>cardstackHome</uiResource>
+    </tools>
+    <tools>
+        <apiDefinition>
+            <apiIdentifier>aa:apex-CardstackPreviewCompleteTaskAction</apiIdentifier>
+            <apiSource>API_CATALOG</apiSource>
+            <operation>CardstackPreviewCompleteTaskAction</operation>
+        </apiDefinition>
+        <descriptionOverride>Preview completing a CRM task: mints a confirmation token. Writes nothing.</descriptionOverride>
+        <destructive>false</destructive>
+        <idempotent>true</idempotent>
+        <openWorld>false</openWorld>
+        <readOnly>true</readOnly>
+        <returnDirect>false</returnDirect>
+        <toolName>CardstackPreviewCompleteTaskAction</toolName>
+        <toolTitle>Cardstack Preview Complete Task</toolTitle>
+        <uiResource>cardstackConfirm</uiResource>
+    </tools>
+    <tools>
+        <apiDefinition>
+            <apiIdentifier>aa:apex-CardstackCompleteTaskAction</apiIdentifier>
+            <apiSource>API_CATALOG</apiSource>
+            <operation>CardstackCompleteTaskAction</operation>
+        </apiDefinition>
+        <descriptionOverride>Mark a CRM follow-up task as completed. Pass the confirmToken from preview when the rep checked it off.</descriptionOverride>
+        <destructive>false</destructive>
+        <idempotent>true</idempotent>
+        <openWorld>false</openWorld>
+        <readOnly>false</readOnly>
+        <returnDirect>false</returnDirect>
+        <toolName>CardstackCompleteTaskAction</toolName>
+        <toolTitle>Cardstack Complete Task</toolTitle>
+        <uiResource>cardstackResult</uiResource>
+    </tools>
+    <tools>
+        <apiDefinition>
+            <apiIdentifier>aa:apex-CardstackPreviewUpdateAction</apiIdentifier>
+            <apiSource>API_CATALOG</apiSource>
+            <operation>CardstackPreviewUpdateAction</operation>
+        </apiDefinition>
+        <descriptionOverride>Preview a record update: computes the before/after diff without writing, mints a confirmation token.</descriptionOverride>
+        <destructive>false</destructive>
+        <idempotent>true</idempotent>
+        <openWorld>false</openWorld>
+        <readOnly>true</readOnly>
+        <returnDirect>false</returnDirect>
+        <toolName>CardstackPreviewUpdateAction</toolName>
+        <toolTitle>Cardstack Preview Update</toolTitle>
+        <uiResource>cardstackConfirmUpdate</uiResource>
+    </tools>
+    <tools>
+        <apiDefinition>
+            <apiIdentifier>aa:apex-CardstackUpdateRecordAction</apiIdentifier>
+            <apiSource>API_CATALOG</apiSource>
+            <operation>CardstackUpdateRecordAction</operation>
+        </apiDefinition>
+        <descriptionOverride>Write field changes to a CRM record. Pass the confirmToken from preview when the rep confirmed the diff.</descriptionOverride>
+        <destructive>false</destructive>
+        <idempotent>false</idempotent>
+        <openWorld>false</openWorld>
+        <readOnly>false</readOnly>
+        <returnDirect>false</returnDirect>
+        <toolName>CardstackUpdateRecordAction</toolName>
+        <toolTitle>Cardstack Update Record</toolTitle>
+        <uiResource>cardstackResult</uiResource>
+    </tools>
+    <tools>
+        <apiDefinition>
+            <apiIdentifier>aa:apex-CardstackCreateRecordAction</apiIdentifier>
+            <apiSource>API_CATALOG</apiSource>
+            <operation>CardstackCreateRecordAction</operation>
+        </apiDefinition>
+        <descriptionOverride>Create a new CRM record. Read-only fields are not accepted.</descriptionOverride>
+        <destructive>false</destructive>
+        <idempotent>false</idempotent>
+        <openWorld>false</openWorld>
+        <readOnly>false</readOnly>
+        <returnDirect>false</returnDirect>
+        <toolName>CardstackCreateRecordAction</toolName>
+        <toolTitle>Cardstack Create Record</toolTitle>
+        <uiResource>cardstackResult</uiResource>
+    </tools>
+    <tools>
+        <apiDefinition>
+            <apiIdentifier>aa:apex-CardstackQuickActionStartAction</apiIdentifier>
+            <apiSource>API_CATALOG</apiSource>
+            <operation>CardstackQuickActionStartAction</operation>
+        </apiDefinition>
+        <descriptionOverride>Begin a configured quick action for a record (New Task, Log a Call, …).</descriptionOverride>
+        <destructive>false</destructive>
+        <idempotent>true</idempotent>
+        <openWorld>false</openWorld>
+        <readOnly>false</readOnly>
+        <returnDirect>false</returnDirect>
+        <toolName>CardstackQuickActionStartAction</toolName>
+        <toolTitle>Cardstack Quick Action Start</toolTitle>
+        <uiResource>cardstackFlow</uiResource>
+    </tools>
+    <tools>
+        <apiDefinition>
+            <apiIdentifier>aa:apex-CardstackFlowStartAction</apiIdentifier>
+            <apiSource>API_CATALOG</apiSource>
+            <operation>CardstackFlowStartAction</operation>
+        </apiDefinition>
+        <descriptionOverride>Begin a Salesforce Flow for a record. Returns the flow launch context for the card.</descriptionOverride>
+        <destructive>false</destructive>
+        <idempotent>true</idempotent>
+        <openWorld>false</openWorld>
+        <readOnly>false</readOnly>
+        <returnDirect>false</returnDirect>
+        <toolName>CardstackFlowStartAction</toolName>
+        <toolTitle>Cardstack Flow Start</toolTitle>
+        <uiResource>cardstackFlow</uiResource>
+    </tools>
+    <tools>
+        <apiDefinition>
+            <apiIdentifier>aa:apex-CardstackFlowContinueAction</apiIdentifier>
+            <apiSource>API_CATALOG</apiSource>
+            <operation>CardstackFlowContinueAction</operation>
+        </apiDefinition>
+        <descriptionOverride>Continue a Salesforce Flow with collected inputs. Pass the actionSessionId from Flow Start.</descriptionOverride>
+        <destructive>false</destructive>
+        <idempotent>true</idempotent>
+        <openWorld>false</openWorld>
+        <readOnly>false</readOnly>
+        <returnDirect>false</returnDirect>
+        <toolName>CardstackFlowContinueAction</toolName>
+        <toolTitle>Cardstack Flow Continue</toolTitle>
+        <uiResource>cardstackFlow</uiResource>
+    </tools>
+    <tools>
+        <apiDefinition>
+            <apiIdentifier>aa:apex-CardstackFlowCancelAction</apiIdentifier>
+            <apiSource>API_CATALOG</apiSource>
+            <operation>CardstackFlowCancelAction</operation>
+        </apiDefinition>
+        <descriptionOverride>Cancel an in-progress Salesforce Flow run.</descriptionOverride>
+        <destructive>false</destructive>
+        <idempotent>true</idempotent>
+        <openWorld>false</openWorld>
+        <readOnly>false</readOnly>
+        <returnDirect>false</returnDirect>
+        <toolName>CardstackFlowCancelAction</toolName>
+        <toolTitle>Cardstack Flow Cancel</toolTitle>
+        <uiResource>cardstackResult</uiResource>
+    </tools>
+    <tools>
+        <apiDefinition>
+            <apiIdentifier>aa:apex-CardstackListViewsAction</apiIdentifier>
+            <apiSource>API_CATALOG</apiSource>
+            <operation>CardstackListViewsAction</operation>
+        </apiDefinition>
+        <descriptionOverride>List the real Salesforce list views available for a CRM object (e.g. &quot;My Opportunities&quot;, &quot;Recently Viewed&quot;). Use when the user asks what views exist.</descriptionOverride>
+        <destructive>false</destructive>
+        <idempotent>true</idempotent>
+        <openWorld>false</openWorld>
+        <readOnly>true</readOnly>
+        <returnDirect>false</returnDirect>
+        <toolName>CardstackListViewsAction</toolName>
+        <toolTitle>Cardstack List Views</toolTitle>
+        <uiResource>cardstackTableListViewsV2</uiResource>
+    </tools>
+</McpServerDefinition>
