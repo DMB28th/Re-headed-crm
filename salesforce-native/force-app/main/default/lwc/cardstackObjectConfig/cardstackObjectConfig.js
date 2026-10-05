@@ -400,7 +400,9 @@ export default class CardstackObjectConfig extends LightningElement {
                 api,
                 label: f.label || meta?.label || api,
                 type: f.type || meta?.type || 'UNKNOWN',
-                editable: !!f.editable,
+                editable: !!f.editable && !f.readOnly,
+                required: !!f.required && !f.readOnly,
+                readOnly: !!f.readOnly,
                 column,
                 ...this.columnVariants(column),
                 valid,
@@ -420,6 +422,9 @@ export default class CardstackObjectConfig extends LightningElement {
                 api,
                 label: h.label || meta?.label || api,
                 type: h.type || meta?.type || 'UNKNOWN',
+                editable: !!h.editable && !h.readOnly,
+                required: !!h.required && !h.readOnly,
+                readOnly: !!h.readOnly,
                 valid,
                 rowClass: valid ? 'hl-chip' : 'hl-chip hl-invalid'
             };
@@ -450,14 +455,15 @@ export default class CardstackObjectConfig extends LightningElement {
         return JSON.stringify({
             name: this.audience,
             highlights: this.workingHighlights.map(h => ({
-                api: h.api, label: h.label, type: h.type
+                api: h.api, label: h.label, type: h.type,
+                editable: !!h.editable, required: !!h.required, readOnly: !!h.readOnly
             })),
             sections: this.workingSections.map(s => ({
                 label: s.label,
                 columns: s.columns,
                 fields: s.fields.map(f => ({
                     api: f.api, label: f.label, type: f.type,
-                    editable: f.editable, column: f.column
+                    editable: f.editable, required: !!f.required, readOnly: !!f.readOnly, column: f.column
                 }))
             })),
             actions: this.workingActions.map(a => ({
@@ -796,7 +802,18 @@ export default class CardstackObjectConfig extends LightningElement {
         } else {
             const field = found.section.fields[found.index];
             if (action === 'label') field.label = value || field.api;
-            if (action === 'editable') field.editable = value;
+            if (action === 'editable') {
+                field.editable = value;
+                if (value) field.readOnly = false;
+            }
+            if (action === 'required') {
+                field.required = !field.required;
+                if (field.required) { field.readOnly = false; field.editable = true; }
+            }
+            if (action === 'readOnly') {
+                field.readOnly = !field.readOnly;
+                if (field.readOnly) { field.required = false; field.editable = false; }
+            }
             if (action === 'column') field.column = value;
         }
         this.refreshSectionMeta(); this.syncPreview();
@@ -842,7 +859,7 @@ export default class CardstackObjectConfig extends LightningElement {
                 label: s.label || '',
                 columns: s.columns,
                 f: (s.fields || []).map(f =>
-                    (f.api || '').toUpperCase() + '|' + (f.label || '') + '|' + !!f.editable + '|' + (f.column || 'full'))
+                    (f.api || '').toUpperCase() + '|' + (f.label || '') + '|' + !!f.editable + '|' + !!f.required + '|' + !!f.readOnly + '|' + (f.column || 'full'))
             }))
         });
     }

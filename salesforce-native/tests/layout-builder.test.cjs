@@ -70,3 +70,34 @@ test('Move up reorders within the displayed column rather than swapping a differ
   b.moveField(s.fields[2].key, s.key, -1); assert.equal(b.sectionViews[0].columnViews[0].fields[0].api, 'Industry');
   assert.equal(b.sectionViews[0].columnViews[1].fields[0].api, 'Website');
 });
+test('field flags are exclusive, survive save/reload, and count as unsaved changes', () => {
+  const b = builder(); const s = b.makeSection('Details', b.enrichFields([{ api: 'Phone', editable: true }])); b.workingSections = [s];
+  b.staging = { layout: { liveValue: b.buildLayoutJson() } };
+  const edit = action => b.handleFieldEdit({ detail: { key: s.fields[0].key, section: s.key, action } });
+  edit('required'); assert.equal(s.fields[0].required, true); assert.equal(s.fields[0].readOnly, false); assert.equal(b.isDirty, true);
+  edit('readOnly'); assert.equal(s.fields[0].readOnly, true); assert.equal(s.fields[0].required, false); assert.equal(s.fields[0].editable, false);
+  const saved = b.parseLayoutOnly(b.buildLayoutJson()).sections[0].fields[0];
+  assert.equal(saved.readOnly, true); assert.equal(saved.required, false);
+  edit('required'); assert.equal(s.fields[0].required, true); assert.equal(s.fields[0].readOnly, false);
+  const required = b.parseLayoutOnly(b.buildLayoutJson()).sections[0].fields[0]; assert.equal(required.required, true);
+  edit('required'); assert.equal(s.fields[0].required, false);
+});
+test('read only is cleared by enabling chat editing and flags survive moving fields', () => {
+  const b = builder(); const a = b.makeSection('First', b.enrichFields([{ api: 'Phone', readOnly: true }]));
+  const c = b.makeSection('Second', [], 3); b.workingSections = [a,c];
+  b.handleFieldEdit({ detail: { key: a.fields[0].key, section: a.key, action: 'editable', value: true } });
+  assert.equal(a.fields[0].readOnly, false);
+  b.handleFieldEdit({ detail: { key: a.fields[0].key, section: a.key, action: 'required' } });
+  b.dragKey = a.fields[0].key; b.dragSectionKey = a.key; drop(b,c.key,'center');
+  assert.equal(c.fields[0].required, true); assert.equal(c.fields[0].editable, true);
+});
+test('moving a flagged field through Highlights and save/reload retains its settings', () => {
+  for (const settings of [{required:true,editable:true}, {readOnly:true,editable:false}]) {
+    const b = builder(); const s = b.makeSection('Details', b.enrichFields([{api:'Phone',...settings}])); b.workingSections=[s];
+    b.dragKey=s.fields[0].key; b.dragSectionKey=s.key; drop(b,'highlights');
+    b.parseWorkingModel(b.buildLayoutJson());
+    b.dragKey=b.workingHighlights[0].key; b.dragSectionKey='highlights'; drop(b,b.workingSections[0].key,'left');
+    const restored=b.workingSections[0].fields[0];
+    assert.equal(restored.required,!!settings.required); assert.equal(restored.readOnly,!!settings.readOnly); assert.equal(restored.editable,settings.editable);
+  }
+});

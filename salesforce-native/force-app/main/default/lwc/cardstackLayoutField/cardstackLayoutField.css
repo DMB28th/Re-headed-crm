@@ -1,7 +1,9 @@
 :host { display: block; width: 100%; }
 .field-tile { padding: 0.4rem 0.55rem; }
 .field-heading { display: flex; align-items: center; gap: 0.4rem; }
-.field-heading strong { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 0.8125rem; }
+.field-heading strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8125rem; }
 summary { color: #5c6573; font-size: 0.6875rem; cursor: pointer; margin: 0.15rem 0 0 1.1rem; }
 .field-settings { border-top: 1px solid #e5e5e5; margin-top: 0.5rem; padding-top: 0.5rem; cursor: default; }
 .field-api { color: #5c6573; font-size: 0.7rem; overflow-wrap: anywhere; }
+
+.required-marker { color: #ba0517; font-weight: 700; }

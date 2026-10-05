@@ -1,7 +1,9 @@
 <template>
     <div class="field-tile">
-        <div class="field-heading"><lightning-icon icon-name="utility:drag" size="xx-small"></lightning-icon><strong title={field.api}>{field.label}</strong>
+        <div class="field-heading"><lightning-icon icon-name="utility:drag" size="xx-small"></lightning-icon><template if:true={field.required}><span class="required-marker" title="Required" aria-label="Required">*</span></template><template if:true={field.readOnly}><lightning-icon icon-name="utility:lock" size="xx-small" alternative-text="Read only" title="Read only"></lightning-icon></template><strong title={field.label}>{field.label}</strong>
             <lightning-button-menu alternative-text="Field actions" variant="bare" menu-alignment="right" onselect={menuSelect} ondragstart={stopDrag}>
+                <lightning-menu-item value="required" label="Required" checked={field.required}></lightning-menu-item>
+                <lightning-menu-item value="readOnly" label="Read only" checked={field.readOnly}></lightning-menu-item>
                 <lightning-menu-item value="up" label="Move up"></lightning-menu-item><lightning-menu-item value="down" label="Move down"></lightning-menu-item><lightning-menu-item value="remove" label="Remove field"></lightning-menu-item>
             </lightning-button-menu>
         </div>
