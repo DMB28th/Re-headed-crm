@@ -1,6 +1,6 @@
 # Cardstack: configured flow inputs and record-card buttons
 
-Design for review, October 5, 2026. Implementation has not started.
+Superseded October 5, 2026: the user clarified that users must complete processes inside AI UI. The Salesforce launch-button design below is retained as history and must not be implemented as the primary workflow. See `2026-10-05-in-chat-flow-feasibility.md`. Implementation has not started.
 
 ## Outcome
 
