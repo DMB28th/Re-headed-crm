@@ -22,7 +22,8 @@ private class CardstackFlowCancelActionTest {
         CardstackFlowCancelAction.FlowCancelResponse res = resps[0];
         System.assertEquals(true, res.cancelled);
         System.assertEquals(flowApiName, res.flowApiName);
-        System.assert(res.summary.contains('cancelled'), 'summary: ' + res.summary);
+        System.assert(res.summary.contains('dismissed'), 'Launch card is dismissed');
+        System.assert(res.summary.contains('does not cancel a flow already opened in Salesforce'), 'Do not imply a Salesforce interview was cancelled');
     }
 
     @IsTest

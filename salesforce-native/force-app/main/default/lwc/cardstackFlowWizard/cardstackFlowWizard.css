@@ -1,57 +1,11 @@
-/* cardstackFlowWizard — 3-step guided flow setup */
-
-.wizard {
-    max-width: 860px;
-}
-
-.mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.75rem;
-}
-
-.flow-search {
-    max-width: 420px;
-}
-
-.flow-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    max-height: 380px;
-    overflow-y: auto;
-    border: 1px solid #dddbda;
-    border-radius: 0.25rem;
-}
-
-.flow-item {
-    padding: 0.75rem;
-    border-bottom: 1px solid #f3f2f2;
-    cursor: pointer;
-}
-
-.flow-item:last-child {
-    border-bottom: none;
-}
-
-.flow-item:hover {
-    background: #f3f2f2;
-}
-
-.flow-item.flow-selected {
-    background: #eef4ff;
-    border-left: 3px solid #0176d3;
-}
-
-.input-card {
-    background: #fafaf9;
-}
-
-.mock-flow-card {
-    border-left: 4px solid #9050e9;
-    max-width: 560px;
-}
-
-/* Progress steps */
-.slds-progress__label {
-    font-size: 0.75rem;
-}
+.wizard { max-width: 860px; margin: 0 auto; position: relative; }
+.wizard-heading, .footer, .card-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+h2 { font-size: 1.25rem; font-weight: 700; } h3 { font-size: 1.1rem; font-weight: 600; }
+.eyebrow { font-size: .7rem; letter-spacing: .05em; color: #5c6573; margin-bottom: .3rem; }
+.intro { color: #5c6573; margin: 1rem 0; }
+.flow-list { list-style: none; margin: 1rem 0; padding: 0; max-height: 380px; overflow-y: auto; border: 1px solid #dddbda; border-radius: .4rem; }
+.flow-choice { width: 100%; padding: 1rem; border: 0; border-bottom: 1px solid #eee; background: white; text-align: left; display: flex; align-items: center; gap: .75rem; cursor: pointer; }
+.flow-choice:hover, .flow-choice:focus-visible { background: #f3f7fc; } .flow-choice.selected { background: #eef4ff; box-shadow: inset 3px 0 #0176d3; }
+.flow-description { display: flex; flex-direction: column; gap: .2rem; flex: 1; min-width: 0; } .flow-description span { color: #5c6573; font-size: .8rem; } .flow-api { color: #5c6573; font-size: .75rem; overflow-wrap: anywhere; }
+.footer { border-top: 1px solid #eee; margin-top: 1.25rem; padding-top: 1rem; flex-wrap: wrap; } .footer > span { color: #5c6573; font-size: .8rem; }
+.preview { background: #f5f6f8; padding: 1rem; margin-top: 1.25rem; border-radius: .5rem; } .sample-card { background: white; border: 1px solid #dddbda; border-radius: .5rem; padding: 1rem; max-width: 560px; } .card-heading { justify-content: start; margin-bottom: .75rem; } .handoff { color: #5c6573; margin: .6rem 0 1rem; } .preview-note { color: #5c6573; margin-top: .75rem; font-size: .8rem; } .empty { padding: 1rem; }

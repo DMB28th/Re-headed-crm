@@ -12,7 +12,7 @@ global with sharing class CardstackFlowCancelAction {
 
     @InvocableMethod(
         label='Cardstack Flow Cancel'
-        description='Cancel an in-progress Salesforce Flow run. Pass the actionSessionId from Flow Start.'
+        description='Dismiss a Salesforce flow launch card session. Pass the actionSessionId from Flow Start. This does not cancel a flow running in Salesforce.'
     )
     global static List<FlowCancelResponse> cancelFlow(List<FlowCancelRequest> requests) {
         List<FlowCancelResponse> responses = new List<FlowCancelResponse>();
@@ -51,8 +51,7 @@ global with sharing class CardstackFlowCancelAction {
         res.flowApiName = flowApiName;
         res.recordId = recordId;
         res.cancelled = true;
-        res.summary = 'Flow "' + flowApiName + '" cancelled.'
-            + (recordId != null ? ' No changes were made to ' + recordId + '.' : '');
+        res.summary = 'Launch card for "' + flowApiName + '" dismissed. This does not cancel a flow already opened in Salesforce.';
         return res;
     }
 

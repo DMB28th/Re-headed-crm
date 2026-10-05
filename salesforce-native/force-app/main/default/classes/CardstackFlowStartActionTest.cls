@@ -79,4 +79,21 @@ private class CardstackFlowStartActionTest {
         System.assertEquals(false, res.hasAnswers);
         System.assertNotEquals(null, res.suggestedReplies);
     }
+    @IsTest
+    static void publishedLaunchLabelOverridesDefinitionAndDraftDoesNot() {
+        Cardstack_Config__c cfg = new Cardstack_Config__c(Name = 'flows', Is_Active__c = true,
+            Value__c = '[{"apiName":"Review","label":"Approval review"}]');
+        insert cfg;
+        CardstackConfigService.saveDraft('flows', '[{"apiName":"Review","label":"Unpublished name"}]');
+        System.assertEquals('Approval review', CardstackFlowStartAction.launchLabel('Review', 'Salesforce name'));
+        System.assertEquals('Other flow', CardstackFlowStartAction.launchLabel('Other', 'Other flow'));
+    }
+    @IsTest
+    static void invalidLaunchConfigurationFallsBackToSalesforceName() {
+        Cardstack_Config__c cfg = new Cardstack_Config__c(Name = 'flows', Is_Active__c = true, Value__c = '{bad');
+        insert cfg;
+        System.assertEquals('Salesforce name', CardstackFlowStartAction.launchLabel('Review', 'Salesforce name'));
+        cfg.Value__c = '[{"flowApiName":"Review","label":"Legacy card"}]'; update cfg;
+        System.assertEquals('Legacy card', CardstackFlowStartAction.launchLabel('Review', 'Salesforce name'));
+    }
 }

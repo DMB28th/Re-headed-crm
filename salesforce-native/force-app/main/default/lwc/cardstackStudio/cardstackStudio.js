@@ -9,6 +9,8 @@ import { LightningElement, track } from 'lwc';
 export default class CardstackStudio extends LightningElement {
     @track activeTab = 'dashboard';
 
+    handleTabActive(event) { this.activeTab = event.target.value; }
+
     handleNavigateTab(event) {
         const tab = event.detail?.tab;
         const action = event.detail?.action;

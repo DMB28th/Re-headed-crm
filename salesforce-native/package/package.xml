@@ -93,7 +93,6 @@
     <types>
         <members>cardstackAuditViewer</members>
         <members>cardstackConnections</members>
-        <members>cardstackCustomScreens</members>
         <members>cardstackDashboard</members>
         <members>cardstackFlowConfig</members>
         <members>cardstackFlowWizard</members>

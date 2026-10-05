@@ -1,0 +1,14 @@
+.flow-page { padding: 1.25rem; position: relative; min-height: 220px; }
+.page-heading, .draft-notice, .list-toolbar, .card-title { display: flex; align-items: center; gap: .75rem; justify-content: space-between; }
+h2 { font-size: 1.25rem; font-weight: 700; } h3 { font-size: 1rem; font-weight: 600; }
+.page-heading p, .flow-api, .card-behavior { color: #5c6573; }
+.handoff-note { display: flex; align-items: start; gap: .6rem; padding: .85rem; margin: 1rem 0; background: #f3f7fc; border-radius: .4rem; }
+.draft-notice { padding: .85rem; background: #fff7e5; border-radius: .4rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.list-toolbar { margin-bottom: 1rem; } .list-toolbar lightning-input { flex: 1; max-width: 480px; }
+.card-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 1rem; list-style: none; }
+.launch-card { border: 1px solid #dddbda; border-radius: .5rem; padding: 1rem; background: white; }
+.card-title { justify-content: start; margin-bottom: .8rem; } .card-title div { flex: 1; min-width: 0; } .flow-api { font-size: .75rem; overflow-wrap: anywhere; }
+.card-actions { display: flex; gap: .5rem; margin-top: 1rem; } .card-behavior { margin-top: .4rem; font-size: .8rem; }
+.empty-state { text-align: center; padding: 2rem 1rem; border: 1px dashed #dddbda; border-radius: .5rem; } .empty-state h3 { margin: .8rem 0 .4rem; } .empty-state p { max-width: 500px; margin: 0 auto 1rem; color: #5c6573; }
+.empty-search { padding: 1rem; }
+@media (max-width: 600px) { .page-heading { align-items: start; flex-direction: column; } .card-list { grid-template-columns: 1fr; } }

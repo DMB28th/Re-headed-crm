@@ -1,269 +1,96 @@
-import { LightningElement, track, wire } from 'lwc';
+import { LightningElement, track, wire, api } from 'lwc';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import getActiveFlows from '@salesforce/apex/CardstackStudioController.getActiveFlows';
-import getFlowInputs from '@salesforce/apex/CardstackStudioController.getFlowInputs';
-import getStagingInfo from '@salesforce/apex/CardstackStudioController.getStagingInfo';
+import getStagingInfo from '@salesforce/apex/CardstackStudioController.getFlowLaunchCards';
 import saveDraft from '@salesforce/apex/CardstackStudioController.saveDraft';
-
 const KEY = 'flows';
-
-/**
- * cardstackFlowWizard — 3-step guided flow setup for admins.
- * Step 1: pick an active Salesforce flow.
- * Step 2: configure label, render mode, and input mappings.
- * Step 3: preview the chat card and stage the draft.
- *
- * Emits `wizarddone` when the admin finishes or cancels, so the parent
- * can return to the flows list.
- */
 export default class CardstackFlowWizard extends LightningElement {
+    @api initialPolicy;
     @track step = 1;
     @track flowSearch = '';
-    @track selectedFlow = null;       // { apiName, label, description, processType }
+    @track selectedFlow = null;
     @track flowLabel = '';
-    @track renderMode = 'form';
-    @track inputMappings = [];        // [{ apiName, dataType, required, label, defaultValue, collectFromChat }]
-    @track inputsLoading = false;
-    @track staging = null;
     @track saving = false;
-
+    @track ready = false;
+    @track error = '';
+    loadError = false;
+    policies = [];
     wiredFlowsResult;
-
     @wire(getActiveFlows)
-    wiredFlows(result) {
-        this.wiredFlowsResult = result;
+    wiredFlows(result) { this.wiredFlowsResult = result; }
+    connectedCallback() { this.loadExisting(); }
+    parsePolicies(raw) {
+        const parsed = JSON.parse(raw || '[]');
+        if (!Array.isArray(parsed)) throw new Error('Saved launch cards must be a list.');
+        return parsed;
     }
-
-    connectedCallback() {
-        this.loadExisting();
-    }
-
     async loadExisting() {
+        this.ready = false; this.error = ''; this.loadError = false;
         try {
-            this.staging = await getStagingInfo({ key: KEY });
-        } catch {
-            // Non-fatal; wizard works without existing config.
-        }
-    }
-
-    // ---------- Step 1: pick flow ----------
-
-    get flowsLoading() {
-        return !this.wiredFlowsResult || (this.wiredFlowsResult.error === undefined && !this.wiredFlowsResult.data);
-    }
-
-    get allFlows() {
-        return this.wiredFlowsResult?.data || [];
-    }
-
-    get filteredFlows() {
-        const q = (this.flowSearch || '').toLowerCase().trim();
-        const flows = this.allFlows;
-        const selectedApi = this.selectedFlow?.apiName;
-        const mapped = flows.map(f => ({
-            ...f,
-            selected: f.apiName === selectedApi,
-            rowClass: f.apiName === selectedApi ? 'flow-item flow-selected' : 'flow-item'
-        }));
-        if (!q) return mapped.slice(0, 100);
-        return mapped.filter(f =>
-            (f.label || '').toLowerCase().includes(q) ||
-            (f.apiName || '').toLowerCase().includes(q)
-        ).slice(0, 100);
-    }
-
-    get hasFlows() {
-        return this.allFlows.length > 0;
-    }
-
-    handleFlowSearch(e) {
-        this.flowSearch = e.target.value;
-    }
-
-    handlePickFlow(e) {
-        const apiName = e.currentTarget.dataset.apiname;
-        const flow = this.allFlows.find(f => f.apiName === apiName);
-        if (!flow) return;
-        this.selectedFlow = { ...flow };
-        this.flowLabel = flow.label || flow.apiName;
-    }
-
-    get canGoToStep2() {
-        return !!this.selectedFlow;
-    }
-
-    get cannotGoToStep2() {
-        return !this.canGoToStep2;
-    }
-
-    // ---------- Step 2: configure ----------
-
-    get renderModeOptions() {
-        return [
-            { label: 'Form first — ask for inputs in chat, then run', value: 'form' },
-            { label: 'Auto-run — run immediately when mentioned', value: 'auto' },
-            { label: 'Confirmation — ask before running', value: 'confirm' }
-        ];
-    }
-
-    async goToStep2() {
-        if (!this.selectedFlow) return;
-        this.step = 2;
-        this.inputsLoading = true;
-        try {
-            const vars = await getFlowInputs({ flowApiName: this.selectedFlow.apiName });
-            this.inputMappings = (vars || []).map(v => ({
-                apiName: v.apiName,
-                dataType: v.dataType,
-                description: v.description,
-                required: !!v.required,
-                label: this.humanize(v.apiName),
-                defaultValue: '',
-                collectFromChat: true
-            }));
-        } catch (e) {
-            this.toast('Error', this.msg(e), 'error');
-            this.inputMappings = [];
-        } finally {
-            this.inputsLoading = false;
-        }
-    }
-
-    humanize(apiName) {
-        return (apiName || '')
-            .replace(/__c$/, '')
-            .replace(/_/g, ' ')
-            .replace(/\b\w/g, c => c.toUpperCase());
-    }
-
-    handleLabelInput(e) {
-        this.flowLabel = e.target.value;
-    }
-
-    handleRenderModeChange(e) {
-        this.renderMode = e.detail.value;
-    }
-
-    handleInputLabel(e) {
-        const api = e.currentTarget.dataset.api;
-        this.inputMappings = this.inputMappings.map(m =>
-            m.apiName === api ? { ...m, label: e.target.value } : m
-        );
-    }
-
-    handleInputDefault(e) {
-        const api = e.currentTarget.dataset.api;
-        this.inputMappings = this.inputMappings.map(m =>
-            m.apiName === api ? { ...m, defaultValue: e.target.value } : m
-        );
-    }
-
-    handleInputCollectToggle(e) {
-        const api = e.currentTarget.dataset.api;
-        this.inputMappings = this.inputMappings.map(m =>
-            m.apiName === api ? { ...m, collectFromChat: e.target.checked } : m
-        );
-    }
-
-    get hasInputs() {
-        return this.inputMappings.length > 0;
-    }
-
-    get canGoToStep3() {
-        return !!(this.flowLabel || '').trim();
-    }
-
-    get cannotGoToStep3() {
-        return !this.canGoToStep3;
-    }
-
-    // ---------- Step 3: preview & save ----------
-
-    get previewInputs() {
-        return this.inputMappings.filter(m => m.collectFromChat);
-    }
-
-    get renderModeLabel() {
-        const opt = this.renderModeOptions.find(o => o.value === this.renderMode);
-        return opt ? opt.label : this.renderMode;
-    }
-
-    buildPolicy() {
-        return {
-            apiName: this.selectedFlow.apiName,
-            label: (this.flowLabel || '').trim() || this.selectedFlow.label,
-            renderMode: this.renderMode,
-            inputs: this.inputMappings.map(m => ({
-                apiName: m.apiName,
-                label: m.label,
-                dataType: m.dataType,
-                required: m.required,
-                collectFromChat: m.collectFromChat,
-                defaultValue: m.defaultValue
-            }))
-        };
-    }
-
-    async stagePolicy() {
-        if (!this.canGoToStep3) {
-            this.toast('Missing label', 'Give the flow a chat label.', 'error');
-            return;
-        }
-        this.saving = true;
-        try {
-            const raw = this.staging?.draft?.Draft_Value__c ?? this.staging?.liveValue;
-            let policies = [];
-            try {
-                const parsed = JSON.parse(raw || '[]');
-                policies = Array.isArray(parsed) ? parsed : [];
-            } catch { /* start fresh */ }
-            const policy = this.buildPolicy();
-            const idx = policies.findIndex(p =>
-                (p.apiName || p.flowApiName) === policy.apiName
-            );
-            if (idx >= 0) {
-                policies[idx] = policy;
-            } else {
-                policies.push(policy);
+            const staging = await getStagingInfo();
+            this.policies = this.parsePolicies(staging.draft?.Draft_Value__c ?? staging.liveValue);
+            if (this.initialPolicy) {
+                const apiName = this.initialPolicy.apiName || this.initialPolicy.flowApiName;
+                this.selectedFlow = { apiName, label: this.initialPolicy.label || apiName };
+                this.flowLabel = this.selectedFlow.label;
+                this.step = 2;
             }
-            await saveDraft({ key: KEY, value: JSON.stringify(policies, null, 2) });
-            this.toast('Draft staged', `"${policy.label}" staged. Publish it in the Publish Center.`, 'success');
-            this.done();
-        } catch (e) {
-            this.toast('Error', this.msg(e), 'error');
-        } finally {
-            this.saving = false;
-        }
+        } catch (e) { this.loadError = true; this.error = 'Could not read existing launch cards. ' + this.msg(e); }
+        finally { this.ready = true; }
     }
-
-    // ---------- Navigation ----------
-
+    get flowsLoading() { return !this.wiredFlowsResult || (!this.wiredFlowsResult.data && !this.wiredFlowsResult.error); }
+    get flowLoadError() { return this.wiredFlowsResult?.error ? this.msg(this.wiredFlowsResult.error) : ''; }
+    get allFlows() { return (this.wiredFlowsResult?.data || []).filter(f => ['Flow', 'AutoLaunchedFlow'].includes(f.processType)); }
+    get filteredFlows() {
+        const q = this.flowSearch.toLowerCase().trim();
+        return this.allFlows.filter(f => !q || (f.label + ' ' + f.apiName).toLowerCase().includes(q)).map(f => ({ ...f,
+            typeLabel: f.processType === 'Flow' ? 'Screen flow' : 'Autolaunched flow',
+            selected: f.apiName === this.selectedFlow?.apiName,
+            rowClass: f.apiName === this.selectedFlow?.apiName ? 'flow-choice selected' : 'flow-choice' }));
+    }
+    get hasFlows() { return this.allFlows.length > 0; }
     get isStep1() { return this.step === 1; }
     get isStep2() { return this.step === 2; }
-    get isStep3() { return this.step === 3; }
-
-    get step1Class() { return this.step === 1 ? 'slds-is-active' : this.step > 1 ? 'slds-is-complete' : ''; }
-    get step2Class() { return this.step === 2 ? 'slds-is-active' : this.step > 2 ? 'slds-is-complete' : ''; }
-    get step3Class() { return this.step === 3 ? 'slds-is-active' : ''; }
-
-    goBack() {
-        if (this.step > 1) this.step -= 1;
+    get stepTitle() { return this.step === 1 ? '1. Choose flow' : '2. Review launch card'; }
+    get cannotContinue() { return !this.selectedFlow || !this.ready || this.loadError; }
+    get cannotStage() { return !this.selectedFlow || !this.flowLabel.trim() || !this.ready || this.saving || this.loadError; }
+    handleFlowSearch(e) { this.flowSearch = e.target.value; }
+    handlePickFlow(e) {
+        const flow = this.allFlows.find(f => f.apiName === e.currentTarget.dataset.apiname);
+        if (!flow) return;
+        if (flow.apiName !== this.selectedFlow?.apiName) {
+            const existing = this.policies.find(p => (p.apiName || p.flowApiName) === flow.apiName);
+            this.flowLabel = existing?.label || flow.label || flow.apiName;
+        }
+        this.selectedFlow = { ...flow };
     }
-
-    goToStep3() {
-        if (this.canGoToStep3) this.step = 3;
+    handleLabelInput(e) { this.flowLabel = e.target.value; }
+    goToReview() { if (!this.cannotContinue) this.step = 2; }
+    get backLabel() { return this.initialPolicy ? 'Back to cards' : 'Choose a different flow'; }
+    goBack() { if (this.initialPolicy) this.done(); else this.step = 1; }
+    buildPolicy() {
+        const existing = this.policies.find(p => (p.apiName || p.flowApiName) === this.selectedFlow.apiName) || ((this.initialPolicy?.apiName || this.initialPolicy?.flowApiName) === this.selectedFlow.apiName ? this.initialPolicy : null) || {};
+        return { ...existing, apiName: this.selectedFlow.apiName, label: this.flowLabel.trim(), launchMode: 'salesforce' };
     }
-
-    cancel() {
-        this.done();
+    async stagePolicy() {
+        if (this.cannotStage) return;
+        this.saving = true;
+        try {
+            // Re-read before saving so other cards staged during this editor session survive.
+            const latest = await getStagingInfo();
+            this.policies = this.parsePolicies(latest.draft?.Draft_Value__c ?? latest.liveValue);
+            const policy = this.buildPolicy();
+            const index = this.policies.findIndex(p => (p.apiName || p.flowApiName) === policy.apiName);
+            const policies = [...this.policies];
+            if (index < 0) policies.push(policy); else policies[index] = policy;
+            await saveDraft({ key: KEY, value: JSON.stringify(policies, null, 2) });
+            this.toast('Launch card staged', 'Publish the draft to make this card name available in chat.', 'success');
+            this.done();
+        } catch (e) { this.error = this.msg(e); this.toast('Could not stage launch card', this.error, 'error'); }
+        finally { this.saving = false; }
     }
-
-    done() {
-        this.dispatchEvent(new CustomEvent('wizarddone', { bubbles: true, composed: true }));
-    }
-
-    msg(e) { return e?.body?.message || e?.message || 'Unknown error'; }
-    toast(title, message, variant) {
-        this.dispatchEvent(new ShowToastEvent({ title, message, variant }));
-    }
+    cancel() { this.done(); }
+    done() { this.dispatchEvent(new CustomEvent('wizarddone', { bubbles: true, composed: true })); }
+    msg(e) { return e?.body?.message || e?.message || 'Could not load Salesforce flows.'; }
+    toast(title, message, variant) { this.dispatchEvent(new ShowToastEvent({ title, message, variant })); }
 }

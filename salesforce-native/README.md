@@ -24,3 +24,7 @@ sf apex run test --target-org cardstack-spike2 --test-level RunLocalTests --resu
 ```
 
 See `package/UNLOCKED_PACKAGE.md` for the beta build and companion setup. Do not promote the beta.
+
+## Flow launch cards (beta)
+
+Studio Flows is a searchable launch-card list with a two-step editor: choose an active, launchable Salesforce flow, then name and review its card. Draft cards appear in the list and must be published before their names apply in chat. The native flow tools open Salesforce for execution; they do not execute interviews, collect or submit flow inputs, or cancel interviews already running in Salesforce. Legacy setup metadata is retained when editing cards. Custom Screens has been retired from Studio and new package source.

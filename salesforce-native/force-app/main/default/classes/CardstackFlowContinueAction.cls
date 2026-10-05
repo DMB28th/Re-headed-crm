@@ -12,7 +12,7 @@ global with sharing class CardstackFlowContinueAction {
 
     @InvocableMethod(
         label='Cardstack Flow Continue'
-        description='Continue a Salesforce Flow with collected inputs. Pass the actionSessionId from Flow Start and the answers collected in chat.'
+        description='Refresh a Salesforce flow launch card with optional chat notes. Pass the actionSessionId from Flow Start. This does not execute a flow or submit its inputs.'
     )
     global static List<FlowContinueResponse> continueFlow(List<FlowContinueRequest> requests) {
         List<FlowContinueResponse> responses = new List<FlowContinueResponse>();
@@ -66,7 +66,7 @@ global with sharing class CardstackFlowContinueAction {
 
         FlowContinueResponse res = new FlowContinueResponse();
         res.flowApiName = flowApiName;
-        res.flowLabel = defs[0].Label;
+        res.flowLabel = CardstackFlowStartAction.launchLabel(flowApiName, defs[0].Label);
         res.recordId = req.recordId;
         res.answers = answerRows;
         res.answerCount = answerRows.size();
@@ -74,18 +74,14 @@ global with sharing class CardstackFlowContinueAction {
         res.actionSessionId = refreshed.token;
         res.flowUrl = URL.getOrgDomainUrl().toExternalForm()
             + '/flow/' + flowApiName + '?recordId=' + req.recordId;
-        res.summary = 'Flow "' + defs[0].Label + '" continuing with '
-            + answerRows.size() + ' answer(s). Reply in chat with the next values, '
-            + 'or open it in Salesforce to proceed there.';
-        // Guided-card fields.
-        res.status = 'In Progress';
+        res.summary = 'Notes collected for "' + res.flowLabel + '". Open Salesforce to enter the flow inputs and run it; chat has not executed the flow.';
+        res.status = 'Ready to open';
         res.statusVariant = 'info';
-        res.currentStep = answerRows.size() + 1;
+        res.currentStep = 1;
         res.totalSteps = null;
-        res.stepLabel = 'Collecting inputs';
-        res.stepText = 'Step ' + res.currentStep;
-        res.nextPrompt = 'Reply in chat with the next values this flow needs, '
-            + 'or open the flow in Salesforce from the card to continue its screens.';
+        res.stepLabel = 'Salesforce launch';
+        res.stepText = 'Runs in Salesforce';
+        res.nextPrompt = 'Open in Salesforce to continue. The values shown here are notes, not submitted flow inputs.';
         res.isQuickAction = false;
         res.suggestedReplies = new List<CardstackFlowStartAction.SuggestedReply>();
         return res;

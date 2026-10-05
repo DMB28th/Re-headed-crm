@@ -14,7 +14,7 @@ global with sharing class CardstackFlowStartAction {
 
     @InvocableMethod(
         label='Cardstack Flow Start'
-        description='Begin a Salesforce Flow for a record. Returns pending inputs to collect in chat, then call Flow Continue. When ready, the rep opens the flow in Salesforce from the card.'
+        description='Show a Salesforce flow launch card for a record. The user opens the card in Salesforce to run the flow; this tool does not execute the flow or collect its inputs.'
     )
     global static List<FlowStartResponse> startFlow(List<FlowStartRequest> requests) {
         List<FlowStartResponse> responses = new List<FlowStartResponse>();
@@ -37,7 +37,7 @@ global with sharing class CardstackFlowStartAction {
 
         // Verify the flow exists and is active.
         List<FlowDefinitionView> defs = [
-            SELECT ApiName, Label, IsActive
+            SELECT ApiName, Label, IsActive, ProcessType, TriggerType
             FROM FlowDefinitionView
             WHERE ApiName = :flowApiName WITH USER_MODE LIMIT 1
         ];
@@ -47,6 +47,12 @@ global with sharing class CardstackFlowStartAction {
         if (!defs[0].IsActive) {
             throw new CardstackException('Flow is not active: ' + flowApiName);
         }
+
+        if ((defs[0].ProcessType != 'Flow' && defs[0].ProcessType != 'AutoLaunchedFlow')
+            || (defs[0].TriggerType != null && defs[0].TriggerType != 'None')) {
+            throw new CardstackException('This flow cannot be launched from a Salesforce link. Choose a screen flow or an autolaunched flow without a trigger.');
+        }
+        String cardLabel = launchLabel(flowApiName, defs[0].Label);
 
         // Record context for the card.
         String recId = req.recordId;
@@ -64,25 +70,37 @@ global with sharing class CardstackFlowStartAction {
         res.recordId = req.recordId;
         res.recordName = recordName;
         res.flowApiName = flowApiName;
-        res.flowLabel = defs[0].Label;
+        res.flowLabel = cardLabel;
         res.actionSessionId = session.token;
         res.flowUrl = URL.getOrgDomainUrl().toExternalForm()
             + '/flow/' + flowApiName + '?recordId=' + req.recordId;
-        res.summary = 'Flow "' + defs[0].Label + '" ready for ' + recordName
-            + '. Reply in chat with the flow\u2019s input values, or open it in Salesforce to run the screens.';
-        // Guided-card fields.
-        res.status = 'Waiting on you';
-        res.statusVariant = 'warning';
+        res.summary = 'Ready to open "' + cardLabel + '" for ' + recordName + '. Complete the flow in Salesforce.';
+        res.status = 'Ready to open';
+        res.statusVariant = 'info';
         res.currentStep = 1;
         res.totalSteps = null;
-        res.stepLabel = 'Started';
-        res.stepText = 'Step 1';
-        res.nextPrompt = 'Reply in chat with the values this flow needs (for example: approval decision, comments, dates), '
-            + 'or open the flow in Salesforce from the card to run its screens.';
+        res.stepLabel = 'Salesforce launch';
+        res.stepText = 'Runs in Salesforce';
+        res.nextPrompt = 'Open in Salesforce to run this flow. Salesforce handles its screens, inputs, and record changes.';
         res.isQuickAction = false;
         res.hasAnswers = false;
         res.suggestedReplies = new List<CardstackFlowStartAction.SuggestedReply>();
         return res;
+    }
+
+    public static String launchLabel(String flowApiName, String fallbackLabel) {
+        try {
+            String raw = CardstackConfigService.getConfig('flows');
+            if (String.isBlank(raw)) return fallbackLabel;
+            List<Object> policies = (List<Object>) JSON.deserializeUntyped(raw);
+            for (Object item : policies) {
+                Map<String, Object> policy = (Map<String, Object>) item;
+                String apiName = (String) (policy.containsKey('apiName') ? policy.get('apiName') : policy.get('flowApiName'));
+                String label = (String) policy.get('label');
+                if (apiName == flowApiName && !String.isBlank(label)) return label.trim();
+            }
+        } catch (Exception e) { /* Optional configuration must not prevent an otherwise valid launch. */ }
+        return fallbackLabel;
     }
 
     private static String objectNameForId(String recordId) {

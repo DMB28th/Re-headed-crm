@@ -288,14 +288,14 @@
             <apiSource>API_CATALOG</apiSource>
             <operation>CardstackFlowStartAction</operation>
         </apiDefinition>
-        <descriptionOverride>Begin a Salesforce Flow for a record. Returns the flow launch context for the card.</descriptionOverride>
+        <descriptionOverride>Show a Salesforce flow launch card for a record. The user opens Salesforce to run the flow. This does not execute the flow or collect its inputs.</descriptionOverride>
         <destructive>false</destructive>
         <idempotent>true</idempotent>
         <openWorld>false</openWorld>
         <readOnly>false</readOnly>
         <returnDirect>false</returnDirect>
         <toolName>CardstackFlowStartAction</toolName>
-        <toolTitle>Cardstack Flow Start</toolTitle>
+        <toolTitle>Cardstack Flow Launch</toolTitle>
         <uiResource>cardstackFlow</uiResource>
     </tools>
     <tools>
@@ -304,14 +304,14 @@
             <apiSource>API_CATALOG</apiSource>
             <operation>CardstackFlowContinueAction</operation>
         </apiDefinition>
-        <descriptionOverride>Continue a Salesforce Flow with collected inputs. Pass the actionSessionId from Flow Start.</descriptionOverride>
+        <descriptionOverride>Refresh a Salesforce flow launch card with optional chat notes. Pass the actionSessionId from Flow Start. This does not execute the flow or submit its inputs.</descriptionOverride>
         <destructive>false</destructive>
         <idempotent>true</idempotent>
         <openWorld>false</openWorld>
         <readOnly>false</readOnly>
         <returnDirect>false</returnDirect>
         <toolName>CardstackFlowContinueAction</toolName>
-        <toolTitle>Cardstack Flow Continue</toolTitle>
+        <toolTitle>Cardstack Flow Launch Notes</toolTitle>
         <uiResource>cardstackFlow</uiResource>
     </tools>
     <tools>
@@ -320,14 +320,14 @@
             <apiSource>API_CATALOG</apiSource>
             <operation>CardstackFlowCancelAction</operation>
         </apiDefinition>
-        <descriptionOverride>Cancel an in-progress Salesforce Flow run.</descriptionOverride>
+        <descriptionOverride>Dismiss a Salesforce flow launch card session. This does not cancel a flow running in Salesforce.</descriptionOverride>
         <destructive>false</destructive>
         <idempotent>true</idempotent>
         <openWorld>false</openWorld>
         <readOnly>false</readOnly>
         <returnDirect>false</returnDirect>
         <toolName>CardstackFlowCancelAction</toolName>
-        <toolTitle>Cardstack Flow Cancel</toolTitle>
+        <toolTitle>Cardstack Dismiss Flow Card</toolTitle>
         <uiResource>cardstackResult</uiResource>
     </tools>
     <tools>

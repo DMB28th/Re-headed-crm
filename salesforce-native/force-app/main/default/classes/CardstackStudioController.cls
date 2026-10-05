@@ -20,6 +20,12 @@ public with sharing class CardstackStudioController {
         return CardstackConfigService.getStagingInfo(key);
     }
 
+    // Flow editing needs a fresh snapshot after staging/publishing; do not cache this response.
+    @AuraEnabled
+    public static Map<String, Object> getFlowLaunchCards() {
+        return CardstackConfigService.getStagingInfo('flows');
+    }
+
     @AuraEnabled
     public static String saveDraft(String key, String value) {
         validateJson(value);
@@ -411,6 +417,8 @@ public with sharing class CardstackStudioController {
                 SELECT ApiName, Label, Description, ProcessType
                 FROM FlowDefinitionView
                 WHERE IsActive = true
+                    AND ProcessType IN ('Flow', 'AutoLaunchedFlow')
+                    AND (TriggerType = null OR TriggerType = 'None')
                 ORDER BY Label
                 LIMIT 200
             ]) {

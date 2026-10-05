@@ -1,54 +1,20 @@
 <template>
-    <div class="slds-p-around_small">
-        <template if:true={showWizard}>
-            <c-cardstack-flow-wizard onwizarddone={handleWizardDone}></c-cardstack-flow-wizard>
-        </template>
+    <div class="flow-page">
+        <template if:true={showWizard}><c-cardstack-flow-wizard initial-policy={initialPolicy} onwizarddone={handleWizardDone}></c-cardstack-flow-wizard></template>
         <template if:false={showWizard}>
-            <div class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center slds-m-bottom_small">
-                <p class="slds-text-color_weak">
-                    Flow render policies — how each Salesforce flow renders in chat
-                    (auto-run, form-first, or confirmation). Stored under the
-                    <code>flows</code> config key.
-                </p>
-                <lightning-button
-                    label="New flow"
-                    variant="brand"
-                    icon-name="utility:add"
-                    onclick={openWizard}>
-                </lightning-button>
-            </div>
-            <template if:true={staging}>
-                <lightning-badge label={statusLabel} class={statusClass}></lightning-badge>
+            <div class="page-heading"><div><h2>Flow launch cards</h2><p>Give your team a clear card that opens a Salesforce flow from chat.</p></div><lightning-button label="Add launch card" variant="brand" icon-name="utility:add" onclick={openWizard}></lightning-button></div>
+            <div class="handoff-note"><lightning-icon icon-name="utility:new_window" size="x-small"></lightning-icon><span><strong>Runs in Salesforce.</strong> Chat shows the launch card. Salesforce handles the flow’s screens, inputs, and record changes.</span></div>
+            <template if:true={hasDraft}><div class="draft-notice"><p>{draftMessage}</p><lightning-button label="Open Publish Center" onclick={openPublish}></lightning-button></div></template>
+            <template if:true={error}><p role="alert" class="slds-text-color_error slds-m-vertical_small">{error}</p></template>
+            <template if:true={loading}><lightning-spinner alternative-text="Loading launch cards" size="small"></lightning-spinner></template>
+            <template if:false={loading}>
+                <template if:true={hasCards}>
+                    <div class="list-toolbar"><lightning-input type="search" label="Search launch cards" value={search} onchange={handleSearch} placeholder="Search by card or flow name"></lightning-input><lightning-button label="Refresh" onclick={load}></lightning-button></div>
+                    <ul class="card-list"><template for:each={flowRows} for:item="f"><li key={f.apiName} class="launch-card"><div class="card-title"><lightning-icon icon-name="standard:flow" size="small"></lightning-icon><div><h3>{f.label}</h3><p class="flow-api">{f.apiName}</p></div><lightning-badge label={f.status} class={f.statusClass}></lightning-badge></div><p>{f.availability}</p><p class="card-behavior">Open in Salesforce · Record context included</p><div class="card-actions"><lightning-button label="Edit card" data-api={f.apiName} onclick={editCard}></lightning-button><lightning-button label="Remove card" data-api={f.apiName} onclick={removeCard}></lightning-button></div></li></template></ul>
+                    <template if:false={flowRows.length}><p class="empty-search">No launch cards match your search.</p></template>
+                </template>
+                <template if:false={hasCards}><div class="empty-state"><lightning-icon icon-name="standard:flow" size="large"></lightning-icon><h3>Add your first flow launch card</h3><p>Choose an active Salesforce flow, give its card a clear name, then review and stage it for publishing.</p><lightning-button label="Add launch card" variant="brand" onclick={openWizard}></lightning-button></div></template>
             </template>
-        <lightning-textarea
-            label="Flow render modes JSON (draft)"
-            value={draftValue}
-            onchange={handleEdit}
-            class="slds-m-top_small json-editor">
-        </lightning-textarea>
-        <div class="slds-m-top_small">
-            <lightning-button
-                label="Stage Draft"
-                variant="brand"
-                onclick={stage}
-                class="slds-m-right_x-small">
-            </lightning-button>
-            <lightning-button label="Load Live" onclick={loadLive}></lightning-button>
-        </div>
-        <div class="slds-m-top_medium">
-            <h3 class="slds-text-heading_small slds-m-bottom_small">Current policies</h3>
-            <template if:true={flowRows.length}>
-                <lightning-datatable
-                    key-field="apiName"
-                    data={flowRows}
-                    columns={columns}
-                    hide-checkbox-column>
-                </lightning-datatable>
-            </template>
-            <template if:false={flowRows.length}>
-                <p class="slds-text-color_weak">No flow policies configured yet.</p>
-            </template>
-        </div>
         </template>
     </div>
 </template>
