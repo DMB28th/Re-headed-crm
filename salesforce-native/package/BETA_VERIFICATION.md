@@ -11,7 +11,7 @@ Core beta: **0.1.0.4**, unpromoted. [Install](https://login.salesforce.com/packa
 | Structured record HXL in Claude | Passed: highlights, three-column section, one-column description |
 | Account lookup/search HXL | Passed: real oil Accounts and disposable QA Account |
 | Named my opportunities | Rendered empty list; ownership independently verified empty; saved-view semantics are a labeled fallback |
-| Live Claude update | Unverified: Preview Update returned No approval received twice; no save attempted |
+| Live Claude update | Passed in fresh chat: two-field preview, explicit confirmation, save result, independent read-back (Description and numeric zero) |
 | ChatGPT update parity | Unverified |
 | Cleanup | Original Account layout restored; disposable Account removed; both queried |
 | Final deployment state | JWT restored ON; native MCP access active and Claude catalogue refreshed |
@@ -24,4 +24,8 @@ The install link is for the core package. HXL widgets, Lightning types, and Host
 
 This milestone builds the governed write foundation. Multi-field editable forms, typed answer state, Back/Cancel/Resume, mapped autolaunched flows, record action buttons and phrase guidance are the next build slices. Screen Flow interviews are not implemented in this beta; current launch cards open Salesforce.
 
-Evidence: Cardstack-structured-record-proof.png, Cardstack-Claude-approval-blocker.png. Private CLI test/build/install receipts are retained in the task workspace without credential output.
+Evidence: Cardstack-structured-record-proof.png, Cardstack-Claude-preview-proof.png, Cardstack-Claude-save-proof.png. Earlier interrupted-chat approval failure: Cardstack-Claude-approval-blocker.png. Private CLI test/build/install receipts are retained in the task workspace without credential output.
+
+## Live Claude edit acceptance — follow-up passed
+
+A fresh Claude chat successfully ran Preview Update, rendered the two-field before/after HXL card, asked for confirmation, then ran Update Record after explicit confirmation and one-time tool approval. Independent Salesforce SOQL confirmed Description = Community beta confirmed edit and NumberOfEmployees = 0 on the disposable Account. The earlier No approval received failures did not reproduce; interrupted-chat state or approval timing remains the likely cause, not a proven Salesforce defect. No application code change was needed. This proves conversational preview/confirm/save for this two-field case, not direct editable form submission or Screen Flow interviews. Cleanup restored the original published Account policy and removed the disposable Account, with independent verification.

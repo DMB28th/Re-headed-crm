@@ -28,6 +28,6 @@ Run python3 scripts/build-package.py --core-only /absolute/path/to/new-stage. Fr
 
 Track supported HXL packaging and automate subscriber MCP/OAuth setup before claiming a complete admin-first single-link install.
 
-## Live edit acceptance still open
+## Live Claude edit acceptance — follow-up passed
 
-The native Claude catalogue refreshed successfully after server reactivation. The disposable Account lookup rendered, but Preview Update returned "No approval received" twice during browser QA. No confirmation token or live save receipt was obtained. This release therefore does not claim end-to-end Claude editing acceptance despite passing Apex tests. The original published Account layout was restored and the disposable Account was removed; both were independently queried. Resolve client approval delivery and repeat preview/confirm/read-back before presenting chat editing as verified.
+A fresh Claude chat successfully ran Preview Update, rendered the two-field before/after HXL card, asked for confirmation, then ran Update Record after explicit confirmation and one-time tool approval. Independent Salesforce SOQL confirmed Description = Community beta confirmed edit and NumberOfEmployees = 0 on the disposable Account. The earlier No approval received failures did not reproduce; interrupted-chat state or approval timing remains the likely cause, not a proven Salesforce defect. No application code change was needed. This proves conversational preview/confirm/save for this two-field case, not direct editable form submission or Screen Flow interviews. Cleanup restored the original published Account policy and removed the disposable Account, with independent verification.
