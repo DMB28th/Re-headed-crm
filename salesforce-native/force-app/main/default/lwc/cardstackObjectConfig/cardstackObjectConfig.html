@@ -140,7 +140,7 @@
                                     <lightning-combobox label="Section columns" variant="label-hidden" value={s.columnValue} options={sectionColumnOptions} data-key={s.key} onchange={handleSectionColumnsChange} class="section-columns"></lightning-combobox>
                                     <lightning-button-icon icon-name="utility:delete" variant="bare" alternative-text="Remove section" title="Remove section" data-key={s.key} onclick={handleRemoveSection}></lightning-button-icon>
                                 </div>
-                                <template if:true={s.hasMultipleColumns}>
+                                <template if:true={s.showFullWidth}>
                                     <div class="column-dropzone full-width-zone" data-section={s.key} data-column="full" ondragover={handleDragOver} ondragleave={handleDragLeave} ondrop={handleDrop}>
                                         <p class="column-heading">Full width</p>
                                         <template for:each={s.fullFields} for:item="f">

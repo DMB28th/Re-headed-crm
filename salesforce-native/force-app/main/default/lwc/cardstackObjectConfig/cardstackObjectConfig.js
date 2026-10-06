@@ -545,6 +545,7 @@ export default class CardstackObjectConfig extends LightningElement {
     get sectionViews() {
         return (this.workingSections || []).map(s => ({ ...s,
             columnValue: String(s.columns), hasMultipleColumns: s.columns !== 1,
+            showFullWidth: s.columns !== 1 && s.fields.some(f => f.column === 'full'),
             gridClass: 'section-grid columns-' + s.columns,
             fullFields: s.fields.filter(f => f.column === 'full'),
             columnViews: this.sectionColumnNames(s).map(column => ({ key: column,

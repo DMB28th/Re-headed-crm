@@ -124,3 +124,21 @@ test('removing migrated fields cannot resurrect their old edit permissions', () 
     if(legacy.recordCard)assert.equal(saved.recordCard.futureSetting,'keep');
   }
 });
+
+test('new multi-column sections do not add an empty full-width row', () => {
+  for (const columns of [2, 3]) {
+    const b = builder(); b.workingSections = [b.makeSection('New section', [], columns)];
+    assert.equal(b.sectionViews[0].showFullWidth, false);
+    assert.equal(b.sectionViews[0].columnViews.length, columns);
+  }
+});
+test('explicit full-width fields remain visible and survive column changes', () => {
+  const b = builder(); const s = b.makeSection('Details', b.enrichFields([{api:'Description',column:'full'}]), 3); b.workingSections = [s];
+  assert.equal(b.sectionViews[0].showFullWidth, true);
+  b.handleSectionColumnsChange({currentTarget:{dataset:{key:s.key}},detail:{value:'1'}});
+  assert.equal(b.sectionViews[0].showFullWidth, false);
+  assert.equal(b.sectionViews[0].columnViews[0].fields[0].api, 'Description');
+  b.handleSectionColumnsChange({currentTarget:{dataset:{key:s.key}},detail:{value:'2'}});
+  assert.equal(b.sectionViews[0].showFullWidth, true);
+  assert.equal(b.sectionViews[0].fullFields[0].api, 'Description');
+});
