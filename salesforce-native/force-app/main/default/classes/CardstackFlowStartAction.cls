@@ -72,8 +72,7 @@ global with sharing class CardstackFlowStartAction {
         res.flowApiName = flowApiName;
         res.flowLabel = cardLabel;
         res.actionSessionId = session.token;
-        res.flowUrl = URL.getOrgDomainUrl().toExternalForm()
-            + '/flow/' + flowApiName + '?recordId=' + req.recordId;
+        res.flowUrl = buildFlowUrl(flowApiName, req.recordId);
         res.summary = 'Ready to open "' + cardLabel + '" for ' + recordName + '. Complete the flow in Salesforce.';
         res.status = 'Ready to open';
         res.statusVariant = 'info';
@@ -186,4 +185,7 @@ global with sharing class CardstackFlowStartAction {
     }
 
     public class CardstackException extends Exception {}
+    public static String buildFlowUrl(String flowApiName, String recordId) {
+        return URL.getOrgDomainUrl().toExternalForm() + '/lightning/flow/' + EncodingUtil.urlEncode(flowApiName,'UTF-8') + '?flow__recordId=' + EncodingUtil.urlEncode(recordId,'UTF-8');
+    }
 }

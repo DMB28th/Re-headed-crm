@@ -142,3 +142,31 @@ test('explicit full-width fields remain visible and survive column changes', () 
   assert.equal(b.sectionViews[0].showFullWidth, true);
   assert.equal(b.sectionViews[0].fullFields[0].api, 'Description');
 });
+
+test('action mappings and target metadata survive load, flags, and layout serialization', () => {
+  const b=builder();const action={name:'review_account',label:'Review Account',type:'record-edit',enabled:true,mappings:[{fieldApi:'Description',source:'constant',value:' café "quoted" '},{fieldApi:'NumberOfEmployees',source:'constant',value:'0'}],futureSetting:'keep'};
+  b.parseWorkingModel(JSON.stringify({actions:[action]}));
+  const saved=JSON.parse(b.buildLayoutJson()).actions[0];
+  assert.equal(saved.mappings[0].value,' café "quoted" ');assert.equal(saved.mappings[1].value,'0');assert.equal(saved.futureSetting,'keep');
+});
+test('guided actions reject empty or duplicate mapped targets before staging', async () => {
+  const b=builder();let saved=0;b.persistWorkingModel=async()=>{saved++};b.newAction={name:'bad',label:'Bad',type:'record-edit',mappings:[]};
+  await b.addAction();assert.equal(saved,0);
+  b.newAction.mappings=[{fieldApi:'Description',source:'current'},{fieldApi:'Description',source:'constant',value:'0'}];
+  await b.addAction();assert.equal(saved,0);
+});
+test('guided action stages ordered defaults with literal zero and empty text', async () => {
+  const b = builder(); b.wiredFieldsResult.data.push({ api: 'NumberOfEmployees', label: 'Employees', type: 'INTEGER' });
+  b.workingPermissions.writeEnabled = true;
+  b.workingSections = [b.makeSection('Edit', b.enrichFields([{ api: 'Description', editable: true }, { api: 'NumberOfEmployees', editable: true }]))];
+  let saved = 0; b.persistWorkingModel = async () => saved++;
+  b.newAction = { name: 'review', label: 'Review Account', type: 'record-edit', mappings: [{ fieldApi: 'Description', source: 'constant', value: '' }, { fieldApi: 'NumberOfEmployees', source: 'constant', value: '0' }] };
+  await b.addAction(); assert.equal(saved, 1);
+  const action = JSON.parse(b.buildLayoutJson()).actions[0]; assert.equal(action.mappings[0].value, ''); assert.equal(action.mappings[1].value, '0');
+});
+test('a twenty-first action is rejected without staging or hiding existing buttons', async () => {
+  const b=builder(); b.workingActions=Array.from({length:20},(_,i)=>({name:'existing_'+i})); b.publishedFlows=[{apiName:'PublishedFlow'}];
+  let saved=0;b.persistWorkingModel=async()=>saved++;
+  b.newAction={name:'twenty_first',label:'Extra',type:'flow',flowApiName:'PublishedFlow'};await b.addAction();
+  assert.equal(saved,0);assert.equal(b.workingActions.length,20);
+});

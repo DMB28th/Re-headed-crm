@@ -1,0 +1,191 @@
+{
+  "description": "Cardstack record card widget.",
+  "title": "Cardstack Record Widget",
+  "type": "object",
+  "properties": {
+    "attributes": {
+      "lightning:type": "lightning__objectType",
+      "properties": {
+        "recordName": {
+          "lightning:type": "lightning__textType",
+          "title": "Record Name"
+        },
+        "objectName": {
+          "lightning:type": "lightning__textType",
+          "title": "Object Name"
+        },
+        "fields": {
+          "lightning:type": "lightning__objectType",
+          "title": "Fields",
+          "properties": {
+            "label": {
+              "lightning:type": "lightning__textType",
+              "title": "Label"
+            },
+            "value": {
+              "lightning:type": "lightning__textType",
+              "title": "Value"
+            }
+          },
+          "type": "object"
+        },
+        "recordUrl": {
+          "lightning:type": "lightning__textType",
+          "title": "Record URL"
+        },
+        "highlights": {
+          "lightning:type": "lightning__objectType",
+          "title": "Highlight Fields",
+          "type": "object",
+          "properties": {
+            "label": {
+              "lightning:type": "lightning__textType",
+              "title": "Label"
+            },
+            "value": {
+              "lightning:type": "lightning__textType",
+              "title": "Value"
+            }
+          }
+        },
+        "sections": {
+          "lightning:type": "lightning__objectType",
+          "title": "Sections",
+          "type": "object",
+          "properties": {
+            "label": {
+              "lightning:type": "lightning__textType",
+              "title": "Section Label"
+            },
+            "fields": {
+              "lightning:type": "lightning__objectType",
+              "title": "Section Fields",
+              "type": "object",
+              "properties": {
+                "label": {
+                  "lightning:type": "lightning__textType",
+                  "title": "Label"
+                },
+                "value": {
+                  "lightning:type": "lightning__textType",
+                  "title": "Value"
+                }
+              }
+            },
+            "fullFields": {
+              "lightning:type": "lightning__objectType",
+              "title": "fullFields",
+              "properties": {
+                "label": {
+                  "lightning:type": "lightning__textType",
+                  "title": "Label"
+                },
+                "value": {
+                  "lightning:type": "lightning__textType",
+                  "title": "Value"
+                }
+              },
+              "type": "object"
+            },
+            "leftFields": {
+              "lightning:type": "lightning__objectType",
+              "title": "leftFields",
+              "properties": {
+                "label": {
+                  "lightning:type": "lightning__textType",
+                  "title": "Label"
+                },
+                "value": {
+                  "lightning:type": "lightning__textType",
+                  "title": "Value"
+                }
+              },
+              "type": "object"
+            },
+            "rightFields": {
+              "lightning:type": "lightning__objectType",
+              "title": "rightFields",
+              "properties": {
+                "label": {
+                  "lightning:type": "lightning__textType",
+                  "title": "Label"
+                },
+                "value": {
+                  "lightning:type": "lightning__textType",
+                  "title": "Value"
+                }
+              },
+              "type": "object"
+            },
+            "usesColumns": {
+              "lightning:type": "lightning__booleanType",
+              "title": "Uses Columns"
+            },
+            "centerFields": {
+              "lightning:type": "lightning__objectType",
+              "title": "Middle Fields",
+              "properties": {
+                "label": {
+                  "lightning:type": "lightning__textType",
+                  "title": "Label"
+                },
+                "value": {
+                  "lightning:type": "lightning__textType",
+                  "title": "Value"
+                }
+              },
+              "type": "object"
+            },
+            "usesThreeColumns": {
+              "lightning:type": "lightning__booleanType",
+              "title": "Three columns"
+            }
+          }
+        },
+        "hasHighlights": {
+          "lightning:type": "lightning__booleanType",
+          "title": "Has Highlights"
+        },
+        "hasSections": {
+          "lightning:type": "lightning__booleanType",
+          "title": "Has Sections"
+        },
+        "showFlatFields": {
+          "lightning:type": "lightning__booleanType",
+          "title": "Show Flat Fields"
+        },
+        "hasActions": {
+          "lightning:type": "lightning__booleanType",
+          "title": "Has Actions"
+        },
+        "actions": {
+          "lightning:type": "lightning__objectType",
+          "type": "object",
+          "title": "Published Actions",
+          "properties": {
+            "label": {
+              "lightning:type": "lightning__textType",
+              "title": "label"
+            },
+            "prompt": {
+              "lightning:type": "lightning__textType",
+              "title": "prompt"
+            },
+            "url": {
+              "lightning:type": "lightning__textType",
+              "title": "url"
+            },
+            "inChat": {
+              "lightning:type": "lightning__booleanType",
+              "title": "inChat"
+            },
+            "opensSalesforce": {
+              "lightning:type": "lightning__booleanType",
+              "title": "opensSalesforce"
+            }
+          }
+        }
+      }
+    }
+  }
+}

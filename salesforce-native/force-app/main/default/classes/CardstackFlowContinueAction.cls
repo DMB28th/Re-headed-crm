@@ -72,8 +72,7 @@ global with sharing class CardstackFlowContinueAction {
         res.answerCount = answerRows.size();
         res.hasAnswers = !answerRows.isEmpty();
         res.actionSessionId = refreshed.token;
-        res.flowUrl = URL.getOrgDomainUrl().toExternalForm()
-            + '/flow/' + flowApiName + '?recordId=' + req.recordId;
+        res.flowUrl = CardstackFlowStartAction.buildFlowUrl(flowApiName, req.recordId);
         res.summary = 'Notes collected for "' + res.flowLabel + '". Open Salesforce to enter the flow inputs and run it; chat has not executed the flow.';
         res.status = 'Ready to open';
         res.statusVariant = 'info';

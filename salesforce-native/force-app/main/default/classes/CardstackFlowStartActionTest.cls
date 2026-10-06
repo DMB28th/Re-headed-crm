@@ -125,4 +125,9 @@ private class CardstackFlowStartActionTest {
 
         }
 }
+    @IsTest static void flowLinksUseLightningAndItsInputVariablePrefix() {
+        Account a=new Account(Name='URL context');insert a;
+        String link=CardstackFlowStartAction.buildFlowUrl('Cardstack_UI_Probe',a.Id);
+        System.assertEquals(URL.getOrgDomainUrl().toExternalForm()+'/lightning/flow/Cardstack_UI_Probe?flow__recordId='+a.Id,link);
+    }
 }

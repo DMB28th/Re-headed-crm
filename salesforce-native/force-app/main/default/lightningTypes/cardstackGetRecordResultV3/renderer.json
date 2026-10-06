@@ -1,0 +1,22 @@
+{
+  "renderer": {
+    "componentOverrides": {
+      "$": {
+        "definition": "@widget/c/cardstackRecordV3",
+        "attributes": {
+          "recordName": "{!$attrs.outputValues.recordName}",
+          "objectName": "{!$attrs.outputValues.objectName}",
+          "fields": "{!$attrs.outputValues.fields}",
+          "recordUrl": "{!$attrs.outputValues.recordUrl}",
+          "highlights": "{!$attrs.outputValues.highlights}",
+          "sections": "{!$attrs.outputValues.sections}",
+          "hasHighlights": "{!$attrs.outputValues.hasHighlights}",
+          "hasSections": "{!$attrs.outputValues.hasSections}",
+          "showFlatFields": "{!$attrs.outputValues.showFlatFields}",
+          "actions": "{!$attrs.outputValues.actions}",
+          "hasActions": "{!$attrs.outputValues.hasActions}"
+        }
+      }
+    }
+  }
+}

@@ -332,12 +332,29 @@
                                     <lightning-input label="Name (optional)" value={newAction.name} data-field="name" onchange={handleNewActionInput}></lightning-input>
                                 </div>
                                 <div class="slds-col slds-size_1-of-4">
-                                    <lightning-combobox label="Type" options={newActionTypeOptions} value={newAction.type} data-field="type" onchange={handleNewActionInput}></lightning-combobox>
+                                    <lightning-combobox label="Process or flow" options={actionTargetOptions} value={actionTarget} onchange={handleActionTarget}></lightning-combobox>
                                 </div>
                                 <div class="slds-col slds-size_1-of-4">
                                     <lightning-input label="Description" value={newAction.description} data-field="description" onchange={handleNewActionInput}></lightning-input>
                                 </div>
                             </div>
+                            <p class="slds-m-top_small slds-text-color_weak">The current card supplies the record ID. Changes remain a draft until published.</p>
+                            <template if:true={isGuidedAction}>
+                                <p class="slds-m-top_small">Choose editable text or integer fields. Mappings set starting values; users review every change and confirm before saving.</p>
+                                <template for:each={mappingRows} for:item="mapping">
+                                    <div key={mapping.key} class="slds-grid slds-gutters slds-m-top_small">
+                                        <div class="slds-col"><lightning-combobox label="Field to update" options={editableActionFields} value={mapping.fieldApi} data-index={mapping.index} data-field="fieldApi" onchange={handleMapping}></lightning-combobox></div>
+                                        <div class="slds-col"><lightning-combobox label="Starting value" options={mappedSourceOptions} value={mapping.source} data-index={mapping.index} data-field="source" onchange={handleMapping}></lightning-combobox></div>
+                                        <div class="slds-col">
+                                            <template if:true={mapping.isField}><lightning-combobox label="Source field" options={exposedActionFields} value={mapping.sourceField} data-index={mapping.index} data-field="sourceField" onchange={handleMapping}></lightning-combobox></template>
+                                            <template if:true={mapping.isConstant}><lightning-input label="Constant value (empty text allowed)" value={mapping.value} data-index={mapping.index} data-field="value" onchange={handleMapping}></lightning-input></template>
+                                        </div>
+                                        <div class="slds-col slds-grow-none slds-align-bottom"><lightning-button-icon icon-name="utility:delete" alternative-text="Remove input" data-index={mapping.index} onclick={removeMapping}></lightning-button-icon></div>
+                                    </div>
+                                </template>
+                                <lightning-button label="Add input" onclick={addMapping} class="slds-m-top_small"></lightning-button>
+                            </template>
+                            <template if:true={isSalesforceAction}><p class="slds-m-top_small">Opens the published flow in Salesforce with recordId. Its screens and inputs run in Salesforce.</p></template>
                             <lightning-button label="Add action" variant="brand" onclick={addAction} class="slds-m-top_small"></lightning-button>
                         </div>
                     </div>

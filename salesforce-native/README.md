@@ -6,7 +6,7 @@ Cardstack runs entirely in Salesforce: 17 community-beta Hosted MCP tools, HXL w
 
 ## Beta limits
 
-- Record cards use `cardstackRecordV2`, with Highlights Panel, named sections, full-width fields, and one/two/three-column section layouts. The Classic-style Studio editor has a searchable draggable field palette above the card canvas. Older flat configs remain supported. Each record-card tool call takes exactly one input; call separately for multiple cards.
+- Record cards use `cardstackRecordV3`, with Highlights Panel, named sections, full-width fields, and one/two/three-column section layouts. The Classic-style Studio editor has a searchable draggable field palette above the card canvas. Older flat configs remain supported. Each record-card tool call takes exactly one input; call separately for multiple cards.
 - Named list views use a clearly labeled user-mode SOQL fallback. Arbitrary Salesforce saved-view filters, columns, and sorting are **not reproduced**. “My” filters never broaden to other owners when empty. Saved Cardstack filters remain supported.
 - Hosted MCP fatally rejects `UserInfo.getSessionId()` in the named-view path. The beta removes self-REST access rather than relying on catches.
 - The compatible list renderer uses `cardstackTableV2`, iterating returned `rows` and their `cells`. The list tool uses versioned Lightning types `cardstackListViewOutputValuesV2` and `cardstackListViewResultV3`; old immutable schemas referenced nonexistent Apex classes.
@@ -25,6 +25,10 @@ Native HXL editing now presents one Account text/integer field per step, retaini
 
 The initial adapter supports up to 20 published editable Account text/integer fields. Picklists, dates, lookups, simultaneous multi-field forms, other record types, and Screen Flow interviews are not implemented in this adapter. Other editable field types are omitted. ChatGPT parity for the new editor is unverified. Existing Salesforce flow launch cards remain available.
 
+## Published record actions
+
+Objects → Actions now lets admins choose an in-chat Account edit process or a published Salesforce flow launch card. Guided inputs map starting values from current values, exposed record fields, constants, or user answers. The card binds the record ID; defaults become writes only after submitted answers, review, and exact confirmation. Disabled or invalid actions are omitted. Keep current after Back removes the prior answer. See [Record actions](docs/RECORD_ACTIONS.md).
+
 ## Development deployment
 
 Before every deployment session, turn OFF JWT-based access tokens on Card Stack SFAPP and obtain a fresh opaque CLI login. After deployment, restore JWT to **ON** for Claude. Never log credentials or session values.
@@ -39,7 +43,7 @@ See `package/UNLOCKED_PACKAGE.md` for the beta build and companion setup. Do not
 
 ## Flow launch cards (beta)
 
-Studio Flows is a searchable launch-card list with a two-step editor: choose an active, launchable Salesforce flow, then name and review its card. Draft cards appear in the list and must be published before their names apply in chat. The native flow tools open Salesforce for execution; they do not execute interviews, collect or submit flow inputs, or cancel interviews already running in Salesforce. Legacy setup metadata is retained when editing cards. Custom Screens has been retired from Studio and new package source.
+Studio Flows is a searchable launch-card list with a two-step editor: choose an active, launchable Salesforce flow, then name and review its card. Draft cards appear in the list and must be published before their names apply in chat. The native flow tools open Salesforce using its Lightning flow URL and pass the current recordId. They do not interpret flow screens, submit user-entered answers to a running interview, or cancel interviews already running in Salesforce. Legacy setup metadata is retained when editing cards. Custom Screens has been retired from Studio and new package source.
 
 ## Live Claude edit acceptance — follow-up passed
 
@@ -47,4 +51,4 @@ A fresh Claude chat successfully ran Preview Update, rendered the two-field befo
 
 ## Native editor release
 
-Core beta 0.1.0.6: 83% package coverage; 157 installed-package tests and 162 development-org tests passed, with 20 Studio model tests. The core installs separately from the HXL/MCP companion. See the current package guide and verification report.
+Core beta 0.1.0.8: 84% package coverage; 167 installed-package tests and 172 development-org tests passed, with 26 Studio model tests. Published mapped record actions passed the complete Claude input/review/confirmation/save/refreshed-card path. Salesforce flow handoffs use the Lightning runtime with verified record context. The core installs separately from the HXL/MCP companion. See the package guide and verification report.

@@ -24,7 +24,7 @@
         <description>Renders a Cardstack CRM record card.</description>
         <resourceName>cardstackRecordV2</resourceName>
         <resourceTitle>Cardstack Record</resourceTitle>
-        <resourceUri>ui://widget/lightningType/c__cardstackGetRecordResultV2</resourceUri>
+        <resourceUri>ui://widget/lightningType/c__cardstackGetRecordResultV3</resourceUri>
     </resources>
     <resources>
         <description>Renders Cardstack related-record lists.</description>

@@ -11,16 +11,29 @@ public with sharing class CardstackRecordEditService {
   public String initialVersion; public String status='Editing'; public Integer revision=1; public Integer index=0;
   public List<String> fields=new List<String>(); public Map<String,String> answers=new Map<String,String>();
   public String summary; public Id confirmationId;
+  public String actionLabel;public Map<String,String> defaults=new Map<String,String>();public Set<String> sources=new Set<String>();
  }
- public static View start(Id recordId) {
+ public static View start(Id recordId) {return start(recordId,null);}
+ public static View start(Id recordId,String actionName) {
   if (recordId==null || recordId.getSObjectType()!=Account.SObjectType) throw new EditException('This native edit beta supports Account records.');
   CardstackPolicyService.Policy policy=CardstackPolicyService.resolve('Account');
   if (!policy.editEnabled) throw new EditException('Chat edits are disabled in the published Account layout.');
   State s=new State();s.recordId=String.valueOf(recordId);s.objectName='Account';s.policyRevision=policy.revision;
   for (CardstackPolicyService.FieldPolicy fp:policy.fields.values()) if (!fp.readOnly && supported(fp.dataType)) s.fields.add(fp.apiName);
   s.fields.sort();
+  CardstackRecordActionService.Definition action;
+  if(!String.isBlank(actionName)){
+   action=CardstackRecordActionService.resolve('Account',actionName);
+   if(action.type!='record-edit')throw new EditException('This action opens Salesforce; it is not an in-chat record edit.');
+   s.fields.clear();s.actionLabel=action.label;
+   for(CardstackRecordActionService.Mapping m:action.mappings){s.fields.add(m.fieldApi);if(m.source=='field')s.sources.add(m.sourceField);}
+  }
   if (s.fields.isEmpty() || s.fields.size()>20) throw new EditException('Publish between one and twenty editable text or integer fields for this beta.');
   SObject record=readRecord(s);s.recordName=String.valueOf(record.get('Name'));
+  if(action!=null)for(CardstackRecordActionService.Mapping m:action.mappings){
+   String value=m.source=='constant'?m.value:m.source=='answer'?'':m.source=='field'?(record.get(m.sourceField)==null?'':String.valueOf(record.get(m.sourceField))):null;
+   if(m.source!='current'){String error=validateAnswer(policy.fields.get(m.fieldApi),value);if(error!=null && m.source!='answer')throw new EditException(error);s.defaults.put(m.fieldApi,value);}
+  }
   s.initialVersion=CardstackConfirmToken.recordVersion(record,allPatches(s));
   String key=EncodingUtil.convertToHex(Crypto.generateAesKey(256));
   insert as system new Cardstack_Interaction__c(Key_Hash__c=hash(key),Actor_Id__c=UserInfo.getUserId(),Expires_At__c=Datetime.now().addMinutes(15),State__c=JSON.serialize(s));
@@ -68,7 +81,7 @@ public with sharing class CardstackRecordEditService {
     error=validateAnswer(fp,answer);
     if (error!=null) return view(s,key,error,null,policy,record);
     s.answers.put(api,answer);
-   }
+   } else { s.answers.remove(api); }
    s.index++;
    if (s.index>=s.fields.size()) {
     if (s.initialVersion!=CardstackConfirmToken.recordVersion(record,allPatches(s))) throw new EditException('Record changed while editing. Start again.');
@@ -99,13 +112,13 @@ public with sharing class CardstackRecordEditService {
   return view(s,key,error,grant,policy,record);
  }
  private static View view(State s,String key,String error,String grant,CardstackPolicyService.Policy policy,SObject record) {
-  View v=new View();v.key=key;v.revision=s.revision;v.status=s.status;v.recordId=s.recordId;v.objectName=s.objectName;v.recordName=s.recordName;v.summary=s.summary;v.error=error;v.confirmToken=grant;
+  View v=new View();v.key=key;v.revision=s.revision;v.status=s.status;v.recordId=s.recordId;v.objectName=s.objectName;v.recordName=s.recordName+(String.isBlank(s.actionLabel)?'':' · '+s.actionLabel);v.summary=s.summary;v.error=error;v.confirmToken=grant;
   if(s.status=='Review') v.reviewReference=publicReviewReference(key,s);
   v.canBack=s.status=='Review' || (s.status=='Editing' && s.index>0);
   if (s.status=='Editing') {
    v.fieldApi=s.fields[s.index];Schema.DescribeFieldResult f=Schema.getGlobalDescribe().get(s.objectName).getDescribe().fields.getMap().get(v.fieldApi).getDescribe();
    v.fieldLabel=f.getLabel();v.required=policy.fields.get(v.fieldApi).required;v.canClear=!v.required;
-   Object current=record.get(v.fieldApi);v.value=s.answers.containsKey(v.fieldApi) ? s.answers.get(v.fieldApi) : (current==null ? '' : String.valueOf(current));
+   Object current=record.get(v.fieldApi);v.value=s.answers.containsKey(v.fieldApi) ? s.answers.get(v.fieldApi) : s.defaults!=null && s.defaults.containsKey(v.fieldApi)?s.defaults.get(v.fieldApi):(current==null ? '' : String.valueOf(current));
    v.progress='Field '+String.valueOf(s.index+1)+' of '+s.fields.size();
   }
   return v;
@@ -113,7 +126,7 @@ public with sharing class CardstackRecordEditService {
  private static SObject readRecord(State s) {
   CardstackPolicyService.Policy p=CardstackPolicyService.resolve(s.objectName);
   for(String api:s.fields) if (!p.fields.containsKey(api) || p.fields.get(api).readOnly) throw new EditException('Field access changed. Start a new edit.');
-  Set<String> projection=new Set<String>{'Id','Name','SystemModstamp'};projection.addAll(s.fields);List<String> fields=new List<String>(projection);String rid=s.recordId;
+  Set<String> projection=new Set<String>{'Id','Name','SystemModstamp'};projection.addAll(s.fields);if(s.sources!=null)projection.addAll(s.sources);List<String> fields=new List<String>(projection);String rid=s.recordId;
   List<SObject> records=Database.query('SELECT '+String.join(fields,',')+' FROM '+s.objectName+' WHERE Id=:rid WITH USER_MODE LIMIT 1');
   if(records.isEmpty()) throw new EditException('Record is not available.');return records[0];
  }
@@ -142,7 +155,8 @@ public with sharing class CardstackRecordEditService {
  }
  private static List<CardstackPreviewUpdateAction.PatchEntry> allPatches(State s) {
   List<CardstackPreviewUpdateAction.PatchEntry> result=new List<CardstackPreviewUpdateAction.PatchEntry>();
-  for(String api:s.fields){CardstackPreviewUpdateAction.PatchEntry p=new CardstackPreviewUpdateAction.PatchEntry();p.fieldApiName=api;result.add(p);}return result;
+  Set<String> fingerprintFields=new Set<String>(s.fields);if(s.sources!=null)fingerprintFields.addAll(s.sources);
+  for(String api:fingerprintFields){CardstackPreviewUpdateAction.PatchEntry p=new CardstackPreviewUpdateAction.PatchEntry();p.fieldApiName=api;result.add(p);}return result;
  }
  private static List<CardstackPreviewUpdateAction.PatchEntry> answeredPatches(State s) {
   List<CardstackPreviewUpdateAction.PatchEntry> result=new List<CardstackPreviewUpdateAction.PatchEntry>();

@@ -1,8 +1,8 @@
-# Cardstack community beta 0.1.0.6
+# Cardstack community beta 0.1.0.8
 
-[Install the core beta](https://login.salesforce.com/packaging/installPackage.apexp?p0=04tg8000000QRZFAA4).
+[Install the core beta](https://login.salesforce.com/packaging/installPackage.apexp?p0=04tg8000000QdnJAAS).
 
-This unpromoted unlocked beta contains Apex tools, Studio, configuration/audit, private confirmations, and native edit interaction storage. It built with 83% Apex coverage. Version 0.1.0.6 installed successfully in a disposable Developer scratch org after a fresh 0.1.0.5 installation; all 157 installed-package tests passed. All 162 development-org Apex tests and 20 Studio model tests passed. Version 0.1.0.6 also installed successfully in cardstack-spike2. Keep this version beta; do not promote it.
+This unpromoted unlocked beta contains Apex tools, Studio, configuration/audit, private confirmations, and native edit interaction storage. It built with 84% Apex coverage. Version 0.1.0.8 installed successfully in a fresh disposable Developer scratch org; all 167 installed-package tests passed. All 172 development-org Apex tests and 26 Studio model tests passed. Version 0.1.0.8 also installed successfully in cardstack-spike2. Keep this version beta; do not promote it.
 
 ## Companion setup
 
@@ -13,6 +13,14 @@ Assign Cardstack Admin to administrators and Cardstack User to connected users, 
 The community definition contains 17 tools. Create Record is excluded until it has governed preview/confirmation. No Delete Record tool exists. Do not distribute the development org's OAuth configuration or secrets. Private Confirmation and Interaction objects are server-owned; users must not receive direct CRUD access.
 
 API 67 Metadata deployment in the development org requires temporarily disabling JWT access tokens, obtaining an opaque CLI login, deploying, and restoring JWT ON. Subscriber settings must use their own app.
+
+## Published record actions
+
+Studio Objects → Actions supports in-chat Account edits with ordered inputs mapped from current values, exposed record fields, constants, or user answers. Published actions render record-card buttons. Defaults are not writes; users submit or keep current values, review, and confirm before saving. Keep current after Back removes the earlier answer. Disabled or invalid actions do not render. The card supports twenty configured actions.
+
+Salesforce launch-card targets are explicitly labeled as opening Salesforce. Their Lightning URLs pass `flow__recordId` to an input Text variable named `recordId`. The actual HXL button was verified through the disposable Salesforce flow’s review screen with the correct record ID. In-chat Screen Flow interpretation remains future work.
+
+See the [record-action guide](../docs/RECORD_ACTIONS.md).
 
 ## Native editor scope
 

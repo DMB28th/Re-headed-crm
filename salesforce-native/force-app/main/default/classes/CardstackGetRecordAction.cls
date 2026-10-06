@@ -87,6 +87,15 @@ global with sharing class CardstackGetRecordAction {
         }
         res.recordUrl = URL.getOrgDomainUrl().toExternalForm() + '/' + recordId;
         res.summary = res.recordName + disambiguation;
+        res.actions = new List<ActionRow>();
+        for(CardstackRecordActionService.Definition d : CardstackRecordActionService.available(objectName)) {
+            ActionRow row = new ActionRow(); row.name=d.name; row.label=d.label;
+            row.inChat=d.type=='record-edit'; row.opensSalesforce=d.type=='flow';
+            if(row.inChat) row.prompt='Start CardstackEditRecord with operation=start, recordId='+recordId+', actionName='+d.name+'. Render its input card. Do not save before review and confirmation.';
+            else { row.label += ' · Salesforce'; row.url=CardstackFlowStartAction.buildFlowUrl(d.flowApiName, recordId); }
+            res.actions.add(row);
+        }
+        res.hasActions=!res.actions.isEmpty();
         return res;
     }
 
@@ -462,8 +471,20 @@ global with sharing class CardstackGetRecordAction {
         @InvocableVariable(label='Record URL')
         public String recordUrl;
 
+        @InvocableVariable public List<ActionRow> actions;
+        @InvocableVariable public Boolean hasActions;
+
         @InvocableVariable(label='Summary')
         public String summary;
+    }
+
+    global class ActionRow {
+        @InvocableVariable public String name;
+        @InvocableVariable public String label;
+        @InvocableVariable public String prompt;
+        @InvocableVariable public String url;
+        @InvocableVariable public Boolean inChat;
+        @InvocableVariable public Boolean opensSalesforce;
     }
 
     global class LayoutSection {

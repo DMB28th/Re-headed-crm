@@ -58,7 +58,12 @@ export default class CardstackObjectConfig extends LightningElement {
     _previewSections = [];
 
     // ----- New-action form -----
-    @track newAction = { name: '', label: '', type: 'flow', description: '' };
+    @track newAction = { name: '', label: '', type: '', description: '', mappings: [] };
+    @track publishedFlows = [];
+    @wire(getConfigValue, { key: 'flows' })
+    wiredPublishedFlows({ data }) {
+        try { const parsed = data ? JSON.parse(data) : []; this.publishedFlows = Array.isArray(parsed) ? parsed : []; } catch (e) { this.publishedFlows = []; }
+    }
 
     wiredObjectsResult;
     wiredFieldsResult;
@@ -261,11 +266,13 @@ export default class CardstackObjectConfig extends LightningElement {
         if (!this.selectedObject) return;
         this.loading = true;
         try {
-            const [layout, lists] = await Promise.all([
+            const [layout, lists, flows] = await Promise.all([
                 getStagingInfo({ key: this.layoutKey }),
-                getStagingInfo({ key: this.listsKey })
+                getStagingInfo({ key: this.listsKey }),
+                getStagingInfo({ key: 'flows' })
             ]);
             this.staging = { layout, lists };
+            this.wiredPublishedFlows({ data: flows.liveValue });
             this.hasDraft = !!layout.draft;
             const workingJson = layout.draft?.Draft_Value__c ?? layout.liveValue;
             this.parseWorkingModel(workingJson);
@@ -477,7 +484,7 @@ export default class CardstackObjectConfig extends LightningElement {
                 }))
             })),
             actions: this.workingActions.map(a => ({
-                name: a.name, label: a.label, type: a.type,
+                ...a, iconName: undefined, name: a.name, label: a.label, type: a.type,
                 description: a.description, enabled: a.enabled
             })),
             permissions: {
@@ -1132,6 +1139,7 @@ export default class CardstackObjectConfig extends LightningElement {
     normalizeAction(a, i) {
         const type = a.type || 'custom';
         return {
+            ...a,
             name: a.name || `action-${i}`,
             label: a.label || a.name || `Action ${i + 1}`,
             type,
@@ -1155,7 +1163,7 @@ export default class CardstackObjectConfig extends LightningElement {
 
     defaultActionDescription(type, label) {
         const t = (type || '').toLowerCase();
-        if (t === 'flow') return `Launches the "${label}" flow from chat`;
+        if (t === 'flow') return `Opens the "${label}" flow in Salesforce`;
         if (t === 'quick-action') return `Runs the "${label}" quick action`;
         if (t === 'url') return 'Opens a link';
         return `${label} action`;
@@ -1176,29 +1184,62 @@ export default class CardstackObjectConfig extends LightningElement {
         this.newAction = { ...this.newAction, [e.target.dataset.field]: e.target.value };
     }
 
-    get newActionTypeOptions() {
-        return [
-            { label: 'Flow', value: 'flow' },
-            { label: 'Quick action', value: 'quick-action' },
-            { label: 'URL link', value: 'url' },
-            { label: 'Custom', value: 'custom' }
-        ];
+    get actionTargetOptions() {
+        const options = this.selectedObject === 'Account' ? [{ label: 'Edit Account fields · in chat', value: 'record-edit' }] : [];
+        return options.concat(this.publishedFlows.map(f => ({ label: `${f.label || f.apiName} · opens Salesforce`, value: `flow:${f.apiName || f.flowApiName}` })));
+    }
+    get actionTarget() { return this.newAction.type === 'flow' ? `flow:${this.newAction.flowApiName}` : this.newAction.type; }
+    get isGuidedAction() { return this.newAction.type === 'record-edit'; }
+    get isSalesforceAction() { return this.newAction.type === 'flow'; }
+    handleActionTarget(e) {
+        const value = e.detail.value;
+        this.newAction = { ...this.newAction, type: value.startsWith('flow:') ? 'flow' : value, flowApiName: value.startsWith('flow:') ? value.slice(5) : undefined, mappings: [] };
+    }
+    get mappedSourceOptions() {
+        return [{ label: 'Current field value', value: 'current' }, { label: 'Another record field', value: 'field' }, { label: 'Constant', value: 'constant' }, { label: 'Ask the user', value: 'answer' }];
+    }
+    get exposedActionFields() {
+        return [...this.workingHighlights, ...this.workingSections.flatMap(s => s.fields)].map(f => ({ label: f.label || f.api, value: f.api }));
+    }
+    get editableActionFields() {
+        const fields = [...this.workingHighlights, ...this.workingSections.flatMap(s => s.fields)];
+        return fields.filter(f => f.editable && !f.readOnly && ['STRING', 'TEXTAREA', 'INTEGER'].includes(this.fieldMap[f.api.toUpperCase()]?.type?.toUpperCase())).map(f => ({ label: f.label || f.api, value: f.api }));
+    }
+    get mappingRows() {
+        return (this.newAction.mappings || []).map((m, index) => ({ ...m, index, key: `mapping-${index}`, isField: m.source === 'field', isConstant: m.source === 'constant' }));
+    }
+    addMapping() { this.newAction = { ...this.newAction, mappings: [...(this.newAction.mappings || []), { fieldApi: '', source: 'current', value: '' }] }; }
+    removeMapping(e) { this.newAction = { ...this.newAction, mappings: this.newAction.mappings.filter((m, i) => i !== Number(e.currentTarget.dataset.index)) }; }
+    handleMapping(e) {
+        const index = Number(e.target.dataset.index), field = e.target.dataset.field;
+        this.newAction = { ...this.newAction, mappings: this.newAction.mappings.map((m, i) => i === index ? { ...m, [field]: e.detail?.value ?? e.target.value } : m) };
     }
 
     async addAction() {
-        const { name, label, type, description } = this.newAction;
+        if (this.workingActions.length >= 20) { this.toast('Action limit', 'A record card supports up to twenty actions. Remove an action before adding another.', 'error'); return; }
+        const { name, label, type, description, mappings, flowApiName } = this.newAction;
+        if (type === 'record-edit') {
+            const allowed = new Set(this.editableActionFields.map(f => f.value));
+            const exposed = new Set(this.exposedActionFields.map(f => f.value));
+            const targets = new Set((mappings || []).map(m => m.fieldApi));
+            if (!this.workingPermissions.writeEnabled || !mappings?.length || mappings.length > 20 || targets.size !== mappings.length || mappings.some(m => !allowed.has(m.fieldApi) || !['current', 'field', 'constant', 'answer'].includes(m.source) || m.source === 'field' && !exposed.has(m.sourceField) || m.source === 'constant' && m.value == null)) {
+                this.toast('Check inputs', 'Enable chat edits and choose one to twenty distinct editable fields with valid input mappings.', 'error'); return;
+            }
+        } else if (type !== 'flow' || !this.publishedFlows.some(f => (f.apiName || f.flowApiName) === flowApiName)) {
+            this.toast('Choose a process', 'Choose a guided edit or a published Salesforce launch card.', 'error'); return;
+        }
         if (!label?.trim()) {
             this.toast('Missing label', 'Give the action a label.', 'error');
             return;
         }
         const actionName = (name?.trim() || label.trim()).toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-        if (this.workingActions.some(a => a.name === actionName)) {
+        if (!actionName || actionName.length > 80 || this.workingActions.some(a => a.name === actionName)) {
             this.toast('Duplicate', 'An action with that name already exists.', 'error');
             return;
         }
         this.workingActions = [...this.workingActions,
-            this.normalizeAction({ name: actionName, label: label.trim(), type, description: description?.trim(), enabled: true }, this.workingActions.length)];
-        this.newAction = { name: '', label: '', type: 'flow', description: '' };
+            this.normalizeAction({ ...this.newAction, name: actionName, label: label.trim(), type, description: description?.trim(), enabled: true }, this.workingActions.length)];
+        this.newAction = { name: '', label: '', type: '', description: '', mappings: [] };
         await this.persistWorkingModel('Action added as a layout draft.');
     }
 

@@ -1,0 +1,500 @@
+{
+  "type": "lightning__agentforceWidget",
+  "title": "Cardstack Record V3",
+  "contentBody": {
+    "widgetBody": {
+      "definition": "tile/widget",
+      "id": "7be0f249-34a6-42db-88f3-f4e817862c59",
+      "children": [
+        {
+          "definition": "tile/column",
+          "id": "fb801ccd-050b-4ca9-bd73-343d3f8e5489",
+          "attributes": {
+            "gap": "md",
+            "align": "stretch",
+            "width": "full"
+          },
+          "children": [
+            {
+              "definition": "tile/text",
+              "id": "c278c67a-431a-49cd-aea3-f81e59902e62",
+              "attributes": {
+                "text": "{!$attrs.recordName}",
+                "variant": "h3",
+                "color": "default",
+                "isItalic": false,
+                "isStrikethrough": false
+              }
+            },
+            {
+              "definition": "tile/text",
+              "id": "a8a07760-17a3-4963-9560-db5343704b5f",
+              "attributes": {
+                "text": "{!$attrs.objectName}",
+                "variant": "body",
+                "color": "muted",
+                "isItalic": false,
+                "isStrikethrough": false
+              }
+            },
+            {
+              "definition": "tile/container",
+              "id": "b477b19c-812b-4cc4-8ae3-2d0a235a84be",
+              "attributes": {
+                "borderless": false,
+                "variant": "default"
+              },
+              "children": [
+                {
+                  "definition": "tile/row",
+                  "id": "efa0e9ab-27cf-4f28-9ec9-113abeff9a33",
+                  "attributes": {
+                    "gap": "lg",
+                    "align": "start",
+                    "justify": "start",
+                    "isWrapped": true
+                  },
+                  "children": [
+                    {
+                      "definition": "tile/column",
+                      "id": "13a95f81-bab0-4b83-a014-3f3d197a2b77",
+                      "attributes": {
+                        "gap": "xs",
+                        "align": "stretch",
+                        "width": "auto"
+                      },
+                      "children": [
+                        {
+                          "definition": "tile/text",
+                          "id": "1c19edc8-f9f0-4916-a066-3be6bb9ac9c0",
+                          "attributes": {
+                            "text": "{!$hl.label}",
+                            "variant": "body",
+                            "color": "muted",
+                            "isItalic": false,
+                            "isStrikethrough": false
+                          }
+                        },
+                        {
+                          "definition": "tile/text",
+                          "id": "20f67341-01a2-4b19-99bb-018a73b4cec5",
+                          "attributes": {
+                            "text": "{!$hl.value}",
+                            "variant": "body",
+                            "color": "default",
+                            "isItalic": false,
+                            "isStrikethrough": false,
+                            "weight": "semibold"
+                          }
+                        }
+                      ],
+                      "meta": {
+                        "forEach": "{!$attrs.highlights}",
+                        "forItem": "$hl"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "meta": {
+                "if": "{!$attrs.hasHighlights}"
+              }
+            },
+            {
+              "definition": "tile/column",
+              "id": "616e5c96-8812-46c6-84b6-be148a0929b6",
+              "attributes": {
+                "gap": "md",
+                "align": "stretch",
+                "width": "full"
+              },
+              "children": [
+                {
+                  "definition": "tile/container",
+                  "id": "16ea2046-9b3f-4c64-9b9f-dd17e23fae30",
+                  "attributes": {
+                    "borderless": false,
+                    "variant": "default"
+                  },
+                  "children": [
+                    {
+                      "definition": "tile/column",
+                      "id": "11830254-47e4-43a1-a053-e5fe41865702",
+                      "attributes": {
+                        "gap": "md",
+                        "align": "stretch",
+                        "width": "full"
+                      },
+                      "children": [
+                        {
+                          "definition": "tile/text",
+                          "id": "39d88bab-58e4-4c6b-8b92-b1163a301690",
+                          "attributes": {
+                            "text": "{!$section.label}",
+                            "variant": "body",
+                            "color": "default",
+                            "isItalic": false,
+                            "isStrikethrough": false,
+                            "weight": "semibold"
+                          }
+                        },
+                        {
+                          "definition": "tile/column",
+                          "id": "ac7796c6-c27d-408c-b8b6-d3d99fe2b200",
+                          "attributes": {
+                            "gap": "xs",
+                            "align": "stretch",
+                            "width": "full"
+                          },
+                          "children": [
+                            {
+                              "definition": "tile/text",
+                              "id": "d9db838b-8f4a-47f1-bc1b-751883b7a15b",
+                              "attributes": {
+                                "text": "{!$full.label}",
+                                "variant": "body",
+                                "color": "muted",
+                                "isItalic": false,
+                                "isStrikethrough": false
+                              }
+                            },
+                            {
+                              "definition": "tile/text",
+                              "id": "0b22a3fa-b833-4e3f-8bf7-1e59cacec7a6",
+                              "attributes": {
+                                "text": "{!$full.value}",
+                                "variant": "body",
+                                "color": "default",
+                                "isItalic": false,
+                                "isStrikethrough": false
+                              }
+                            }
+                          ],
+                          "meta": {
+                            "forEach": "{!$section.fullFields}",
+                            "forItem": "$full"
+                          }
+                        },
+                        {
+                          "definition": "tile/row",
+                          "id": "ce496be1-dbfe-4f9d-a548-3d69ac5d9251",
+                          "attributes": {
+                            "gap": "lg",
+                            "align": "start",
+                            "justify": "start",
+                            "isWrapped": false
+                          },
+                          "children": [
+                            {
+                              "definition": "tile/column",
+                              "id": "e925ac50-b11d-44ba-a0ee-1520a56a40ba",
+                              "attributes": {
+                                "gap": "sm",
+                                "align": "stretch",
+                                "width": "stretch"
+                              },
+                              "children": [
+                                {
+                                  "definition": "tile/column",
+                                  "id": "57ea77fb-406d-41bf-9744-9ee4de6c4313",
+                                  "attributes": {
+                                    "gap": "xs",
+                                    "align": "stretch",
+                                    "width": "full"
+                                  },
+                                  "children": [
+                                    {
+                                      "definition": "tile/text",
+                                      "id": "635338db-2afc-4dbb-b4f9-fa124927ad99",
+                                      "attributes": {
+                                        "text": "{!$left.label}",
+                                        "variant": "body",
+                                        "color": "muted",
+                                        "isItalic": false,
+                                        "isStrikethrough": false
+                                      }
+                                    },
+                                    {
+                                      "definition": "tile/text",
+                                      "id": "75da2cc1-6f31-44d6-b54c-0e45a04f4ef6",
+                                      "attributes": {
+                                        "text": "{!$left.value}",
+                                        "variant": "body",
+                                        "color": "default",
+                                        "isItalic": false,
+                                        "isStrikethrough": false
+                                      }
+                                    }
+                                  ],
+                                  "meta": {
+                                    "forEach": "{!$section.leftFields}",
+                                    "forItem": "$left"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "definition": "tile/column",
+                              "id": "aedb2682-520e-4bf1-bee8-571a0798c75c",
+                              "attributes": {
+                                "gap": "sm",
+                                "align": "stretch",
+                                "width": "stretch"
+                              },
+                              "children": [
+                                {
+                                  "definition": "tile/column",
+                                  "id": "02f16603-9511-419b-8cfc-0b4c13a1a710",
+                                  "attributes": {
+                                    "gap": "xs",
+                                    "align": "stretch",
+                                    "width": "full"
+                                  },
+                                  "children": [
+                                    {
+                                      "definition": "tile/text",
+                                      "id": "7c388881-ef0d-451b-8bc8-a9b011144839",
+                                      "attributes": {
+                                        "text": "{!$center.label}",
+                                        "variant": "body",
+                                        "color": "muted",
+                                        "isItalic": false,
+                                        "isStrikethrough": false
+                                      }
+                                    },
+                                    {
+                                      "definition": "tile/text",
+                                      "id": "71a66384-b1de-4031-891e-3970371d2497",
+                                      "attributes": {
+                                        "text": "{!$center.value}",
+                                        "variant": "body",
+                                        "color": "default",
+                                        "isItalic": false,
+                                        "isStrikethrough": false
+                                      }
+                                    }
+                                  ],
+                                  "meta": {
+                                    "forEach": "{!$section.centerFields}",
+                                    "forItem": "$center"
+                                  }
+                                }
+                              ],
+                              "meta": {
+                                "if": "{!$section.usesThreeColumns}"
+                              }
+                            },
+                            {
+                              "definition": "tile/column",
+                              "id": "047ff539-55e3-4ec8-84df-26817d0a6526",
+                              "attributes": {
+                                "gap": "sm",
+                                "align": "stretch",
+                                "width": "stretch"
+                              },
+                              "children": [
+                                {
+                                  "definition": "tile/column",
+                                  "id": "39ad83c7-0ccc-430d-ac0d-6d5476b2eeed",
+                                  "attributes": {
+                                    "gap": "xs",
+                                    "align": "stretch",
+                                    "width": "full"
+                                  },
+                                  "children": [
+                                    {
+                                      "definition": "tile/text",
+                                      "id": "f32aabef-7412-40a9-bb64-9ea8ca39c34c",
+                                      "attributes": {
+                                        "text": "{!$right.label}",
+                                        "variant": "body",
+                                        "color": "muted",
+                                        "isItalic": false,
+                                        "isStrikethrough": false
+                                      }
+                                    },
+                                    {
+                                      "definition": "tile/text",
+                                      "id": "59151991-a415-46fa-b902-08c9bd56cc39",
+                                      "attributes": {
+                                        "text": "{!$right.value}",
+                                        "variant": "body",
+                                        "color": "default",
+                                        "isItalic": false,
+                                        "isStrikethrough": false
+                                      }
+                                    }
+                                  ],
+                                  "meta": {
+                                    "forEach": "{!$section.rightFields}",
+                                    "forItem": "$right"
+                                  }
+                                }
+                              ]
+                            }
+                          ],
+                          "meta": {
+                            "if": "{!$section.usesColumns}"
+                          }
+                        }
+                      ]
+                    }
+                  ],
+                  "meta": {
+                    "forEach": "{!$attrs.sections}",
+                    "forItem": "$section"
+                  }
+                }
+              ],
+              "meta": {
+                "if": "{!$attrs.hasSections}"
+              }
+            },
+            {
+              "definition": "tile/column",
+              "id": "2d9e073d-8452-4887-9212-1e47b7f6af1c",
+              "attributes": {
+                "gap": "sm",
+                "align": "stretch",
+                "width": "full"
+              },
+              "children": [
+                {
+                  "definition": "tile/column",
+                  "id": "87d019c3-cfdb-4e77-bf08-9c25f4a6abc3",
+                  "attributes": {
+                    "gap": "xs",
+                    "align": "stretch",
+                    "width": "full"
+                  },
+                  "children": [
+                    {
+                      "definition": "tile/text",
+                      "id": "71b6df90-ef6e-4ae7-862d-8964fefdc50c",
+                      "attributes": {
+                        "text": "{!$field.label}",
+                        "variant": "body",
+                        "color": "muted",
+                        "isItalic": false,
+                        "isStrikethrough": false
+                      }
+                    },
+                    {
+                      "definition": "tile/text",
+                      "id": "cacb4e89-735e-42a5-a495-156c97f8446b",
+                      "attributes": {
+                        "text": "{!$field.value}",
+                        "variant": "body",
+                        "color": "default",
+                        "isItalic": false,
+                        "isStrikethrough": false
+                      }
+                    }
+                  ],
+                  "meta": {
+                    "forEach": "{!$attrs.fields}",
+                    "forItem": "$field"
+                  }
+                }
+              ],
+              "meta": {
+                "if": "{!$attrs.showFlatFields}"
+              }
+            },
+            {
+              "definition": "tile/column",
+              "id": "4a768e94-418f-4cbc-bfcd-2c8bc854fe6b",
+              "attributes": {
+                "gap": "sm",
+                "align": "stretch",
+                "width": "full"
+              },
+              "children": [
+                {
+                  "definition": "tile/button",
+                  "id": "367ae5cd-f127-4f43-b8f5-fafef628e5f2",
+                  "attributes": {
+                    "label": "{!$action.label}",
+                    "variant": "primary",
+                    "actions": {
+                      "click": [
+                        {
+                          "definition": "action/sendMessage",
+                          "inputs": "none",
+                          "attributes": {
+                            "content": "{!$action.prompt}"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "meta": {
+                    "if": "{!$action.inChat}"
+                  }
+                },
+                {
+                  "definition": "tile/button",
+                  "id": "7670b338-2541-481d-8c66-4898bba3ffe9",
+                  "attributes": {
+                    "label": "{!$action.label}",
+                    "variant": "secondary",
+                    "actions": {
+                      "click": [
+                        {
+                          "definition": "action/openLink",
+                          "attributes": {
+                            "target": "_blank",
+                            "url": "{!$action.url}"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "meta": {
+                    "if": "{!$action.opensSalesforce}"
+                  }
+                }
+              ],
+              "meta": {
+                "forEach": "{!$attrs.actions}",
+                "forItem": "$action",
+                "if": "{!$attrs.hasActions}"
+              }
+            },
+            {
+              "definition": "tile/row",
+              "id": "172df218-80a7-415e-badb-0e329a2463be",
+              "attributes": {
+                "gap": "sm",
+                "justify": "end",
+                "align": "center",
+                "isWrapped": true
+              },
+              "children": [
+                {
+                  "definition": "tile/button",
+                  "id": "b7571827-1f0a-41a5-8096-3e2f239fa54f",
+                  "attributes": {
+                    "label": "Open in Salesforce",
+                    "variant": "primary",
+                    "actions": {
+                      "click": [
+                        {
+                          "definition": "action/openLink",
+                          "attributes": {
+                            "target": "_blank",
+                            "url": "{!$attrs.recordUrl}"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
