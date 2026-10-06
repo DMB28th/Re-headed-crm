@@ -1,0 +1,26 @@
+{
+  "renderer": {
+    "componentOverrides": {
+      "$": {
+        "definition": "@widget/c/cardstackEditStep",
+        "attributes": {
+          "recordName": "{!$attrs.outputValues.recordName}",
+          "fieldLabel": "{!$attrs.outputValues.fieldLabel}",
+          "fieldValue": "{!$attrs.outputValues.fieldValue}",
+          "progress": "{!$attrs.outputValues.progress}",
+          "summary": "{!$attrs.outputValues.summary}",
+          "error": "{!$attrs.outputValues.error}",
+          "showEditing": "{!$attrs.outputValues.showEditing}",
+          "showReview": "{!$attrs.outputValues.showReview}",
+          "showDone": "{!$attrs.outputValues.showDone}",
+          "hasError": "{!$attrs.outputValues.hasError}",
+          "canClear": "{!$attrs.outputValues.canClear}",
+          "canBack": "{!$attrs.outputValues.canBack}",
+          "required": "{!$attrs.outputValues.required}",
+          "reviewReference": "{!$attrs.outputValues.reviewReference}",
+          "confirmMessage": "{!$attrs.outputValues.confirmMessage}"
+        }
+      }
+    }
+  }
+}

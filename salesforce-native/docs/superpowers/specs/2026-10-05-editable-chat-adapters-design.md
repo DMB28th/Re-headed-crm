@@ -97,3 +97,7 @@ Implement in this chat, sequentially by milestone. Start with published policy a
 The initial delivered slice reuses Studio’s `permissions.writeEnabled` and explicit per-field settings, adds a published policy resolver, and replaces stateless org-ID-derived tokens with private server-owned confirmations. Preview/update and task-completion tools enforce the user, policy, exact submitted values, record freshness, and repeat-safe receipts. A full Editing/Review/Back/Cancel/Resume interaction UI is still a later milestone, not a capability of this confirmation slice. Native read cards and labeled Salesforce flow launches remain the release surface. The unconfirmed create-record tool is excluded from the community MCP definition.
 
 Structured HXL record rendering passed a single-input Claude call with real three-column and one-column sections. A batched three-record call could not render; the record tool now requires separate calls. Multi-field editable HXL submission, ChatGPT parity, and a native Screen Flow interpreter are not release claims.
+
+## Proven native adapter update
+
+The Account one-field-per-step HXL adapter passed live Claude input/review/save/read-back/refresh, Back/recovery, integer validation, stale-button rejection, and Cancel. It uses server-held interaction state and the proven single content transport. Multi-field submission and full Screen Flow interpretation remain unimplemented; ChatGPT parity for this editor is not claimed. The Salesforce-only architecture and shared authorization boundary are unchanged.

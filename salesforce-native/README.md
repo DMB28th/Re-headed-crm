@@ -2,7 +2,7 @@
 
 `force-app/` is the authoritative deployable source. API version is **67.0**. Legacy Node/Railway applications are retired. The sibling `config/`, `audit/`, `admin-lwc/`, and `permissions/` exports are historical copies; their required metadata is consolidated in `force-app`. `compatibility/` contains retired types and spike widgets, excluded from current deployment.
 
-Cardstack runs entirely in Salesforce: 16 community-beta Hosted MCP tools, HXL widgets, a Lightning Studio app, configuration drafts/publishing, and audit services. Execution uses the connected user, sharing, and user-mode queries. There is no delete-record tool.
+Cardstack runs entirely in Salesforce: 17 community-beta Hosted MCP tools, HXL widgets, a Lightning Studio app, configuration drafts/publishing, and audit services. Execution uses the connected user, sharing, and user-mode queries. There is no delete-record tool.
 
 ## Beta limits
 
@@ -21,7 +21,9 @@ Record updates and task completion require a fresh preview token bound to the co
 
 The legacy create-record Apex action is retained for compatibility but is excluded from the community MCP definition until it supports governed preview/confirmation. Create records in Salesforce for this beta. There is no delete-record tool.
 
-Chat edits currently collect answers through the conversation and render review/result cards. General editable HXL forms and Screen Flow interviews inside chat remain future milestones; launch cards clearly open Salesforce.
+Native HXL editing now presents one Account text/integer field per step, retaining exact answers on the server through Back, Review, Cancel, and Resume. Description and Employees passed live Claude widget-input, validation, stale-review rejection, save, independent read-back, and refreshed-card QA. Buttons prepare a message in Claude's composer; send that message to continue. Review and its exact confirmation precede every save. The private Interaction object is server-owned; do not grant direct CRUD access.
+
+The initial adapter supports up to 20 published editable Account text/integer fields. Picklists, dates, lookups, simultaneous multi-field forms, other record types, and Screen Flow interviews are not implemented in this adapter. Other editable field types are omitted. ChatGPT parity for the new editor is unverified. Existing Salesforce flow launch cards remain available.
 
 ## Development deployment
 
@@ -42,3 +44,7 @@ Studio Flows is a searchable launch-card list with a two-step editor: choose an 
 ## Live Claude edit acceptance — follow-up passed
 
 A fresh Claude chat successfully ran Preview Update, rendered the two-field before/after HXL card, asked for confirmation, then ran Update Record after explicit confirmation and one-time tool approval. Independent Salesforce SOQL confirmed Description = Community beta confirmed edit and NumberOfEmployees = 0 on the disposable Account. The earlier No approval received failures did not reproduce; interrupted-chat state or approval timing remains the likely cause, not a proven Salesforce defect. No application code change was needed. This proves conversational preview/confirm/save for this two-field case, not direct editable form submission or Screen Flow interviews. Cleanup restored the original published Account policy and removed the disposable Account, with independent verification.
+
+## Native editor release
+
+Core beta 0.1.0.6: 83% package coverage; 157 installed-package tests and 162 development-org tests passed, with 20 Studio model tests. The core installs separately from the HXL/MCP companion. See the current package guide and verification report.

@@ -8,6 +8,7 @@
         <apexClass>CardstackConfigService</apexClass>
         <enabled>true</enabled>
     </classAccesses>
+    <classAccesses><apexClass>CardstackRecordEditAction</apexClass><enabled>true</enabled></classAccesses>
     <description>End-user access to the Cardstack package: execute MCP Apex tools and read published configuration. No admin (no draft/publish, no config edits).</description>
     <fieldPermissions>
         <editable>false</editable>

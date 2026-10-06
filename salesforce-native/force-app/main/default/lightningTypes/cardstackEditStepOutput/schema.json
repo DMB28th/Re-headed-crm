@@ -1,0 +1,90 @@
+{
+  "title": "Cardstack Edit Step Output",
+  "lightning:type": "lightning__objectType",
+  "properties": {
+    "recordName": {
+      "title": "recordName",
+      "lightning:type": "lightning__textType"
+    },
+    "fieldLabel": {
+      "title": "fieldLabel",
+      "lightning:type": "lightning__textType"
+    },
+    "fieldValue": {
+      "title": "fieldValue",
+      "lightning:type": "lightning__textType"
+    },
+    "progress": {
+      "title": "progress",
+      "lightning:type": "lightning__textType"
+    },
+    "summary": {
+      "title": "summary",
+      "lightning:type": "lightning__textType"
+    },
+    "error": {
+      "title": "error",
+      "lightning:type": "lightning__textType"
+    },
+    "showEditing": {
+      "title": "showEditing",
+      "lightning:type": "lightning__booleanType"
+    },
+    "showReview": {
+      "title": "showReview",
+      "lightning:type": "lightning__booleanType"
+    },
+    "showDone": {
+      "title": "showDone",
+      "lightning:type": "lightning__booleanType"
+    },
+    "hasError": {
+      "title": "hasError",
+      "lightning:type": "lightning__booleanType"
+    },
+    "canClear": {
+      "title": "canClear",
+      "lightning:type": "lightning__booleanType"
+    },
+    "canBack": {
+      "title": "canBack",
+      "lightning:type": "lightning__booleanType"
+    },
+    "required": {
+      "title": "required",
+      "lightning:type": "lightning__booleanType"
+    },
+    "interactionKey": {
+      "title": "interactionKey",
+      "lightning:type": "lightning__textType"
+    },
+    "revision": {
+      "title": "revision",
+      "lightning:type": "lightning__numberType"
+    },
+    "status": {
+      "title": "status",
+      "lightning:type": "lightning__textType"
+    },
+    "recordId": {
+      "title": "recordId",
+      "lightning:type": "lightning__textType"
+    },
+    "objectName": {
+      "title": "objectName",
+      "lightning:type": "lightning__textType"
+    },
+    "confirmToken": {
+      "title": "confirmToken",
+      "lightning:type": "lightning__textType"
+    },
+    "reviewReference": {
+      "title": "Review reference",
+      "lightning:type": "lightning__textType"
+    },
+    "confirmMessage": {
+      "title": "Confirm message",
+      "lightning:type": "lightning__textType"
+    }
+  }
+}

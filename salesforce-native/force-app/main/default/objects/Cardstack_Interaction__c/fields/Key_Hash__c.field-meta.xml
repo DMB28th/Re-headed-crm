@@ -1,0 +1,1 @@
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata"><fullName>Key_Hash__c</fullName><label>Key Hash</label><length>64</length><unique>true</unique><type>Text</type></CustomField>

@@ -181,4 +181,18 @@ private class CardstackGetRecordActionTest {
         catch(CardstackGetRecordAction.CardstackException e) {rejected=e.getMessage().contains('exactly one input');}
         System.assert(rejected,'Caller must split cards into separate tool calls');
     }
+    @IsTest static void numericFieldsUseTheirSalesforceDisplayType() {
+        System.runAs(new User(Id = UserInfo.getUserId())) {
+            Account a = new Account(Name = 'Numeric display', NumberOfEmployees = 0, AnnualRevenue = 1200);
+            insert a;
+            insert new Cardstack_Config__c(Name = 'layout:Account:default', Is_Active__c = true,
+                Value__c = '{"highlights":[{"api":"AnnualRevenue"}],"sections":[{"label":"Details","fields":[{"api":"NumberOfEmployees"}]}]}');
+            CardstackGetRecordAction.GetRecordRequest req = new CardstackGetRecordAction.GetRecordRequest();
+            req.objectName = 'Account'; req.recordId = a.Id;
+            CardstackGetRecordAction.GetRecordResponse result = CardstackGetRecordAction.getRecord(
+                new List<CardstackGetRecordAction.GetRecordRequest>{req})[0];
+            System.assertEquals('0', result.sections[0].fields[0].value, 'Integer counts must not be rendered as currency');
+            System.assert(result.highlights[0].value.startsWith('$'), 'Currency fields retain currency formatting');
+        }
+    }
 }

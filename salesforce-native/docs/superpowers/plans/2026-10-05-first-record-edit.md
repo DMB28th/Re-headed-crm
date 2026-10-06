@@ -125,3 +125,23 @@ Next milestone: canonical typed record-edit model and direct multi-field form su
 ## Live Claude edit acceptance — follow-up passed
 
 A fresh Claude chat successfully ran Preview Update, rendered the two-field before/after HXL card, asked for confirmation, then ran Update Record after explicit confirmation and one-time tool approval. Independent Salesforce SOQL confirmed Description = Community beta confirmed edit and NumberOfEmployees = 0 on the disposable Account. The earlier No approval received failures did not reproduce; interrupted-chat state or approval timing remains the likely cause, not a proven Salesforce defect. No application code change was needed. This proves conversational preview/confirm/save for this two-field case, not direct editable form submission or Screen Flow interviews. Cleanup restored the original published Account policy and removed the disposable Account, with independent verification.
+
+## Native edit-step execution ruling
+
+Ruling: implement the approved shared interaction model with a native field-by-field adapter first. API 67 probes proved a single `content` input but lost additional collected inputs; a two-field grid would repeat a known failing transport. Server-held answers and revisioned Back/Cancel/Review/Confirm apply unchanged. The cost is one field per turn and initial text/integer support rather than a simultaneous multi-field form. This is explicitly narrower and must pass real widget input, retained answers, validation, save/read-back, and refreshed-card acceptance before shipping. No external hosting is introduced.
+
+Isolation: native managed worktree creation was unavailable for this projectless chat earlier. A clean branch `cardstack-native-edit-steps` starts at 6105f83. Baseline Studio tests: 20 passing.
+
+TDD start: three service acceptance tests cover retained exact answers/zero/save/replay, invalid integer/back/cancel, and stale revision/record. Minimal empty service is deployed only to observe expected assertion failures. The larger interaction object remains private and server-owned; no user CRUD grant.
+
+## Native editor delivery — supersedes preceding deferred interaction status
+
+- [x] Private actor-bound Interaction storage with 15-minute expiry, retained text/integer answers, revisions, Back/Cancel/Resume, and Completed receipts.
+- [x] Native single-content HXL adapter and tool; Account one-field-per-step scope, zero/Unicode/quote preservation, server validation.
+- [x] Exact public review reference on Confirm, enforcing current reference/revision/grant; stale and cross-session regression coverage.
+- [x] Live Claude widget → review → confirmed save → independent read-back → refreshed HXL. Back/recovery, invalid integer, stale button, and Cancel verified.
+- [x] Numeric card rendering regression first observed $0, then fixed by Salesforce DisplayType; currency remains formatted.
+- [x] Final Apex suites: 162 development, 157 installed core; Studio 20. Core beta 0.1.0.6 built at 83% coverage.
+- [x] Original published layout restored and disposable Account removed. JWT ON after final metadata deployment.
+
+Account text/integer inputs are delivered, not a full simultaneous form or Screen Flow interpreter. ChatGPT editor parity is unverified. Studio retains existing policy authoring; canonical process authoring/JSON and dependency validation remain future work. The next independently reviewed slice is published record buttons and mapped guided processes.

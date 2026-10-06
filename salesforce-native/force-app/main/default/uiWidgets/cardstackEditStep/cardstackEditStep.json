@@ -1,0 +1,224 @@
+{
+  "type": "lightning__agentforceWidget",
+  "title": "Cardstack native edit step",
+  "contentBody": {
+    "widgetBody": {
+      "definition": "tile/widget",
+      "children": [
+        {
+          "definition": "tile/column",
+          "attributes": {
+            "gap": "md"
+          },
+          "children": [
+            {
+              "definition": "tile/text",
+              "attributes": {
+                "text": "{!$attrs.recordName}",
+                "variant": "h3"
+              },
+              "id": "a2db6f19-b13e-42d6-9277-f258a2d48abe"
+            },
+            {
+              "definition": "tile/text",
+              "attributes": {
+                "text": "Native Account edit \u00b7 one field per step. Buttons prepare a chat message; send it to continue. Review before saving."
+              },
+              "id": "f94d5a02-39aa-4970-a8ac-e7c1261b5a96"
+            },
+            {
+              "definition": "tile/column",
+              "attributes": {
+                "gap": "sm"
+              },
+              "children": [
+                {
+                  "definition": "tile/text",
+                  "attributes": {
+                    "text": "{!$attrs.progress}"
+                  },
+                  "id": "3257e093-6a2d-4e7d-9afd-2ecd6727a10c"
+                },
+                {
+                  "definition": "tile/textField",
+                  "attributes": {
+                    "id": "content",
+                    "label": "{!$attrs.fieldLabel}",
+                    "value": "{!$attrs.fieldValue}"
+                  },
+                  "id": "6abac563-2f77-486b-8986-ddb10ea39c94"
+                },
+                {
+                  "definition": "tile/text",
+                  "attributes": {
+                    "text": "Next prepares your answer. Keep current value skips this field; Clear removes it."
+                  },
+                  "id": "71ee7315-460e-4221-8f57-e74ab5dcae75"
+                },
+                {
+                  "definition": "tile/button",
+                  "attributes": {
+                    "label": "Next",
+                    "actions": {
+                      "click": [
+                        {
+                          "definition": "action/sendMessage",
+                          "inputs": "auto",
+                          "attributes": {
+                            "content": "Submit current Cardstack field"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "id": "1f820ca0-fc07-47d8-ab5d-a9eca3785ad3"
+                },
+                {
+                  "definition": "tile/button",
+                  "attributes": {
+                    "label": "Keep current value",
+                    "actions": {
+                      "click": [
+                        {
+                          "definition": "action/sendMessage",
+                          "inputs": "none",
+                          "attributes": {
+                            "content": "Skip the current field in this Cardstack edit"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "id": "29d5f63b-dcd2-4964-b11c-73643c69333c"
+                },
+                {
+                  "definition": "tile/button",
+                  "attributes": {
+                    "label": "Clear value",
+                    "actions": {
+                      "click": [
+                        {
+                          "definition": "action/sendMessage",
+                          "inputs": "none",
+                          "attributes": {
+                            "content": "Clear the current field in this Cardstack edit"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "id": "ab2526e5-6cfc-41e1-aea0-54fd71fa51c4",
+                  "meta": {
+                    "if": "{!$attrs.canClear}"
+                  }
+                }
+              ],
+              "id": "8269212f-2472-4cb2-a715-5e9546fb55ea",
+              "meta": {
+                "if": "{!$attrs.showEditing}"
+              }
+            },
+            {
+              "definition": "tile/column",
+              "children": [
+                {
+                  "definition": "tile/text",
+                  "attributes": {
+                    "text": "{!$attrs.summary}"
+                  },
+                  "id": "677e7fdf-bd67-4fba-bebf-01f5461dc460"
+                },
+                {
+                  "definition": "tile/button",
+                  "attributes": {
+                    "label": "Confirm save",
+                    "actions": {
+                      "click": [
+                        {
+                          "definition": "action/sendMessage",
+                          "inputs": "none",
+                          "attributes": {
+                            "content": "{!$attrs.confirmMessage}"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "id": "80e441d2-2df5-4868-8f96-a252e2ad40d2"
+                }
+              ],
+              "id": "1c997f07-cad0-468b-9035-74baa8208e34",
+              "meta": {
+                "if": "{!$attrs.showReview}"
+              }
+            },
+            {
+              "definition": "tile/text",
+              "attributes": {
+                "text": "{!$attrs.error}"
+              },
+              "id": "9c3f7b25-14b6-4c55-ab99-6eea7636a29a",
+              "meta": {
+                "if": "{!$attrs.hasError}"
+              }
+            },
+            {
+              "definition": "tile/button",
+              "attributes": {
+                "label": "Back",
+                "actions": {
+                  "click": [
+                    {
+                      "definition": "action/sendMessage",
+                      "inputs": "none",
+                      "attributes": {
+                        "content": "Go back one field in this Cardstack edit"
+                      }
+                    }
+                  ]
+                }
+              },
+              "id": "2e678470-08d6-4521-937e-3e50d7a88024",
+              "meta": {
+                "if": "{!$attrs.canBack}"
+              }
+            },
+            {
+              "definition": "tile/button",
+              "attributes": {
+                "label": "Cancel edit",
+                "actions": {
+                  "click": [
+                    {
+                      "definition": "action/sendMessage",
+                      "inputs": "none",
+                      "attributes": {
+                        "content": "Cancel this Cardstack edit without saving"
+                      }
+                    }
+                  ]
+                }
+              },
+              "id": "0428e774-ab48-4c4e-86ca-eb7d0e62bae1",
+              "meta": {
+                "if": "{!OR($attrs.showEditing,$attrs.showReview)}"
+              }
+            },
+            {
+              "definition": "tile/text",
+              "attributes": {
+                "text": "{!$attrs.summary}"
+              },
+              "id": "3f101223-076e-4cc1-898d-0ea7e5c782cc",
+              "meta": {
+                "if": "{!$attrs.showDone}"
+              }
+            }
+          ],
+          "id": "21073c1e-fbf3-4cff-81b5-03ba2374bbc7"
+        }
+      ],
+      "id": "588308ad-fc63-4828-8145-68a0f06004f0"
+    }
+  }
+}

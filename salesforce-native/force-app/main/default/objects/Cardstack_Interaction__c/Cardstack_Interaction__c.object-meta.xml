@@ -1,0 +1,1 @@
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata"><deploymentStatus>Deployed</deploymentStatus><label>Cardstack Interaction</label><pluralLabel>Cardstack Interactions</pluralLabel><nameField><displayFormat>CI-{000000}</displayFormat><label>Interaction Number</label><type>AutoNumber</type></nameField><sharingModel>Private</sharingModel></CustomObject>

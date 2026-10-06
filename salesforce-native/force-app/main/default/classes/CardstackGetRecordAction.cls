@@ -375,7 +375,7 @@ global with sharing class CardstackGetRecordAction {
         try {
             Object val = rec.get(real);
             if (val == null || String.isBlank(String.valueOf(val))) return null;
-            r.value = formatValue(val);
+            r.value = formatValue(val, fieldMap.get(real).getDescribe().getType());
         } catch (Exception e) {
             return null;
         }
@@ -401,15 +401,15 @@ global with sharing class CardstackGetRecordAction {
             FieldRow r = new FieldRow();
             r.fieldApi = fieldName;
             r.label = fieldMap.get(fieldName).getDescribe().getLabel();
-            r.value = formatValue(val);
+            r.value = formatValue(val, fieldMap.get(fieldName).getDescribe().getType());
             rows.add(r);
         }
         return rows;
     }
 
-    private static String formatValue(Object val) {
+    private static String formatValue(Object val, Schema.DisplayType fieldType) {
         if (val instanceof Decimal) {
-            return '$' + ((Decimal) val).format();
+            return (fieldType == Schema.DisplayType.Currency ? '$' : '') + ((Decimal) val).format();
         }
         if (val instanceof Date) {
             return ((Date) val).format();

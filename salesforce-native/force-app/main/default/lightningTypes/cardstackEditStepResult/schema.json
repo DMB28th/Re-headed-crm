@@ -1,0 +1,22 @@
+{
+  "title": "Cardstack Edit Step Result",
+  "lightning:type": "lightning__objectType",
+  "lightning:tags": [
+    "mcp"
+  ],
+  "properties": {
+    "actionName": {
+      "lightning:type": "lightning__textType",
+      "title": "actionName"
+    },
+    "isSuccess": {
+      "lightning:type": "lightning__booleanType",
+      "title": "isSuccess"
+    },
+    "outputValues": {
+      "lightning:type": "c__cardstackEditStepOutput",
+      "title": "outputValues"
+    }
+  },
+  "unevaluatedProperties": false
+}
