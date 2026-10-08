@@ -1,5 +1,13 @@
 # AGENTS.md
 
+## Current Cardstack work: Salesforce-native package
+
+For current Cardstack work, `salesforce-native/` is authoritative. Read
+[salesforce-native/AGENTS.md](salesforce-native/AGENTS.md) before planning or editing.
+It contains the persistent skill-routing guide, platform constraints, and current
+architecture decisions. The Node/mock-CRM instructions below apply only to the
+retired implementation; do not apply them to the native package.
+
 Product overview and rules live in `CLAUDE.md`, `README.md`, and `PLAN.md`. Commands
 are documented in `README.md` and the root `package.json` scripts. Read those first.
 
