@@ -1,7 +1,8 @@
 # Opportunity editing inside chat
 
 Date: October 8, 2026
-Status: Proposed for user approval; implementation has not started.
+Status: Superseded as the next implementation scope by the custom MCP Apps migration direction; implementation has not started.
+The Opportunity field requirements remain a future acceptance scenario. See 2026-10-08-custom-mcp-apps-migration-design.md.
 Execution preference: Subagent-Driven Development, selected by the user.
 
 ## Intended outcome

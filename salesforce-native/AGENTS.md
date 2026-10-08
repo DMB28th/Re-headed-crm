@@ -69,10 +69,13 @@ record-action mappings passed live Claude review/confirm/save/refresh QA. Arbitr
 multi-field HXL forms, full Screen Flow interpretation, and ChatGPT editor parity
 are not delivered claims.
 
-The user prefers reusing Cardstack's richer custom MCP Apps renderer. Keep the
-working HXL path while proving the alternative; this preference is not approval
-of an implementation spec that does not exist yet. Reuse the UI with current Apex
-governance rather than automatically restoring the retired backend.
+The user explicitly selected HXL retirement, reuse of Cardstack's custom MCP Apps
+renderer and earlier bounded Flow interpreter, and retention of the native Apex
+backend and Studio. HXL is not a planned long-term fallback or parallel product.
+Replace its runtime bindings at the verified cutover; do not remove the currently
+deployed UI before a working replacement exists. Carry interpreter logic into
+Apex-owned execution/state with a supported subset, not the retired Node backend.
+This direction does not approve an implementation spec that has not been reviewed.
 
 The legacy renderer already uses ext-apps. Prior external-host probes showed
 read-only two-screen interactions in Claude and ChatGPT. The custom Salesforce
