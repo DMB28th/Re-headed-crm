@@ -1,0 +1,35 @@
+{
+  "apiVersion": "67.0",
+  "components": {
+    "ApexClass": [
+      "CardstackCanonicalProbe",
+      "CardstackCanonicalProbeTest"
+    ],
+    "StaticResource": [
+      "CardstackCanonicalProbeUi"
+    ],
+    "PermissionSet": [
+      "Cardstack_Canonical_Probe"
+    ]
+  },
+  "deploy": {
+    "files": [
+      "classes/CardstackCanonicalProbe.cls",
+      "classes/CardstackCanonicalProbe.cls-meta.xml",
+      "classes/CardstackCanonicalProbeTest.cls",
+      "classes/CardstackCanonicalProbeTest.cls-meta.xml",
+      "package.xml",
+      "permissionsets/Cardstack_Canonical_Probe.permissionset-meta.xml",
+      "staticresources/CardstackCanonicalProbeUi.resource",
+      "staticresources/CardstackCanonicalProbeUi.resource-meta.xml"
+    ],
+    "sha256": "0254b198c7c303f699ff009ba8dea0d4e9dbca726cbfcae60f06e2b78a34baa2"
+  },
+  "cleanup": {
+    "files": [
+      "destructiveChanges.xml",
+      "package.xml"
+    ],
+    "sha256": "b256372aa78693ab396854bc21f4146aa506b09959ec905bf6374d36c7da3329"
+  }
+}

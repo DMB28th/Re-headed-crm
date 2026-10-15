@@ -1,0 +1,27 @@
+{
+  "apiVersion": "67.0",
+  "liveMutationStatus": "UNAPPROVED/UNEXECUTED",
+  "sha256": {
+    ".gitignore": "57b1c1b530ca6101a6fcd6f324931186573193d9383311f572f3d4793f78931b",
+    "REVIEW.md": "a7bee3b8ea9a654a8fa6a445ade12e635d5024ceb65175db65cd754ad233e8d7",
+    "classes/CardstackOrdinaryUserProbe.cls": "6040af8bfad0a8f4a98a6404d5427abae561726c701131209ddc1d75e74129ad",
+    "classes/CardstackOrdinaryUserProbe.cls-meta.xml": "17e31f2473b0c9f7048b434edab7d12261a9b8a0b9ede833cb9c3141eeeccb7b",
+    "classes/CardstackOrdinaryUserProbeTest.cls": "d35834ac714bb4a5375320041b996cd6ae9f04d6ca537a7da173fa5287a7854e",
+    "classes/CardstackOrdinaryUserProbeTest.cls-meta.xml": "17e31f2473b0c9f7048b434edab7d12261a9b8a0b9ede833cb9c3141eeeccb7b",
+    "cleanup/destructiveChanges.xml": "954118bbcb17821474ac7208fde68f71dbb10ae875bbd71c0cf727a888a829aa",
+    "cleanup/package.xml": "43e0c29b569dbca7501c65f77cfe1e753b4fe3f16f5a8b3d8d976e3eabaf668a",
+    "cleanup.zip": "73d4dd2392213d2e08a424dc2652aedd24c67e2297519a4551ecbe5d85f3d1ed",
+    "deploy.zip": "7fe5a06fab7a22a30c88a83491e2f58ab41b98eca1ebbfe38a71fd67df4ff6ea",
+    "harness/README.md": "931607790f51521e0f6a12e8c28423d7882eca92443d6e4265b92093644f85e9",
+    "harness/http-core.cjs": "cddbbf88677208fb348c94a4145c5dd8901857a06ad1adfba423ea0d6b6c617a",
+    "harness/measure.cjs": "1a6bd33527086879b3321c30e28bb15664465f00bed654ea75e46e31acdd98db",
+    "harness/measure.test.cjs": "ba92da055df57765eb8d6db92b5f596617e751ad7281992f1d615364434324d4",
+    "harness/offline.test.cjs": "1530a96554f595ef3347bf50847d51ac85c4b960995884a698b847b41a691ea3",
+    "harness/salesforce-id.cjs": "8b21f061450afd8b9527c440470697eb6820e453e6963a1a76c56c42834d6b9b",
+    "harness/validate.cjs": "26120badd60b8efb14aba2b270a93dd46f905e6bd19c6568890aa297a369ff4d",
+    "lifecycle/core.cjs": "088db105b8ed062f88892d1031bc33b634251b410c73c3e5e994d19f2fc4d039",
+    "lifecycle/offline.test.cjs": "aa0dd5353922621cc9166d4a47d3ea92b4fc1b00bd38e6f6b876060b8fd91a5f",
+    "package.xml": "954118bbcb17821474ac7208fde68f71dbb10ae875bbd71c0cf727a888a829aa",
+    "permissionsets/Cardstack_Ordinary_Probe.permissionset-meta.xml": "3f06a8fe7c2be6ac81787571ea017cea37886f8aa1d49f0cb46c4e69fb4d5f3a"
+  }
+}

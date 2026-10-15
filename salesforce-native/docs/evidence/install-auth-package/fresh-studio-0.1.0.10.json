@@ -1,0 +1,15 @@
+{
+  "observedAt": "2026-10-11T12:24:50.313632+00:00",
+  "version": "0.1.0.10",
+  "actualStudio": "Pass; Dashboard guided setup rendered",
+  "keyboard": "Pass; Tab/Return opened client combobox, Down/Return changed to ChatGPT; Space toggled installation history checkbox",
+  "resume": "Pass; ChatGPT installation history persisted after save/full browser reload/client switch",
+  "twoClientIsolation": "Pass for instruction history and admin evidence display; both clients Needs verification for admin actor while ordinary diagnostics remained separate",
+  "unreadableSettings": "Pass; Site and OAuth policy Unknown with manual inspection guidance",
+  "saveConflict": "Pass; private supported facade temporarily disabled/restored owned ChatGPT intent in same transaction, revision1 to3; stale actual UI save preserved draft and showed explicit recovery; discard/reload advanced browser revision3",
+  "sitesLink": "Pass; installed corrected guide opens actual Sites at CustomDomain/home",
+  "oauthLink": "Pass; freshly loaded installed guide opens actual External Client App Manager at ManageExternalClientApplication/home",
+  "legacyTabObservation": "One retained old Studio tab still held pre-upgrade OAuth route and opened Page not found; fresh current installed Studio rendered corrected route and actual manager successfully",
+  "crmWrites": 0,
+  "remaining": "Direct rejection requests with client-held revoked access/refresh credentials unmeasured; no proof claim. Actual expiry/refresh, revocation/reconnect/isolation and owned cleanup recorded in fresh-lifecycle-0.1.0.10.json."
+}

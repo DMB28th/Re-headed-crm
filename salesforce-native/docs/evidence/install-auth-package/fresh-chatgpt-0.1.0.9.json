@@ -1,0 +1,20 @@
+{
+  "capturedAt": "2026-10-11T12:01:11.399446+00:00",
+  "environment": "Owned disposable Developer scratch org",
+  "packageVersion": "0.1.0.9",
+  "client": "Actual ChatGPT web plugin",
+  "actor": "Owned ordinary QA user; exact checksum18 actor/org independently matched OAuth userinfo 200",
+  "consent": "Completed by human; owned QA plugin visible",
+  "discovery": "Diagnostic tool invoked through new client",
+  "iframe": "Actual connection diagnostic rendered, host bridge ready",
+  "sevenValueHostExchange": "Server accepted exact synthetic fixture; private row actor matches QA user",
+  "uiReceipt": "Failed; do not claim live UI acceptance",
+  "rootCause": "Open deadline included milliseconds; persisted receipt deadline rounded down to whole second; observed -29ms. Values, client, versions, revision, exactValues and stages matched. Actual wire payload reproduced UI rejection locally.",
+  "emptyText": "Pending",
+  "reload": "Pending",
+  "directPrivateObjectRead": "Setup and Check queries denied INVALID_TYPE as ordinary user",
+  "noCardstackUse": "Authenticated MCP request returned 403 FORBIDDEN after owned permission set removal; permission restored successfully",
+  "sourceRepair": "In progress; strict UI equality retained",
+  "cleanup": "Pending; owned resources retained for bounded QA",
+  "crmWrites": 0
+}

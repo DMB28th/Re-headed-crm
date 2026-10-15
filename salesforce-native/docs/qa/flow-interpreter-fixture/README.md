@@ -1,0 +1,15 @@
+# Disposable native Flow fixture
+
+Prepared source only, outside the deployable package. Root controls any API-67 deployment and cleanup. No creation, activation, native acquisition or interpreter execution is claimed here.
+
+`Cardstack_Bounded_Case_QA` has two screens, a nested Details section, scalar Subject/Description inputs, immutable `recordId` context, and exactly one terminal Case update using only `Id EqualTo recordId`. The compiler normalizes this one exact filter to CURRENT_RECORD and rejects additional/alternate filters. No record lookup, formula, action, custom component, rich text, or fault connector is present.
+
+After root acquires the deployed exact active version through the dedicated authorized native admin connection, the raw Tooling Metadata—not this XML—must compile and publish. Verify no CRM changes before confirmation; use a disposable Case and independent read-back. Existing `Cardstack_UI_Probe` remains acquisition evidence only.
+
+
+Native compatibility correction: the API-67 check-only fixture rejected a RegionContainer without `regionContainerType`. The corrected Details section supplies the literal `SectionWithHeader`. The compiler accepts only that header form and plain bounded header text; other populated enum values fail before start. This property changes section header presentation and adds no interpreter control flow or effect.
+
+Enum grounding: [Salesforce-owned CLI maintainer discussion](https://github.com/forcedotcom/cli/issues/1872) cites the [official Flow Metadata API reference](https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_visual_workflow.htm) and identifies `SectionWithHeader` and `SectionWithoutHeader` as the section-header enum values available since API 55. The current official reference returned only a shell during extraction; browser/runtime extraction was unavailable in the worker. A [Salesforce-owned Commerce Cloud Flow example](https://github.com/SalesforceCommerceCloud/b2c-crm-sync/blob/master/src/sfdc/base/main/default/flows/B2CCommerce_QuickAction_Contact_OrderOnBehalfOf.flow-meta.xml) independently shows RegionContainer's header property in native-shaped metadata source. Root's next API-67 native check remains the compatibility proof for this corrected fixture; public enum evidence is not claimed as org execution proof.
+
+
+The next native API-67 check accepted the section header and required each Region column to declare a width input parameter. The corrected DescriptionColumn uses the vendor-source structure `inputParameters/name=width/value/stringValue=12`. The compiler permits exactly this one literal parameter only on Region, normalizing it to a single full-width column; dynamic references, extra parameters and other widths are unsupported. Salesforce-owned Commerce Cloud source linked above provides the nested Region/inputParameters/value/stringValue shape. The width-12 restriction is the interpreter's explicit bound; native fixture v3 check is still required to prove this artifact.

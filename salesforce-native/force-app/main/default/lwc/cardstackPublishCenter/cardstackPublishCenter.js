@@ -1,19 +1,31 @@
-import { LightningElement, track, wire } from 'lwc';
+import { LightningElement, api, track, wire } from 'lwc';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import { refreshApex } from '@salesforce/apex';
 import getDrafts from '@salesforce/apex/CardstackStudioController.getDrafts';
 import getStagingInfo from '@salesforce/apex/CardstackStudioController.getStagingInfo';
-import publishDraft from '@salesforce/apex/CardstackStudioController.publishDraft';
+import getDraftReview from '@salesforce/apex/CardstackStudioController.getDraftReview';
+import publishReviewedDraft from '@salesforce/apex/CardstackStudioController.publishReviewedDraft';
+import getDraftStatus from '@salesforce/apex/CardstackStudioController.getDraftStatus';
+import LightningConfirm from 'lightning/confirm';
+import CardstackReviewDialog from 'c/cardstackReviewDialog';
+import { publishSelection } from 'c/cardstackPublishModel';
 import rollbackDraft from '@salesforce/apex/CardstackStudioController.rollbackDraft';
+import { isSupportedStudioKey, studioConfigLabel } from 'c/cardstackStudioKeys';
+import { compareConfig } from 'c/cardstackConfigDiff';
 
 /**
- * cardstackPublishCenter — draft/publish/rollback management with
- * visual diffs, collapsible JSON, bulk publish, and draft age.
+ * cardstackPublishCenter — native snapshot review and explicit sequential publication.
  */
 export default class CardstackPublishCenter extends LightningElement {
     @track statusFilter = '';
-    @track confirmRollbackId = null;
-    @track confirmPublishAll = false;
+    @track selectedIds = [];
+    @track operationResults = [];
+    @track busy = false;
+    @track persistentError = '';
+    @track uncertainIds = [];
+    @track focusedCandidate = null;
+    focusTargetId;
+    pendingChanges = [];
     @track expandedJson = new Set();
     @track diffCache = {};  // draftId -> { summary: [], liveValue }
 
@@ -40,7 +52,7 @@ export default class CardstackPublishCenter extends LightningElement {
     wiredDrafts(result) {
         this.wiredResult = result;
         if (result.error) {
-            this.toast('Error', result.error.body?.message || 'Failed to load drafts.', 'error');
+            this.persistentError = result.error.body?.message || 'Failed to load drafts.';
         } else if (result.data) {
             this.loadDiffs(result.data);
         }
@@ -49,7 +61,9 @@ export default class CardstackPublishCenter extends LightningElement {
     get drafts() {
         const { data } = this.wiredResult || {};
         if (!data) return [];
-        return data.map(d => ({
+        const rows = this.focusedCandidate && !data.some(d => d.Id === this.focusedCandidate.Id)
+            ? [...data, this.focusedCandidate] : data;
+        return rows.map(d => ({
             ...d,
             configKey: d.Config__r?.Name || d.Config__c || '',
             createdBy: d.CreatedBy?.Name || ''
@@ -58,7 +72,13 @@ export default class CardstackPublishCenter extends LightningElement {
 
     get pendingDrafts() {
         return this.drafts
-            .filter(d => d.Status__c === 'Draft')
+            .filter(d => d.Status__c === 'Draft' && isSupportedStudioKey(d.configKey))
+            .map(d => this.enrichDraft(d));
+    }
+
+    get retainedDrafts() {
+        return this.drafts
+            .filter(d => d.Status__c === 'Draft' && !isSupportedStudioKey(d.configKey))
             .map(d => this.enrichDraft(d));
     }
 
@@ -74,8 +94,12 @@ export default class CardstackPublishCenter extends LightningElement {
         const cached = this.diffCache[d.Id];
         return {
             ...d,
+            label: studioConfigLabel(d.configKey),
+            selected: this.selectedIds.includes(d.Id),
+            reviewDisabled: this.busy || this.uncertainIds.includes(d.Id),
             ageText: this.ageText(d.CreatedDate),
             prettyValue: this.pretty(d.Draft_Value__c),
+            prettyLiveValue: !cached || !Object.prototype.hasOwnProperty.call(cached, 'liveValue') ? 'Published value unavailable.' : cached.liveValue === null ? 'Nothing published yet.' : this.pretty(cached.liveValue),
             showJson: this.expandedJson.has(d.Id),
             jsonToggleLabel: this.expandedJson.has(d.Id) ? 'Hide raw JSON' : 'View raw JSON',
             jsonToggleIcon: this.expandedJson.has(d.Id) ? 'utility:chevrondown' : 'utility:chevronright',
@@ -100,143 +124,33 @@ export default class CardstackPublishCenter extends LightningElement {
         for (const d of drafts) {
             if (d.Status__c !== 'Draft' || this.diffCache[d.Id]) continue;
             const configKey = d.Config__r?.Name || d.Config__c;
-            if (!configKey) continue;
+            if (!isSupportedStudioKey(configKey)) continue;
             try {
                 const info = await getStagingInfo({ key: configKey });
                 const summary = this.computeDiff(configKey, info?.liveValue, d.Draft_Value__c);
-                this.diffCache = { ...this.diffCache, [d.Id]: { summary } };
-            } catch (e) {
-                // Diff is best-effort; leave it empty.
-                this.diffCache = { ...this.diffCache, [d.Id]: { summary: [] } };
+                this.diffCache = { ...this.diffCache, [d.Id]: { summary, liveValue: info?.liveValue } };
+            } catch {
+                this.diffCache = { ...this.diffCache, [d.Id]: { summary: [{ key: 'unavailable', text: 'Comparison unavailable: could not load published configuration. Refresh to retry.', cssClass: 'diff-line', icon: 'utility:warning' }] } };
             }
         }
     }
 
     computeDiff(configKey, liveJson, draftJson) {
-        const lines = [];
-        let live, draft;
-        try {
-            live = liveJson ? JSON.parse(liveJson) : null;
-            draft = draftJson ? JSON.parse(draftJson) : null;
-        } catch {
-            return [{ key: 'parse', text: 'Could not parse JSON for comparison.', cssClass: 'diff-line', icon: 'utility:warning' }];
+        const review = compareConfig(configKey, liveJson, draftJson);
+        if (review.status !== 'changed') {
+            return [{ key: review.status, text: review.message, cssClass: 'diff-line',
+                icon: review.status === 'unavailable' ? 'utility:warning' : 'utility:check' }];
         }
-        if (!live && draft) {
-            return [{ key: 'new', text: 'New config — nothing is live yet.', cssClass: 'diff-added', icon: 'utility:add' }];
-        }
-        if (!draft) return [];
-
-        // Layout diff: compare fields[] arrays.
-        if (configKey.startsWith('layout:')) {
-            return this.diffLayouts(live, draft);
-        }
-        // Generic key-level diff.
-        return this.diffObjects(live, draft, '');
+        return review.changes.map((change, index) => ({
+            key: 'change-' + index,
+            text: `${change.label}: ${this.diffValue(change.before)} → ${this.diffValue(change.after)}`,
+            cssClass: change.before === undefined ? 'diff-added' : change.after === undefined ? 'diff-removed' : 'diff-moved',
+            icon: 'utility:edit'
+        }));
     }
 
-    diffLayouts(live, draft) {
-        const lines = [];
-        const liveFields = this.fieldList(live);
-        const draftFields = this.fieldList(draft);
-        const liveSet = new Set(liveFields);
-        const draftSet = new Set(draftFields);
-
-        const added = draftFields.filter(f => !liveSet.has(f));
-        const removed = liveFields.filter(f => !draftSet.has(f));
-        const moved = [];
-        for (const f of draftFields) {
-            if (liveSet.has(f)) {
-                const oldPos = liveFields.indexOf(f) + 1;
-                const newPos = draftFields.indexOf(f) + 1;
-                if (oldPos !== newPos) {
-                    moved.push({ field: f, from: oldPos, to: newPos });
-                }
-            }
-        }
-
-        if (added.length) {
-            lines.push({
-                key: 'added',
-                text: `Added ${added.length} field${added.length > 1 ? 's' : ''}: ${added.join(', ')}`,
-                cssClass: 'diff-added', icon: 'utility:add'
-            });
-        }
-        if (removed.length) {
-            lines.push({
-                key: 'removed',
-                text: `Removed ${removed.length} field${removed.length > 1 ? 's' : ''}: ${removed.join(', ')}`,
-                cssClass: 'diff-removed', icon: 'utility:delete'
-            });
-        }
-        for (const m of moved.slice(0, 5)) {
-            lines.push({
-                key: 'moved-' + m.field,
-                text: `Moved ${m.field} from position ${m.from} to ${m.to}`,
-                cssClass: 'diff-moved', icon: 'utility:move'
-            });
-        }
-        if (moved.length > 5) {
-            lines.push({
-                key: 'moved-more',
-                text: `…and ${moved.length - 5} more moved fields`,
-                cssClass: 'diff-moved', icon: 'utility:move'
-            });
-        }
-        if (!lines.length) {
-            lines.push({
-                key: 'none',
-                text: 'No field changes — only ordering or metadata differs.',
-                cssClass: 'diff-line', icon: 'utility:check'
-            });
-        }
-        return lines;
-    }
-
-    fieldList(layout) {
-        if (!layout) return [];
-        // Support both {fields: [...]} and {recordCard: {sections: [...]}} shapes.
-        if (Array.isArray(layout.fields)) {
-            return layout.fields.map(f => typeof f === 'string' ? f : (f.api || f.fieldApi || f.name));
-        }
-        if (layout.recordCard?.sections) {
-            const out = [];
-            for (const s of layout.recordCard.sections) {
-                for (const f of (s.fields || [])) {
-                    out.push(typeof f === 'string' ? f : (f.api || f.fieldApi || f.name));
-                }
-            }
-            return out;
-        }
-        return [];
-    }
-
-    diffObjects(live, draft, prefix) {
-        const lines = [];
-        const liveKeys = new Set(Object.keys(live || {}));
-        const draftKeys = new Set(Object.keys(draft || {}));
-        for (const k of draftKeys) {
-            const path = prefix ? `${prefix}.${k}` : k;
-            if (!liveKeys.has(k)) {
-                lines.push({ key: 'add-' + path, text: `Added: ${path}`, cssClass: 'diff-added', icon: 'utility:add' });
-            } else if (JSON.stringify(live[k]) !== JSON.stringify(draft[k])) {
-                if (this.isPlainObject(live[k]) && this.isPlainObject(draft[k])) {
-                    lines.push(...this.diffObjects(live[k], draft[k], path));
-                } else {
-                    lines.push({ key: 'chg-' + path, text: `Changed: ${path}`, cssClass: 'diff-moved', icon: 'utility:edit' });
-                }
-            }
-        }
-        for (const k of liveKeys) {
-            if (!draftKeys.has(k)) {
-                const path = prefix ? `${prefix}.${k}` : k;
-                lines.push({ key: 'del-' + path, text: `Removed: ${path}`, cssClass: 'diff-removed', icon: 'utility:delete' });
-            }
-        }
-        return lines.slice(0, 20);
-    }
-
-    isPlainObject(v) {
-        return v && typeof v === 'object' && !Array.isArray(v);
+    diffValue(value) {
+        return value === undefined ? '(absent)' : JSON.stringify(value);
     }
 
     toggleJson(e) {
@@ -247,61 +161,179 @@ export default class CardstackPublishCenter extends LightningElement {
         this.expandedJson = next;
     }
 
-    handleStatusChange(e) { this.statusFilter = e.detail.value; }
-    refresh() {
+    handleStatusChange(e) { if (!this.busy) this.statusFilter = e.detail.value; }
+    handleSelection(event) {
+        if (this.busy) return;
+        const id = event.currentTarget.dataset.id;
+        if (!this.pendingDrafts.some(d => d.Id === id) || this.uncertainIds.includes(id)) return;
+        this.selectedIds = event.target.checked ? [...new Set([...this.selectedIds, id])]
+            : this.selectedIds.filter(value => value !== id);
+    }
+    get publishSelectedLabel() { return `Publish selected (${this.selectedIds.length})`; }
+    get selectionDisabled() { return this.busy || !this.selectedIds.length; }
+    get resultRows() {
+        return this.operationResults.map(result => ({ ...result,
+            text: `${result.name || result.draftId} (${result.draftId}): ${result.status}${result.errorCode ? ' — ' + result.errorCode : ''}` }));
+    }
+
+    @api async refresh() {
         this.diffCache = {};
-        refreshApex(this.wiredResult);
-    }
-
-    async publish(e) {
-        const id = e.currentTarget.dataset.id;
-        try {
-            await publishDraft({ draftId: id });
-            this.toast('Published', 'Draft is now live.', 'success');
-            this.diffCache = {};
-            refreshApex(this.wiredResult);
-        } catch (err) {
-            this.toast('Error', this.msg(err), 'error');
+        await refreshApex(this.wiredResult);
+        if (this.wiredResult?.error) throw this.wiredResult.error;
+        if (this.focusedCandidate) {
+            const status = await getDraftStatus({ draftId: this.focusedCandidate.Id });
+            if (status !== 'Draft') this.focusedCandidate = null;
         }
-    }
-
-    askRollback(e) { this.confirmRollbackId = e.currentTarget.dataset.id; }
-    cancelRollback() { this.confirmRollbackId = null; }
-
-    async rollback() {
-        try {
-            await rollbackDraft({ draftId: this.confirmRollbackId });
-            this.toast('Rolled back', 'Draft discarded.', 'success');
-        } catch (err) {
-            this.toast('Error', this.msg(err), 'error');
-        }
-        this.confirmRollbackId = null;
-        this.diffCache = {};
-        refreshApex(this.wiredResult);
-    }
-
-    askPublishAll() { this.confirmPublishAll = true; }
-    cancelPublishAll() { this.confirmPublishAll = false; }
-
-    async publishAll() {
-        this.confirmPublishAll = false;
-        const ids = this.pendingDrafts.map(d => d.Id);
-        let ok = 0, failed = 0;
-        for (const id of ids) {
+        // Unknown outcomes cannot be retried until their exact fresh status loads.
+        const unresolved = [];
+        const publishedKeys = [];
+        const publishedContexts = [];
+        for (const id of this.uncertainIds) {
             try {
-                await publishDraft({ draftId: id });
-                ok++;
-            } catch (e) {
-                failed++;
+                const status = await getDraftStatus({ draftId: id });
+                if (status === 'Published') {
+                    const result = this.operationResults.find(item => item.draftId === id);
+                    if (result?.key) { publishedKeys.push(result.key); publishedContexts.push({key:result.key,draftId:id}); }
+                    this.operationResults = this.operationResults.map(result => result.draftId === id
+                        ? { ...result, status: 'published', errorCode: undefined } : result);
+                } else if (status === 'Draft' || status === 'Rolled Back') {
+                    this.operationResults = this.operationResults.map(result => result.draftId === id
+                        ? { ...result, errorCode: status === 'Draft' ? 'Draft retained. Review again to retry.' : 'Draft discarded.' } : result);
+                } else unresolved.push(id);
+            } catch { unresolved.push(id); }
+        }
+        this.uncertainIds = unresolved;
+        this.selectedIds = this.selectedIds.filter(id => this.pendingDrafts.some(d => d.Id === id) && !unresolved.includes(id));
+        this.queueChange(publishedKeys, 'publish', publishedContexts);
+        this.flushChanges();
+    }
+
+    async handleRefresh() {
+        if (this.busy) return;
+        this.busy = true;
+        try { await this.refresh(); this.persistentError = ''; }
+        catch (error) { this.persistentError = this.msg(error); }
+        finally { this.busy = false; }
+    }
+
+    @api async focusDraft(draftId) {
+        this.statusFilter = 'Draft';
+        await this.refresh();
+        if (!this.pendingDrafts.some(d => d.Id === draftId)) {
+            const review = await getDraftReview({ draftId });
+            if (!isSupportedStudioKey(review.key)) return;
+            this.focusedCandidate = { Id: review.draftId, Name: 'Selected draft',
+                Status__c: 'Draft', Config__r: { Name: review.key }, Draft_Value__c: review.draftValue };
+        }
+        this.focusTargetId = draftId;
+        await Promise.resolve();
+        this.focusReviewButton();
+    }
+    renderedCallback() { this.focusReviewButton(); }
+    focusReviewButton() {
+        if (!this.focusTargetId) return;
+        const button = [...(this.template?.querySelectorAll('lightning-button[data-review]') || [])]
+            .find(element => element.dataset.id === this.focusTargetId);
+        if (button) { button.focus(); this.focusTargetId = null; }
+    }
+
+    async publish(event) { await this.reviewAndPublish([event.currentTarget.dataset.id]); }
+    async publishSelected() { await this.reviewAndPublish([...this.selectedIds]); }
+
+    async reviewAndPublish(ids) {
+        if (this.busy) return;
+        const candidates = this.pendingDrafts.filter(d => ids.includes(d.Id) && !this.uncertainIds.includes(d.Id));
+        if (!candidates.length) return;
+        this.busy = true;
+        this.persistentError = '';
+        try {
+            const reviews = [];
+            for (const candidate of candidates) {
+                const snapshot = await getDraftReview({ draftId: candidate.Id });
+                if (!isSupportedStudioKey(snapshot.key)) throw new Error('UNSUPPORTED_CONFIGURATION');
+                reviews.push(snapshot);
             }
+            const confirmed = await CardstackReviewDialog.open({ size: 'large',
+                description: 'Review exact configuration changes before publication', reviews });
+            if (confirmed !== true) return;
+            const results = await publishSelection(reviews, review => this.publishOne(review));
+            this.operationResults = [
+                ...this.operationResults.filter(previous => !results.some(result => result.draftId === previous.draftId)),
+                ...results.map(result => ({ ...result,
+                    name: candidates.find(d => d.Id === result.draftId)?.Name,
+                    key: reviews.find(review => review.draftId === result.draftId)?.key }))
+            ];
+            const successes = results.filter(result => result.status === 'published');
+            this.selectedIds = this.selectedIds.filter(id => !successes.some(result => result.draftId === id));
+            this.queueChange(successes.map(result => this.operationResults.find(r => r.draftId === result.draftId).key), 'publish',
+                successes.map(result => ({key:reviews.find(review => review.draftId === result.draftId).key,draftId:result.draftId})));
+            await this.refresh();
+        } catch (error) {
+            this.persistentError = this.msg(error);
+        } finally { this.busy = false; }
+    }
+
+    async publishOne(review) {
+        try {
+            await publishReviewedDraft({ draftId: review.draftId,
+                expectedLiveDigest: review.liveDigest, expectedDraftDigest: review.draftDigest });
+        } catch (error) {
+            // A lost response can follow a committed write. Never retry based on
+            // missing bounded history, cached wire data, or a transport exception.
+            let status;
+            try { status = await getDraftStatus({ draftId: review.draftId }); }
+            catch {
+                this.uncertainIds = [...new Set([...this.uncertainIds, review.draftId])];
+                throw Object.assign(new Error('Publication status unavailable. Refresh before retrying.'), { errorCode: 'PUBLISH_STATUS_UNKNOWN' });
+            }
+            if (status === 'Published') return;
+            if (status !== 'Draft' && status !== 'Rolled Back') {
+                this.uncertainIds = [...new Set([...this.uncertainIds, review.draftId])];
+                throw Object.assign(new Error('Publication status unavailable.'), { errorCode: 'PUBLISH_STATUS_UNKNOWN' });
+            }
+            throw error;
         }
-        this.diffCache = {};
-        refreshApex(this.wiredResult);
-        if (failed === 0) {
-            this.toast('Published', `${ok} draft${ok === 1 ? '' : 's'} are now live.`, 'success');
-        } else {
-            this.toast('Partially published', `${ok} published, ${failed} failed.`, 'warning');
-        }
+    }
+
+    async askRollback(event) {
+        if (this.busy) return;
+        const id = event.currentTarget.dataset.id;
+        const candidate = this.drafts.find(d => d.Id === id && d.Status__c === 'Draft');
+        if (!candidate || this.uncertainIds.includes(id)) return;
+        this.busy = true;
+        try {
+            const confirmed = await LightningConfirm.open({ label: 'Discard draft?',
+                message: `Discard ${candidate.Name} (${id})? The published configuration stays as it is.`, theme: 'warning' });
+            if (!confirmed) return;
+            await rollbackDraft({ draftId: id });
+            this.selectedIds = this.selectedIds.filter(value => value !== id);
+            this.queueChange([candidate.configKey], 'discard');
+            await this.refresh();
+        } catch (error) { this.persistentError = this.msg(error); }
+        finally { this.busy = false; }
+    }
+
+    // Confirmed operations survive failed refreshes. Coalesce affected keys by
+    // operation, then deliver once after an authoritative refresh succeeds.
+    queueChange(keys, operation, publishedContexts = []) {
+        if (!keys.length) return;
+        const queued = this.pendingChanges.find(change => change.operation === operation);
+        const contexts = operation === 'publish' ? [...(queued?.publishedContexts || []), ...publishedContexts] : [];
+        const exactContexts = [...new Map(contexts.map(context => [context.draftId, context])).values()];
+        const change = {operation,keys:[...new Set([...(queued?.keys || []), ...keys])], ...(exactContexts.length ? {publishedContexts:exactContexts} : {})};
+        this.pendingChanges = queued ? this.pendingChanges.map(previous => previous.operation === operation ? change : previous) : [...this.pendingChanges,change];
+    }
+
+    flushChanges() {
+        const confirmed = this.pendingChanges;
+        // Clear before dispatch: synchronous listeners may request another refresh.
+        this.pendingChanges = [];
+        for (const change of confirmed) this.changed(change.keys, change.operation, change.publishedContexts);
+    }
+
+    changed(keys, operation, publishedContexts) {
+        this.dispatchEvent(new CustomEvent('configchange', { detail: { keys: [...new Set(keys)], operation,
+            ...(publishedContexts?.length ? {publishedContexts} : {}) }, bubbles: true, composed: true }));
     }
 
     pretty(json) {

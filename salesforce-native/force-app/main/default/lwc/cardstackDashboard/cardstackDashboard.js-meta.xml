@@ -3,7 +3,7 @@
     <apiVersion>67.0</apiVersion>
     <isExposed>false</isExposed>
     <masterLabel>Cardstack Dashboard</masterLabel>
-    <description>Studio home tab: org status, config coverage, pending drafts, recent activity.</description>
+    <description>Native Studio Overview with record card states, saved drafts, activity, and client Setup navigation.</description>
     <targets>
         <target>lightning__AppPage</target>
     </targets>

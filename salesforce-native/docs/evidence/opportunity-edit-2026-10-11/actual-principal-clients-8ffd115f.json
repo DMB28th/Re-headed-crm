@@ -1,0 +1,94 @@
+{
+  "observedAtUtc": "2026-10-13T00:15:34.036438+00:00",
+  "environment": "Installed beta0.1.0.11 plus two reviewed UI-resource corrections",
+  "runtimeSource": "8ffd115f73b5d13fb2986e7af6444ca06c16de88",
+  "evidenceLevels": [
+    "actual-client",
+    "native"
+  ],
+  "actorsObserved": [
+    "ordinary QA A"
+  ],
+  "chatgpt": {
+    "ordinaryActorConsentObserved": true,
+    "openInteractiveCard": true,
+    "hostMediatedStartReviewConfirmRefresh": true,
+    "nativeStageChoices": [
+      "Prospecting",
+      "Qualification"
+    ],
+    "invalidDateAndFormattedDecimalRetainedWithFieldErrorsAndFocus": true,
+    "reviewAllThreeBeforeExplicitConfirm": true,
+    "completionReceiptAndFreshReadTogether": true,
+    "principalSaveEffects": 1
+  },
+  "claude": {
+    "ordinaryActorConsentObserved": true,
+    "openInteractiveCard": true,
+    "hostMediatedStartReviewConfirmRefresh": true,
+    "nativeStageChoices": [
+      "Prospecting",
+      "Needs Analysis"
+    ],
+    "requiredErrorRetainsInputsAndFocus": true,
+    "cancelThenFreshReadUnchanged": true,
+    "reservedRuleAmountRejectedWithInputsRetained": true,
+    "newReviewRequiredBeforeCorrectedConfirm": true,
+    "completionReceiptAndFreshReadTogether": true,
+    "principalSaveEffects": 1
+  },
+  "nativeCorroboration": {
+    "status": "TWO_PRINCIPAL_SAVES_NATIVELY_CORROBORATED",
+    "counts": {
+      "successfulOpportunitySaveEffects": 2,
+      "newAlphaSuccessAudits": 1,
+      "newBetaSuccessAudits": 1,
+      "matchingSavedConfirmationPublicReceipts": 2,
+      "successfulSaveEffectsFromBetaCancelAndRuleTargetedFailedAttempt": 0,
+      "remainingUntouchedFixtures": 2,
+      "allowedSaveEffectBudget": 8
+    },
+    "native": {
+      "exactActorAndRecordChecksumsMatched": true,
+      "exactThreeFieldChangesAndAuditDiffMatched": true,
+      "ownerAndRecordTypeUnchanged": true,
+      "reviewLeftCRMUnchanged": true,
+      "failedAttemptLeftCRMAndSystemModstampUnchanged": true,
+      "otherSavedFixturePreserved": true,
+      "authorityFieldsQueried": false,
+      "receiptReferencesRetained": false
+    },
+    "evidenceLevels": {
+      "native": "Independently read Salesforce records, exact successful action audits and persisted public saved-receipt comparisons",
+      "actual-client": "Root separately observed ChatGPT Alpha and Claude Beta rendering, Stage choices, Review/Confirm/receipt and Refresh; this native readback corroborates writes but does not replace those UI observations",
+      "renderer": "Source/local synthetic renderer coverage remains separate and cannot establish host behavior",
+      "protocol": "Transport/discovery/tool metadata remain separate from iframe and saved-write evidence"
+    },
+    "boundaries": [
+      "Confirmation has no standalone Status field; public saved receipt corroborates completion without querying private interaction state",
+      "Generic failure message does not independently identify Salesforce validation-rule error text",
+      "No lost-response, late-reply, receipt-failed-read or reload-retention measurement claimed by this checkpoint",
+      "Only ordinary A successful writes observed; B and simultaneous-active isolation unproved",
+      "No release or production claim"
+    ]
+  },
+  "limits": {
+    "actorB": "Not yet exercised",
+    "lostResponse": "One bounded ChatGPT interruption attempt completed normally with a receipt; loss and Unknown recovery were not induced. Claude not exercised.",
+    "delayedReplyAfterRecordSwitch": "Not yet exercised in either actual host",
+    "reloadRetention": "Both full-chat reloads restored the original Open snapshot without the later receipt or Resume control. Explicit Refresh retrieved current native values.",
+    "correctedFreshPackage": "Not established; QA resources patched after installed frozen beta"
+  },
+  "boundedInterruptionAttempt": {
+    "actualHost": "ChatGPT",
+    "completionReceiptReceived": true,
+    "lostResponseInduced": false,
+    "additionalNativeSaveEffects": 1,
+    "totalNativeSaveEffects": 3,
+    "allowedSaveEffectBudget": 8,
+    "networkLoggingEnabled": false,
+    "temporaryNetworkPresetRestored": "No throttling",
+    "devToolsClosed": true,
+    "failedReadAfterKnownSave": "Not exercised"
+  }
+}

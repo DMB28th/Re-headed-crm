@@ -1,0 +1,79 @@
+{
+  "sourceCommit": "7b34edd79301c7c7ee885893826dc9c5e14e2236",
+  "apiVersion": "67.0",
+  "checkOnly": true,
+  "persisted": false,
+  "archiveSha256": "9019ef225ee81cf8033bd7ea897b06621f0c13601a873c7d58c7c3eabe0e9cd1",
+  "status": "Failed",
+  "componentErrors": 0,
+  "testErrors": 8,
+  "expectedTests": 126,
+  "exactMethodSet": true,
+  "passed": 118,
+  "failed": 8,
+  "behavioralRed": true,
+  "failures": [
+    {
+      "class": "CardstackConnectionCrossContextTest",
+      "method": "identicalSaveAcrossVisibilityIsNoop",
+      "assertionFailure": true,
+      "expected": "1",
+      "actual": "2"
+    },
+    {
+      "class": "CardstackConnectionCrossContextTest",
+      "method": "issuerDriftWithoutEndpointsIsStale",
+      "assertionFailure": true,
+      "expected": "Stale",
+      "actual": "Needs verification"
+    },
+    {
+      "class": "CardstackConnectionCrossContextTest",
+      "method": "knownBaselineSurvivesOutsideNoop",
+      "assertionFailure": true,
+      "expected": "1",
+      "actual": "2"
+    },
+    {
+      "class": "CardstackConnectionCrossContextTest",
+      "method": "legacyDigestNoopRetainsBinding",
+      "assertionFailure": true,
+      "expected": "1",
+      "actual": "2"
+    },
+    {
+      "class": "CardstackConnectionCrossContextTest",
+      "method": "outsideSaveResolvesMatchingSite",
+      "assertionFailure": true,
+      "expected": "Needs verification",
+      "actual": "Stale"
+    },
+    {
+      "class": "CardstackConnectionCrossContextTest",
+      "method": "studioSaveAllowsChatgptExchange",
+      "assertionFailure": true,
+      "expected": "200",
+      "actual": "503"
+    },
+    {
+      "class": "CardstackConnectionCrossContextTest",
+      "method": "studioSaveAllowsClaudeExchange",
+      "assertionFailure": true,
+      "expected": "200",
+      "actual": "503"
+    },
+    {
+      "class": "CardstackConnectionCrossContextTest",
+      "method": "unknownBaselineDoesNotClaimDomainChangeProof",
+      "assertionFailure": true,
+      "expected": "Needs verification",
+      "actual": "Stale"
+    }
+  ],
+  "limits": [
+    "Eight targeted behavioral assertions failed; prior109 methods passed.",
+    "Tests use real admin/ordinary permission assignments and repository rows; only supported platform context getters are test simulated.",
+    "No persistent deployment, permission grants, Site, guest, OAuth, schedules or JWT settings changed.",
+    "Actual client, live Studio, fresh installation and initially unknown domain-baseline proof remain unclaimed."
+  ]
+}

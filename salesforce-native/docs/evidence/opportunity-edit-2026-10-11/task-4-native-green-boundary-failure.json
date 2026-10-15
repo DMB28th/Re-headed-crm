@@ -1,0 +1,94 @@
+{
+  "sourceHead": "ff1a8d63f1885860b03004bd2b9c0a4dd698e563",
+  "zipSha256": "14aee5a378e00a56af77d42d5d2fdcd6b5c233e9accc4d039a531fce59d23d5b",
+  "apiVersion": "67.0",
+  "cliExit": 0,
+  "errorName": null,
+  "status": "Failed",
+  "done": true,
+  "checkOnly": true,
+  "compileErrorCount": 0,
+  "testsRun": 272,
+  "testFailures": 1,
+  "passed": 271,
+  "failures": [
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "decodedUtf8ExactLimitReachesDomain",
+      "type": "System.AssertException"
+    }
+  ],
+  "coverage": [
+    {
+      "class": "CardstackOpportunityWriteService",
+      "covered": 100,
+      "total": 107,
+      "percent": 93.458
+    },
+    {
+      "class": "CardstackOpportunityEditDomain",
+      "covered": 128,
+      "total": 142,
+      "percent": 90.141
+    },
+    {
+      "class": "CardstackOpportunityWriteAudit",
+      "covered": 28,
+      "total": 28,
+      "percent": 100.0
+    },
+    {
+      "class": "CardstackOpportunityEditRepository",
+      "covered": 235,
+      "total": 256,
+      "percent": 91.797
+    },
+    {
+      "class": "CardstackOpportunityEditTypes",
+      "covered": 56,
+      "total": 65,
+      "percent": 86.154
+    },
+    {
+      "class": "CardstackOpportunityEditService",
+      "covered": 210,
+      "total": 235,
+      "percent": 89.362
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapter",
+      "covered": 218,
+      "total": 242,
+      "percent": 90.083
+    },
+    {
+      "class": "CardstackOpportunityStageProvider",
+      "covered": 57,
+      "total": 61,
+      "percent": 93.443
+    },
+    {
+      "class": "CardstackOpportunitySelector",
+      "covered": 45,
+      "total": 52,
+      "percent": 86.538
+    },
+    {
+      "class": "CardstackOpportunityActionPolicy",
+      "covered": 20,
+      "total": 20,
+      "percent": 100.0
+    }
+  ],
+  "metadataPersisted": false,
+  "businessRecordsSaved": false,
+  "proofScope": "Compiled native candidate271/272 assertions passed; exact-boundary fixture received connection-unavailable rather than invalid-interaction",
+  "safeFailureCodes": {
+    "expected": "INVALID_INTERACTION",
+    "actual": "CONNECTION_UNAVAILABLE"
+  },
+  "reviews": [
+    "task-4-algorithm-spec-review.md: Approved",
+    "task-4-algorithm-quality-review.md: Approved"
+  ]
+}

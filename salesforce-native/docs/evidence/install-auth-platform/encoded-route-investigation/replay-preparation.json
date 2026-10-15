@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "stage": "C",
+  "phase": "prepared",
+  "sourceCommit": "f41b4baa0a67b428323b209a2cdd791a13a208a8",
+  "review": {
+    "spec": "Pass",
+    "quality": "Approved",
+    "blockingFindings": 0
+  },
+  "offlineVerification": {
+    "focusedTests": 64,
+    "controllerTests": 254,
+    "rootEntrypointTests": 14,
+    "rootCompositionModules": 8,
+    "allPassed": true
+  },
+  "previousClosure": {
+    "stage": "B",
+    "sealedFiles": 13,
+    "verified": true
+  },
+  "privatePreparation": {
+    "exclusiveJournal": true,
+    "historicalDateTransitions": 12,
+    "installedExactSourceModules": 9
+  },
+  "liveRequests": 0,
+  "liveMutations": 0,
+  "liveExecutionApproved": false,
+  "freshCurrentBaseline": "Pending",
+  "originalMeasurementsChanged": false
+}

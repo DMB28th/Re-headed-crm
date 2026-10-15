@@ -1,0 +1,14 @@
+<template>
+    <section class="slds-box slds-m-bottom_large">
+        <h2 class="slds-text-heading_medium">In-chat Flow screens</h2>
+        <p class="slds-m-vertical_small">Prepare the exact active version for compatibility review. Supported screens run in the shared record workspace; record changes still require review and confirmation. Unsupported Flows can use the existing Salesforce launch cards.</p>
+        <lightning-combobox label="Active screen Flow" options={options} value={selectedId} onchange={handleSelection} disabled={busy}></lightning-combobox>
+        <lightning-button label="Prepare native metadata" onclick={prepare} disabled={disabled} class="slds-m-top_small"></lightning-button>
+        <template if:true={busy}><lightning-spinner alternative-text="Preparing Flow metadata" size="small"></lightning-spinner></template>
+        <template if:true={error}><p role="alert" class="slds-m-top_small">{error}</p></template>
+        <template if:true={verdict}><p role="status" class="slds-m-top_small">Compatibility: {verdict}</p></template>
+        <template for:each={issues} for:item="issue"><p key={issue.key}>{issue.code} · {issue.path} · {issue.reason}</p></template>
+        <template if:true={unknown}><lightning-button label="Check saved candidate" onclick={checkSaved} disabled={busy}></lightning-button></template>
+        <template if:true={hasPrepared}><p class="slds-m-top_small">Candidate saved. Review &amp; Publish before configuring an in-chat action on a record layout.</p><lightning-button label="Review &amp; Publish" onclick={openPublish} disabled={busy}></lightning-button></template>
+    </section>
+</template>

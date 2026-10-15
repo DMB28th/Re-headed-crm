@@ -1,0 +1,36 @@
+{
+  "source": "8ffd115f73b5d13fb2986e7af6444ca06c16de88",
+  "deployStatus": "Succeeded",
+  "deploySuccess": true,
+  "deployComponents": 2,
+  "componentErrors": 0,
+  "testsExecuted": 0,
+  "retrieveStatus": "Succeeded",
+  "retrieveSuccess": true,
+  "retrievedFilesHashMatched": 4,
+  "runtimeSha256": "4a01a3718f66a4c20cb7ffb12b554890f8afa6935ac744679f4635c2197bcd38",
+  "previewSha256": "ab1d9be19fb11c0d8e8d03b40e35c26a8b6a90b982c5db5b492abd5abf718b53",
+  "environment": "Installed beta0.1.0.11 plus two reviewed UI-resource QA corrections",
+  "nativeBrowserRetest": "STUDIO_SYNTHETIC_PASS",
+  "actualClientRetest": "NOT_RUN",
+  "noAdditionalPackageOrOrg": true,
+  "noJwtSettingsChanged": true,
+  "evidenceLevels": [
+    "native",
+    "renderer"
+  ],
+  "studioCases": [
+    "three-field click review",
+    "calendar error retains drafts and focuses date",
+    "Back retains three proposals",
+    "single-line Enter reviews",
+    "Cancel resets synthetic draft",
+    "Save disabled",
+    "generic textarea Enter inserts newline",
+    "generic required error focuses field",
+    "large integer exact",
+    "explicit Clear distinct in Review"
+  ],
+  "observedAt": "2026-10-12T23:35:51.956829+00:00",
+  "proofLimits": "Actual Salesforce-hosted synthetic preview; no native Stage, governed confirmation, CRM save, receipt or actual chat host proof."
+}

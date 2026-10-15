@@ -12,7 +12,7 @@
             <p class="field-api">{field.api}</p><lightning-input label="Display label" value={field.label} onchange={changeLabel}></lightning-input>
             <lightning-combobox label="Placement" value={field.column} options={columnOptions} onchange={changeColumn}></lightning-combobox>
             <template if:true={hasMoveOptions}><lightning-combobox label="Move to section" options={moveOptions} value="" placeholder="Choose section" onchange={changeSection}></lightning-combobox></template>
-            <lightning-input type="checkbox" label="Editable from chat" checked={field.editable} onchange={changeEditable}></lightning-input>
-        </div></details>
+            <lightning-input type="checkbox" label="Allow chat edits after publication" checked={field.editable} onchange={changeEditable}></lightning-input>
+        <p class="slds-text-color_weak">Chat edits also require object write policy, field access and no restriction. Read only disables editing; required values must be supplied.</p></div></details>
     </div>
 </template>

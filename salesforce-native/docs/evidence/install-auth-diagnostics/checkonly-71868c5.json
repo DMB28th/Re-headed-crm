@@ -1,0 +1,48 @@
+{
+  "sourceCommit": "71868c55f669a68bf92f2538ff6d7d91cc66e57b",
+  "apiVersion": "67.0",
+  "checkOnly": true,
+  "persisted": false,
+  "archiveSha256": "2b7b5b9998bb6bf329853ccf063821111888de84b34b547194a9f78d8b8fc470",
+  "resourceSha256": "f3d8ac827fbdd1c343b15b24df9a85d7e9960cd35fc21ae5af82bfdb06124b8d",
+  "status": "Succeeded",
+  "componentErrors": 0,
+  "testErrors": 0,
+  "expectedTests": 109,
+  "exactMethodSet": true,
+  "passed": 109,
+  "failed": 0,
+  "coverage": [
+    {
+      "class": "CardstackConnectionRetention",
+      "covered": 14,
+      "locations": 15
+    },
+    {
+      "class": "CardstackConnectionDiagnostics",
+      "covered": 152,
+      "locations": 156
+    },
+    {
+      "class": "CardstackMcpDispatcher",
+      "covered": 93,
+      "locations": 98
+    },
+    {
+      "class": "CardstackConnectionTypes",
+      "covered": 63,
+      "locations": 63
+    },
+    {
+      "class": "CardstackMcpIngress",
+      "covered": 84,
+      "locations": 89
+    }
+  ],
+  "limits": [
+    "CheckOnly tests do not establish live client, fresh installation, lifecycle or Studio cross-context acceptance.",
+    "No permission sets, schedule creation, Site, guest or OAuth metadata included.",
+    "No persistent deployment or JWT setting changes.",
+    "Initial replay serialization mismatch cause remains unobserved; strengthened exact semantic/millisecond/durable-state replay test passed."
+  ]
+}

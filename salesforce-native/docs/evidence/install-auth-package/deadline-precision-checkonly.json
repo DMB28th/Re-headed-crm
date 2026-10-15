@@ -1,0 +1,55 @@
+{
+  "capturedAt": "2026-10-11T12:06:30.283434+00:00",
+  "sourceCommit": "d52ec656db0e144fe65b734c41f62534b8e5a931",
+  "review": "Spec PASS; quality APPROVE",
+  "target": "Owned disposable API67 scratch org",
+  "deploymentMode": "checkOnly; no persistent source changes",
+  "red": {
+    "status": "Failed",
+    "checkOnly": true,
+    "componentErrors": 0,
+    "testsCompleted": 36,
+    "testErrors": 1,
+    "failures": [
+      {
+        "class": "CardstackConnectionDiagnosticsTest",
+        "method": "persistedDeadlineMatchesSerializedOpenAndReceipt",
+        "message": "System.AssertException: Assertion Failed: Returned deadline has no milliseconds: Expected: 0, Actual: 29"
+      }
+    ],
+    "sourceHashes": {
+      "CardstackConnectionDiagnostics.cls": "1659f08120c2ac5d5b82fea04aec7a01970d3c2106c478f6f73b9328334fe053",
+      "CardstackConnectionDiagnosticsTest.cls-meta.xml": "17e31f2473b0c9f7048b434edab7d12261a9b8a0b9ede833cb9c3141eeeccb7b",
+      "CardstackConnectionDiagnosticsTest.cls": "11b9d453d6b18f510244f1553dcd4e6da2f4249356a1c7595f7aa10e5559bb38",
+      "CardstackConnectionDiagnostics.cls-meta.xml": "17e31f2473b0c9f7048b434edab7d12261a9b8a0b9ede833cb9c3141eeeccb7b"
+    },
+    "coverage": [
+      {
+        "class": "CardstackConnectionDiagnostics",
+        "covered": 149,
+        "total": 156
+      }
+    ]
+  },
+  "green": {
+    "status": "Succeeded",
+    "checkOnly": true,
+    "componentErrors": 0,
+    "testsCompleted": 37,
+    "testErrors": 0,
+    "failures": [],
+    "sourceHashes": {
+      "CardstackConnectionDiagnostics.cls": "c078608c22e619647b64ae98d2597f782d341817db8dc2d8dd018da0a21aa769",
+      "CardstackConnectionDiagnosticsTest.cls-meta.xml": "17e31f2473b0c9f7048b434edab7d12261a9b8a0b9ede833cb9c3141eeeccb7b",
+      "CardstackConnectionDiagnosticsTest.cls": "11b9d453d6b18f510244f1553dcd4e6da2f4249356a1c7595f7aa10e5559bb38",
+      "CardstackConnectionDiagnostics.cls-meta.xml": "17e31f2473b0c9f7048b434edab7d12261a9b8a0b9ede833cb9c3141eeeccb7b"
+    },
+    "coverage": [
+      {
+        "class": "CardstackConnectionDiagnostics",
+        "covered": 151,
+        "total": 158
+      }
+    ]
+  }
+}

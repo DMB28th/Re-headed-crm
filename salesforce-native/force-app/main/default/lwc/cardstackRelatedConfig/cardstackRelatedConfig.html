@@ -1,0 +1,20 @@
+<template>
+    <p class="slds-m-bottom_small">Related lists share this record layout’s draft and Review &amp; Publish. Selecting a list does not grant edit access to its records.</p>
+    <template if:true={loading}><lightning-spinner alternative-text="Loading native relationships" size="small"></lightning-spinner></template>
+    <template if:true={error}><p role="alert" class="slds-text-color_error">{error}</p></template>
+    <template for:each={entries} for:item="entry">
+        <section key={entry.key} class="slds-box slds-m-bottom_small">
+            <h3 class="slds-text-heading_small">{entry.relationship}</h3><p>{entry.displayColumns}</p>
+            <lightning-button label="Move up" data-index={entry.index} data-direction="up" onclick={moveList} disabled={disabled}></lightning-button>
+            <lightning-button label="Move down" data-index={entry.index} data-direction="down" onclick={moveList} disabled={disabled}></lightning-button>
+            <lightning-button label="Edit" data-index={entry.index} onclick={editList} disabled={disabled}></lightning-button>
+            <lightning-button label="Remove" data-index={entry.index} onclick={removeList} disabled={disabled}></lightning-button>
+        </section>
+    </template>
+    <lightning-combobox label="Native relationship" options={relationshipOptions} value={relationship} onchange={handleRelationship} disabled={disabled}></lightning-combobox>
+    <lightning-dual-listbox label="Columns in display order" source-label="Available" selected-label="Displayed" options={columnOptions} value={selectedColumns} onchange={handleColumns} disabled={disabled}></lightning-dual-listbox>
+    <lightning-combobox label="Sort by" options={sortOptions} value={sortField} onchange={handleSort} disabled={disabled}></lightning-combobox>
+    <lightning-combobox label="Direction" options={directionOptions} value={direction} onchange={handleDirection} disabled={disabled}></lightning-combobox>
+    <lightning-input label="Rows per page" type="number" min="1" max="50" step="1" value={pageSize} onchange={handlePageSize} disabled={disabled}></lightning-input>
+    <lightning-button label={submitLabel} onclick={addList} disabled={addDisabled} class="slds-m-top_small"></lightning-button>
+</template>

@@ -1,0 +1,61 @@
+{
+  "sourceHead": "22f3cc50cf5356e05a31bb18443d0c66cc3adfd6",
+  "zipSha256": "270a555e26315d402eaa8c12b87e0077215434e6766c22e15fcc5f5c0a2744f3",
+  "apiVersion": "67.0",
+  "cliExit": 0,
+  "errorName": null,
+  "status": "Failed",
+  "done": true,
+  "checkOnly": true,
+  "compileErrorCount": 6,
+  "testsRun": 0,
+  "testFailures": 0,
+  "passed": 0,
+  "failures": [],
+  "coverage": [],
+  "compileErrors": [
+    {
+      "fullName": "CardstackMcpDispatcher",
+      "lineNumber": 21,
+      "columnNumber": 13,
+      "problem": "Dependent class is invalid and needs recompilation:\n Class CardstackOpportunityMcpAdapter : Method does not exist or incorrect signature: void tool(Map<String,Object>, String, Map<String,Object>, Boolean, Boolean) from the type CardstackOpportunityMcpAdapter"
+    },
+    {
+      "fullName": "CardstackMcpDispatcherTest",
+      "lineNumber": 21,
+      "columnNumber": 13,
+      "problem": "Dependent class is invalid and needs recompilation:\n Class CardstackMcpDispatcher : Dependent class is invalid and needs recompilation:\n Class CardstackOpportunityMcpAdapter : Method does not exist or incorrect signature: void tool(Map<String,Object>, String, Map<String,Object>, Boolean, Boolean) from the type CardstackOpportunityMcpAdapter"
+    },
+    {
+      "fullName": "CardstackOpportunityMcpAdapter",
+      "lineNumber": 21,
+      "columnNumber": 13,
+      "problem": "Method does not exist or incorrect signature: void tool(Map<String,Object>, String, Map<String,Object>, Boolean, Boolean) from the type CardstackOpportunityMcpAdapter"
+    },
+    {
+      "fullName": "CardstackOpportunityMcpAdapter",
+      "lineNumber": 126,
+      "columnNumber": 21,
+      "problem": "Identifier name is reserved: number"
+    },
+    {
+      "fullName": "CardstackOpportunityMcpAdapter",
+      "lineNumber": 181,
+      "columnNumber": 9,
+      "problem": "Invalid loop variable type expected Object was String"
+    },
+    {
+      "fullName": "CardstackOpportunityMcpAdapterTest",
+      "lineNumber": 21,
+      "columnNumber": 13,
+      "problem": "Dependent class is invalid and needs recompilation:\n Class CardstackOpportunityMcpAdapter : Method does not exist or incorrect signature: void tool(Map<String,Object>, String, Map<String,Object>, Boolean, Boolean) from the type CardstackOpportunityMcpAdapter"
+    }
+  ],
+  "metadataPersisted": false,
+  "businessRecordsSaved": false,
+  "proofScope": "Source reviews Approved/local checks passed, but native candidate failed compilation; zero tests ran",
+  "reviews": [
+    "task-4-algorithm-spec-review.md: Approved before compilation",
+    "task-4-algorithm-quality-review.md: Approved before compilation"
+  ]
+}

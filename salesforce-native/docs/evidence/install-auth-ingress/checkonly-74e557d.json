@@ -1,0 +1,34 @@
+{
+  "sourceCommit": "74e557d",
+  "zipSha256": "c6aff98c6a23e8281ec3c6a3f496358b07cdfabed0354f9961b9e8be183cadf5",
+  "apiVersion": "67.0",
+  "checkOnly": true,
+  "status": "Succeeded",
+  "persisted": false,
+  "componentErrors": 0,
+  "expectedTestCount": 67,
+  "exactMethodSet": true,
+  "passing": 67,
+  "failing": 0,
+  "coverage": [
+    {
+      "className": "CardstackMcpIngress",
+      "totalLocations": 89,
+      "uncoveredLocations": 5
+    },
+    {
+      "className": "CardstackMcpDispatcher",
+      "totalLocations": 85,
+      "uncoveredLocations": 5
+    }
+  ],
+  "liveAccessChanges": false,
+  "jwtSettingsChanged": false,
+  "originalTddRedObserved": false,
+  "limits": [
+    "Unit seams are not live guest/provider authentication proof",
+    "No actual renderer or host proof",
+    "Reserved-separator ingress normalization unmeasured",
+    "No production deployment or release approval"
+  ]
+}

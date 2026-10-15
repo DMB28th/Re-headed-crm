@@ -1,0 +1,41 @@
+{
+  "checkedAt": "2026-10-09T12:02:50.363Z",
+  "phase": "green-r5",
+  "checkOnly": true,
+  "done": true,
+  "success": true,
+  "status": "Succeeded",
+  "componentErrors": 0,
+  "testErrors": 0,
+  "testsCompleted": 28,
+  "componentsTotal": 17,
+  "componentFailures": [],
+  "testFailures": [],
+  "coverage": [
+    {
+      "name": "CardstackConnectionAccess",
+      "locations": 6,
+      "uncovered": 0
+    },
+    {
+      "name": "CardstackConnectionSetup",
+      "locations": 9,
+      "uncovered": 0
+    },
+    {
+      "name": "CardstackConnectionSetupRepository",
+      "locations": 103,
+      "uncovered": 5
+    },
+    {
+      "name": "CardstackConnectionContext",
+      "locations": 35,
+      "uncovered": 8
+    },
+    {
+      "name": "CardstackConnectionTypes",
+      "locations": 59,
+      "uncovered": 6
+    }
+  ]
+}

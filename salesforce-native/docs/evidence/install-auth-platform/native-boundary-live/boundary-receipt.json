@@ -1,0 +1,77 @@
+{
+  "checkedAt": "2026-10-09T00:39:08.667Z",
+  "testedActor": "Existing admin only",
+  "ordinaryUserBehavior": "Unknown",
+  "controls": [
+    {
+      "label": "dedicated",
+      "identityStatus": 200,
+      "identityValid": true,
+      "standardRestStatus": 200,
+      "siteStatus": 200,
+      "siteClassification": "fixture_named_success",
+      "envelope": {
+        "handlerReached": true,
+        "namedActor": true
+      },
+      "transportFailure": false
+    },
+    {
+      "label": "unrelated",
+      "identityStatus": 200,
+      "identityValid": true,
+      "standardRestStatus": 200,
+      "siteStatus": 200,
+      "siteClassification": "fixture_named_success",
+      "envelope": {
+        "handlerReached": true,
+        "namedActor": true
+      },
+      "transportFailure": false
+    },
+    {
+      "label": "identity",
+      "identityStatus": 200,
+      "identityValid": true,
+      "standardRestStatus": 401,
+      "siteStatus": 401,
+      "siteClassification": "provider_denied",
+      "transportFailure": false
+    },
+    {
+      "label": "anonymous",
+      "siteStatus": 401,
+      "siteClassification": "fixture_guest_guard_denied",
+      "envelope": {
+        "handlerReached": true,
+        "namedActor": false
+      },
+      "transportFailure": false
+    },
+    {
+      "label": "fabricated",
+      "siteStatus": 401,
+      "siteClassification": "provider_denied",
+      "transportFailure": false
+    }
+  ],
+  "sameActor": true,
+  "sameOrg": true,
+  "wrongOrg": true,
+  "expiredToken": "Unavailable",
+  "audienceMapping": "Unknown",
+  "wrongOrgControl": {
+    "identityStatus": 200,
+    "ownRestStatus": 200,
+    "targetStatus": 401,
+    "transportFailure": false
+  },
+  "nested404": true,
+  "validityControlsPassed": true,
+  "apiNamedSuccess": true,
+  "identityOnlyNamedSuccess": false,
+  "controlsDenied": true,
+  "nativeApiBoundaryObserved": true,
+  "nativeScopePreHandlerDenied": true,
+  "boundedAdminBoundaryEligible": true
+}

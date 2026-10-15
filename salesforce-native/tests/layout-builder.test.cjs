@@ -4,10 +4,10 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 // Exercise the component's actual model and event handlers without a Salesforce DOM.
 const source = fs.readFileSync(__dirname + '/../force-app/main/default/lwc/cardstackObjectConfig/cardstackObjectConfig.js', 'utf8')
-  .replace(/^import .*;$/gm, '').replace(/^\s*@wire\(.*\)\s*$/gm, '').replace(/@track\s+/g, '')
+  .replace(/^import .*;$/gm, '').replace(/^\s*@wire\(.*\)\s*$/gm, '').replace(/@(track|api)\s+/g, '')
   .replace('export default class CardstackObjectConfig', 'globalThis.Builder = class CardstackObjectConfig');
-const context = { LightningElement: class {}, ShowToastEvent: class {}, setTimeout, console };
-vm.runInNewContext(source, context);
+const context = { LightningElement: class { dispatchEvent() {} }, ShowToastEvent: class {}, CustomEvent:class {}, setTimeout, console };
+require('./studio-authoring-fixture.cjs').install(context);vm.runInNewContext(source, context);
 function builder() {
   const b = new context.Builder(); b.selectedObject = 'Account'; b.toast = () => {};
   b.wiredFieldsResult = { data: ['Phone', 'Website', 'Description', 'Industry'].map(api => ({ api, label: api, type: 'STRING' })) };
@@ -155,18 +155,25 @@ test('guided actions reject empty or duplicate mapped targets before staging', a
   b.newAction.mappings=[{fieldApi:'Description',source:'current'},{fieldApi:'Description',source:'constant',value:'0'}];
   await b.addAction();assert.equal(saved,0);
 });
-test('guided action stages ordered defaults with literal zero and empty text', async () => {
+test('new Account edits reject legacy defaults and stage ordered current mappings', async () => {
   const b = builder(); b.wiredFieldsResult.data.push({ api: 'NumberOfEmployees', label: 'Employees', type: 'INTEGER' });
   b.workingPermissions.writeEnabled = true;
   b.workingSections = [b.makeSection('Edit', b.enrichFields([{ api: 'Description', editable: true }, { api: 'NumberOfEmployees', editable: true }]))];
   let saved = 0; b.persistWorkingModel = async () => saved++;
   b.newAction = { name: 'review', label: 'Review Account', type: 'record-edit', mappings: [{ fieldApi: 'Description', source: 'constant', value: '' }, { fieldApi: 'NumberOfEmployees', source: 'constant', value: '0' }] };
+  await b.addAction(); assert.equal(saved, 0);
+  b.recordEditCapability=require('./studio-authoring-fixture.cjs').capability('Account',b.wiredFieldsResult.data.map(field=>({...field,updateable:true})));
+  b.newAction.mappings=[{fieldApi:'Description',source:'current'},{fieldApi:'NumberOfEmployees',source:'current'}];
   await b.addAction(); assert.equal(saved, 1);
-  const action = JSON.parse(b.buildLayoutJson()).actions[0]; assert.equal(action.mappings[0].value, ''); assert.equal(action.mappings[1].value, '0');
+  assert.deepEqual(JSON.parse(b.buildLayoutJson()).actions[0].mappings,[{fieldApi:'Description',source:'current'},{fieldApi:'NumberOfEmployees',source:'current'}]);
 });
 test('a twenty-first action is rejected without staging or hiding existing buttons', async () => {
   const b=builder(); b.workingActions=Array.from({length:20},(_,i)=>({name:'existing_'+i})); b.publishedFlows=[{apiName:'PublishedFlow'}];
   let saved=0;b.persistWorkingModel=async()=>saved++;
   b.newAction={name:'twenty_first',label:'Extra',type:'flow',flowApiName:'PublishedFlow'};await b.addAction();
   assert.equal(saved,0);assert.equal(b.workingActions.length,20);
+});
+
+test('permissions-only and action-only edits count as unfinished shared layout work',()=>{
+ const b=builder();b.parseWorkingModel('{"highlights":[{"api":"Industry"}],"permissions":{"writeEnabled":false,"fieldDenylist":[]}}');b.savedLayoutJson=b.buildLayoutJson();assert.equal(b.isDirty,false);b.handleWriteToggle({target:{checked:true}});assert.equal(b.isDirty,true);b.savedLayoutJson=b.buildLayoutJson();b.workingActions=[{name:'later',label:'Later',type:'url',enabled:false}];assert.equal(b.isDirty,true);
 });

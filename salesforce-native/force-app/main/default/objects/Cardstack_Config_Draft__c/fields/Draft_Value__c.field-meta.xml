@@ -4,7 +4,7 @@
     <description>The proposed new value. Applied to the live config on publish.</description>
     <externalId>false</externalId>
     <label>Draft Value</label>
-    <length>32768</length>
+    <length>131072</length>
     <required>false</required>
     <trackTrending>false</trackTrending>
     <type>LongTextArea</type>

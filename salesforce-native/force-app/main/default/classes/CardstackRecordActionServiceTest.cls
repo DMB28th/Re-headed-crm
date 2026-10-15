@@ -66,4 +66,30 @@
   config.put('actions',actions);c.Value__c=JSON.serialize(config);update c;
   System.assertEquals(20,CardstackRecordActionService.available('Account').size());
  }}
+ @IsTest static void opportunityFixedPublishedPresetResolves(){System.runAs(new User(Id=UserInfo.getUserId())){
+  insert new Cardstack_Config__c(Name='layout:Opportunity:default',Is_Active__c=true,Value__c=opportunityLayout());
+  CardstackRecordActionService.Definition resolved;String failure;
+  Test.startTest();
+  try{resolved=CardstackRecordActionService.resolve('Opportunity','edit_opportunity');}
+  catch(CardstackOpportunityActionPolicy.PolicyException error){failure=error.getMessage();}
+  catch(CardstackRecordActionService.ActionException error){failure=error.getMessage();}
+  Test.stopTest();
+  Assert.isNull(failure,'Valid published Opportunity preset must resolve through the narrow branch');
+  Assert.isNotNull(resolved,'Valid fixed action must be executable');
+  Assert.areEqual('record-edit',resolved.type,'Preset preserves the published record-edit type');
+  Assert.areEqual(3,resolved.mappings.size(),'Exactly three fixed current mappings');
+  Assert.areEqual('StageName',resolved.mappings[0].fieldApi,'Stage is first');
+  Assert.areEqual('CloseDate',resolved.mappings[1].fieldApi,'Date is second');
+  Assert.areEqual('Amount',resolved.mappings[2].fieldApi,'Amount is third');
+  for(CardstackRecordActionService.Mapping mapping:resolved.mappings)Assert.areEqual('current',mapping.source,'Only the server-bound current record supplies defaults');
+ }}
+ @IsTest static void opportunityExtraMappingCannotResolve(){System.runAs(new User(Id=UserInfo.getUserId())){
+  String invalid=opportunityLayout().replace('{"fieldApi":"Amount","source":"current"}','{"fieldApi":"Amount","source":"current"},{"fieldApi":"Name","source":"current"}');
+  insert new Cardstack_Config__c(Name='layout:Opportunity:default',Is_Active__c=true,Value__c=invalid);
+  Test.startTest();
+  try{CardstackRecordActionService.resolve('Opportunity','edit_opportunity');Assert.fail('Extra Opportunity target must not resolve');}
+  catch(CardstackOpportunityActionPolicy.PolicyException error){Assert.areEqual('INVALID_PRESET',error.getMessage(),'Resolver must enforce fixed preset validation');}
+  Test.stopTest();
+ }}
+ private static String opportunityLayout(){return '{"permissions":{"writeEnabled":true},"fields":[{"api":"StageName","editable":true},{"api":"CloseDate","editable":true},{"api":"Amount","editable":true}],"actions":[{"name":"edit_opportunity","label":"Edit Opportunity","enabled":true,"type":"record-edit","mappings":[{"fieldApi":"StageName","source":"current"},{"fieldApi":"CloseDate","source":"current"},{"fieldApi":"Amount","source":"current"}]}]}';}
 }

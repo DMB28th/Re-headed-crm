@@ -1,0 +1,8 @@
+{
+  "source": "controller confirmation",
+  "tokensRemoved": true,
+  "authorizationUrlsRemoved": true,
+  "clientConfigRemoved": true,
+  "otherOrgTokenCopyRemoved": true,
+  "credentialsOrIdentifiersIncluded": false
+}

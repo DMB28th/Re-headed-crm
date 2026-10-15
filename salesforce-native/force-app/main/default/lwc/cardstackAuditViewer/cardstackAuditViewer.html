@@ -62,7 +62,7 @@
         </div>
 
         <div class="slds-grid slds-grid_align-spread slds-m-bottom_small">
-            <p class="slds-text-color_weak">{rows.length} row(s), newest first. Click a row for details.</p>
+            <p class="slds-text-color_weak">{rows.length} row(s), newest first. Open an entry for details.</p>
             <lightning-button
                 label="Export CSV"
                 icon-name="utility:download"
@@ -71,18 +71,20 @@
             </lightning-button>
         </div>
 
+        <template if:true={loading}><lightning-spinner alternative-text="Loading Activity" size="small"></lightning-spinner></template>
+        <template if:true={loadError}><p role="alert" class="slds-text-color_error">{loadError}</p></template>
         <!-- Rows -->
         <template if:true={rows.length}>
             <ul class="slds-has-dividers_around-space">
                 <template for:each={rows} for:item="r">
                     <li key={r.Id} class="slds-item">
-                        <div class="slds-grid slds-grid_vertical-align-center slds-p-around_x-small row-header"
-                             data-id={r.Id} onclick={toggleRow}>
+                        <button type="button" class="slds-grid slds-grid_vertical-align-center slds-p-around_x-small row-header"
+                             data-id={r.Id} onclick={toggleRow} aria-expanded={r.expanded} aria-label={r.expandLabel}>
                             <div class="slds-col slds-size_2-of-12">
                                 <p class="slds-text-body_small" title={r.fullTime}>{r.relativeTime}</p>
                             </div>
                             <div class="slds-col slds-size_2-of-12">
-                                <lightning-badge label={r.Action__c} class={r.actionBadgeClass}></lightning-badge>
+                                <lightning-badge label={r.actionLabel} class={r.actionBadgeClass}></lightning-badge>
                             </div>
                             <div class="slds-col slds-size_3-of-12">
                                 <p class="slds-text-body_small slds-truncate" title={r.Tool_Name__c}>{r.Tool_Name__c}</p>
@@ -100,7 +102,7 @@
                                     alternative-text="Expand">
                                 </lightning-icon>
                             </div>
-                        </div>
+                        </button>
 
                         <!-- Expanded detail -->
                         <template if:true={r.expanded}>

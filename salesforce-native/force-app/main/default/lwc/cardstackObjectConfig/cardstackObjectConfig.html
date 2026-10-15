@@ -32,12 +32,7 @@
                                 <template if:false={objectsLoading}>
                                     <ul>
                                         <template for:each={filteredObjects} for:item="o">
-                                            <li key={o.value}
-                                                data-value={o.value}
-                                                onmousedown={handleObjectSelect}
-                                                class="obj-option">
-                                                <span class="slds-truncate"><strong>{o.label}</strong></span>
-                                            </li>
+                                            <li key={o.value}><button type="button" data-value={o.value} onclick={handleObjectSelect} class="obj-option"><span class="slds-truncate"><strong>{o.label}</strong></span></button></li>
                                         </template>
                                     </ul>
                                     <template if:false={filteredObjects.length}>
@@ -62,25 +57,28 @@
                     </template>
                 </div>
             </div>
-            <div class="slds-col slds-size_1-of-3">
-                <lightning-combobox
-                    label="Audience"
-                    options={audienceOptions}
-                    value={audience}
-                    onchange={handleAudienceChange}>
-                </lightning-combobox>
-            </div>
         </div>
 
         <template if:true={selectedObject}>
-            <lightning-tabset variant="scoped">
+            <div class="authoring-status" role="status" aria-live="polite"><strong>{workingStatusLabel}</strong><span>{savedStatusLabel}</span><span>{liveStatusLabel}</span></div>
+            <p class="slds-text-color_weak slds-m-bottom_small">Fields, allowed edits and actions share one layout draft. Saving any of these includes your current layout changes.</p>
+            <template if:true={loading}><lightning-spinner alternative-text="Loading card configuration" size="small"></lightning-spinner></template>
+            <template if:true={saveError}><p role="alert" class="slds-text-color_error slds-m-bottom_small">{saveError}</p></template>
+            <template if:true={saveUnknown}><lightning-button label="Check saved state" onclick={checkSavedState} disabled={checkingSavedState}></lightning-button></template>
+            <div class="slds-m-bottom_small"><lightning-button label={saveLabel} variant="brand" onclick={stageLayout} disabled={cannotStage}></lightning-button><lightning-button label="Review & Publish" onclick={openPublish} class="slds-m-left_small"></lightning-button></div>
+            <c-cardstack-record-readiness items={readinessItems} onreadinessnavigate={handleReadinessNavigate}></c-cardstack-record-readiness>
+            <lightning-tabset variant="scoped" active-tab-value={activeSubview}>
+
+                <lightning-tab onactive={handleSubviewActive} label="Related" value="related">
+                    <c-cardstack-related-config object-api={selectedObject} value={relatedListDefinitions} disabled={saveDisabled} onrelatedchange={handleRelatedChange}></c-cardstack-related-config>
+                </lightning-tab>
 
                 <!-- ================= LAYOUTS: sections builder ================= -->
-                <lightning-tab label="Layouts" value="layouts">
+                <lightning-tab onactive={handleSubviewActive} label="Fields" value="layouts">
                     <div class="slds-m-top_small slds-m-bottom_small">
                         <p class="slds-text-color_weak slds-m-bottom_x-small">
                             Record card layout for {selectedObjectLabel}. Add highlight fields,
-                            organize the rest into sections, then stage the draft.
+                            organize the rest into sections, then save the draft.
                         </p>
                         <lightning-badge label={layoutStatusLabel} class={layoutStatusClass}></lightning-badge>
                         <template if:true={isDirty}>
@@ -96,7 +94,7 @@
                         <div class="toolbar-actions">
                             <lightning-button label="Add section" icon-name="utility:add" onclick={handleAddSection}></lightning-button>
                             <lightning-button label={previewToggleLabel} icon-name="utility:preview" onclick={togglePreview}></lightning-button>
-                            <lightning-button label="Stage Draft" variant="brand" onclick={stageLayout} disabled={cannotStage}></lightning-button>
+                            <lightning-button label={saveLabel} variant="brand" onclick={stageLayout} disabled={cannotStage}></lightning-button>
                         </div>
                     </div>
                     <div class="field-palette">
@@ -106,6 +104,7 @@
                             <lightning-combobox label="Add fields to section" variant="label-hidden" placeholder="Choose section" options={sectionTargetOptions} value={targetSectionKey} onchange={handleTargetSectionChange}></lightning-combobox>
                         </div>
                         <p class="palette-hint">Drag a field to Highlights or a column below. Use + to add to the selected section.</p>
+                        <template if:true={fieldsLoadError}><p role="alert" class="slds-text-color_error">{fieldsLoadError}</p><lightning-button label="Retry field metadata" onclick={refreshFieldCatalog}></lightning-button></template>
                         <template if:true={fieldsLoading}><lightning-spinner size="small" alternative-text="Loading fields"></lightning-spinner></template>
                         <ul class="palette-grid">
                             <template for:each={paletteFields} for:item="f">
@@ -170,7 +169,7 @@
                     </div>
                     <template if:true={showPreview}>
                         <div class="preview-panel">
-                            <div class="canvas-section-heading"><h3>Card preview</h3><lightning-combobox label="View as" variant="label-hidden" options={previewAudienceOptions} value={previewAudience} onchange={handlePreviewAudienceChange} class="preview-audience"></lightning-combobox></div>
+                            <div class="canvas-section-heading"><h3>Sample layout preview</h3></div>
                             <div class="mock-card">
                                 <h3>Sample Record Name</h3><p class="slds-text-color_weak">{selectedObjectLabel}</p>
                                 <template if:true={previewHasHighlights}><div class="preview-highlights"><template for:each={previewHighlightRows} for:item="h"><div key={h.key} class="ph-item"><p>{h.label}</p><strong>{h.sample.value}</strong></div></template></div></template>
@@ -184,7 +183,7 @@
                                 <template if:true={previewIsEmpty}><p>Nothing to preview.</p></template>
                                 <div class="slds-text-align_right slds-m-top_medium"><lightning-button label="Open in Salesforce" variant="brand" disabled></lightning-button></div>
                             </div>
-                            <p class="slds-text-color_weak slds-m-top_small">Sample values preview your card layout. Published layouts determine what appears in chat.</p>
+                            <p class="slds-text-color_weak slds-m-top_small">Synthetic sample values preview layout only. This preview does not simulate an audience or prove record access, field access, or successful chat execution.</p>
                         </div>
                     </template>
 
@@ -253,7 +252,7 @@
                     <!-- Stage bar -->
                     <div class="slds-m-top_medium slds-p-top_small stage-bar">
                         <lightning-button
-                            label="Stage Draft"
+                            label={saveLabel}
                             variant="brand"
                             onclick={stageLayout}
                             disabled={cannotStage}
@@ -266,46 +265,17 @@
                     </div>
                 </lightning-tab>
 
-                <!-- ================= LISTS (unchanged) ================= -->
-                <lightning-tab label="Lists" value="lists">
-                    <div class="slds-m-top_small">
-                        <p class="slds-text-color_weak slds-m-bottom_small">
-                            Chat list views and exposures for {selectedObjectLabel}.
-                        </p>
-                        <template if:true={staging.lists}>
-                            <lightning-badge
-                                label={listsStatusLabel}
-                                class={listsStatusClass}>
-                            </lightning-badge>
-                        </template>
-                        <lightning-textarea
-                            label="Lists JSON (draft)"
-                            value={draftValues.lists}
-                            onchange={handleDraftEdit}
-                            data-key="lists"
-                            class="slds-m-top_small json-editor">
-                        </lightning-textarea>
-                        <div class="slds-m-top_small">
-                            <lightning-button
-                                label="Stage Draft"
-                                variant="brand"
-                                onclick={stageLists}
-                                class="slds-m-right_x-small">
-                            </lightning-button>
-                            <lightning-button
-                                label="Load Live"
-                                onclick={loadLiveLists}>
-                            </lightning-button>
-                        </div>
-                    </div>
+                <!-- ================= LISTS ================= -->
+                <lightning-tab onactive={handleSubviewActive} label="Lists" value="lists">
+                    <c-cardstack-list-config object-api={selectedObject}></c-cardstack-list-config>
                 </lightning-tab>
 
                 <!-- ================= ACTIONS (visual) ================= -->
-                <lightning-tab label="Actions" value="actions">
+                <lightning-tab onactive={handleSubviewActive} label="Actions" value="actions">
                     <div class="slds-m-top_small">
                         <p class="slds-text-color_weak slds-m-bottom_small">
-                            Card actions for {selectedObjectLabel}. Toggle them on/off, add new ones,
-                            or remove them — changes are staged as a layout draft.
+                            Card actions for {selectedObjectLabel}. Edit a current-value action, toggle it,
+                            add one, or remove one. Changes are staged as a layout draft.
                         </p>
                         <template if:true={actionToggles.length}>
                             <lightning-datatable
@@ -313,6 +283,8 @@
                                 data={actionToggles}
                                 columns={actionColumns}
                                 onsave={handleActionToggleSave}
+                                oncellchange={handleActionDraftChange}
+                                oncancel={handleActionDraftCancel}
                                 onrowaction={handleActionRowAction}
                                 draft-values={actionDraftValues}>
                             </lightning-datatable>
@@ -323,24 +295,47 @@
                             </p>
                         </template>
                         <div class="slds-box slds-m-top_medium">
-                            <h3 class="slds-text-heading_small slds-m-bottom_small">Add action</h3>
-                            <div class="slds-grid slds-gutters">
-                                <div class="slds-col slds-size_1-of-4">
+                            <h3 class="slds-text-heading_small slds-m-bottom_small">{actionFormHeading}</h3>
+                            <p role="status">{recordEditUnavailableReason}</p>
+                            <template for:each={recordEditNoticeRows} for:item="notice"><p key={notice.key} class="slds-text-color_weak">{notice.message}</p></template>
+                            <lightning-combobox label="Process or flow" options={actionTargetOptions} value={actionTarget} onchange={handleActionTarget} disabled={isEditingAction}></lightning-combobox>
+                            <p class="slds-text-color_weak slds-m-vertical_small">Record edits require allowed layout fields and object write policy. Flow actions open Salesforce; chat actions review and confirm before saving.</p>
+                            <div class="slds-grid slds-wrap slds-gutters">
+                                <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3">
                                     <lightning-input label="Label" value={newAction.label} data-field="label" onchange={handleNewActionInput}></lightning-input>
                                 </div>
-                                <div class="slds-col slds-size_1-of-4">
-                                    <lightning-input label="Name (optional)" value={newAction.name} data-field="name" onchange={handleNewActionInput}></lightning-input>
+                                <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3">
+                                    <lightning-input label={actionNameLabel} value={newAction.name} data-field="name" onchange={handleNewActionInput} disabled={isEditingAction}></lightning-input>
                                 </div>
-                                <div class="slds-col slds-size_1-of-4">
-                                    <lightning-combobox label="Process or flow" options={actionTargetOptions} value={actionTarget} onchange={handleActionTarget}></lightning-combobox>
-                                </div>
-                                <div class="slds-col slds-size_1-of-4">
+                                <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3">
                                     <lightning-input label="Description" value={newAction.description} data-field="description" onchange={handleNewActionInput}></lightning-input>
                                 </div>
                             </div>
                             <p class="slds-m-top_small slds-text-color_weak">The current card supplies the record ID. Changes remain a draft until published.</p>
+                            <template if:true={isEditingAction}><p class="slds-text-color_weak">The launch name stays the same. Update saves this action and the current layout inputs as a draft.</p></template>
+                            <lightning-input type="checkbox" label="Action enabled after publication" checked={newAction.enabled} data-field="enabled" onchange={handleNewActionInput} class="slds-m-top_small"></lightning-input>
+                            <template if:true={isOpportunityAction}>
+                                <p class="slds-m-top_small">This governed preset edits Stage, Close date and Amount together, in that order. Each starts from its current record value. Publish the staged draft before it can launch in chat.</p>
+                                <template if:true={hasOpportunityAuthoringErrors}>
+                                    <div role="status" aria-live="polite" tabindex="0" aria-label="Opportunity preset requirements" class="slds-m-top_small">
+                                        <template for:each={opportunityErrorRows} for:item="error">
+                                            <p key={error.key} class="slds-text-color_error">{error.message}</p>
+                                        </template>
+                                    </div>
+                                </template>
+                                <c-cardstack-opportunity-preview layout={opportunityPreviewLayout}></c-cardstack-opportunity-preview>
+                            </template>
                             <template if:true={isGuidedAction}>
-                                <p class="slds-m-top_small">Choose editable text or integer fields. Mappings set starting values; users review every change and confirm before saving.</p>
+                                <p class="slds-m-top_small">{recordAuthoringNotice}</p>
+                                <template if:true={hasRecordAuthoringErrors}>
+                                    <div role="status" aria-live="polite" tabindex="0" aria-label="Record input requirements" class="slds-m-top_small">
+                                        <template for:each={recordErrorRows} for:item="error"><p key={error.key} class="slds-text-color_error">{error.message}</p></template>
+                                    </div>
+                                </template>
+                                <c-cardstack-opportunity-preview scenario={selectedObject} native-key-prefix={recordNativeKeyPrefix} fields={recordPreviewFields} layout={recordPreviewLayout}></c-cardstack-opportunity-preview>
+                            </template>
+                            <template if:true={isGuidedAction}>
+                                <p class="slds-m-top_small">Choose eligible editable fields. Users review every change and confirm before saving.</p>
                                 <template for:each={mappingRows} for:item="mapping">
                                     <div key={mapping.key} class="slds-grid slds-gutters slds-m-top_small">
                                         <div class="slds-col"><lightning-combobox label="Field to update" options={editableActionFields} value={mapping.fieldApi} data-index={mapping.index} data-field="fieldApi" onchange={handleMapping}></lightning-combobox></div>
@@ -349,47 +344,29 @@
                                             <template if:true={mapping.isField}><lightning-combobox label="Source field" options={exposedActionFields} value={mapping.sourceField} data-index={mapping.index} data-field="sourceField" onchange={handleMapping}></lightning-combobox></template>
                                             <template if:true={mapping.isConstant}><lightning-input label="Constant value (empty text allowed)" value={mapping.value} data-index={mapping.index} data-field="value" onchange={handleMapping}></lightning-input></template>
                                         </div>
-                                        <div class="slds-col slds-grow-none slds-align-bottom"><lightning-button-icon icon-name="utility:delete" alternative-text="Remove input" data-index={mapping.index} onclick={removeMapping}></lightning-button-icon></div>
+                                        <div class="slds-col slds-grow-none slds-align-bottom">
+                                            <lightning-button-icon icon-name="utility:up" alternative-text="Move input up" data-index={mapping.index} data-direction="up" onclick={moveMapping} disabled={mapping.first}></lightning-button-icon>
+                                            <lightning-button-icon icon-name="utility:down" alternative-text="Move input down" data-index={mapping.index} data-direction="down" onclick={moveMapping} disabled={mapping.last}></lightning-button-icon>
+                                            <lightning-button-icon icon-name="utility:delete" alternative-text="Remove input" data-index={mapping.index} onclick={removeMapping}></lightning-button-icon>
+                                        </div>
                                     </div>
                                 </template>
                                 <lightning-button label="Add input" onclick={addMapping} class="slds-m-top_small"></lightning-button>
                             </template>
+                            <template if:true={interpretedFlowCatalogError}><p role="alert">{interpretedFlowCatalogError}</p></template>
+                            <template if:true={interpretedFlowHasMore}><p>More published plans exist than this bounded catalog displays.</p></template>
+                            <template if:true={isInterpretedAction}><p>Uses the exact published in-chat Flow plan. Its terminal record changes require review and confirmation.</p></template>
                             <template if:true={isSalesforceAction}><p class="slds-m-top_small">Opens the published flow in Salesforce with recordId. Its screens and inputs run in Salesforce.</p></template>
-                            <lightning-button label="Add action" variant="brand" onclick={addAction} class="slds-m-top_small"></lightning-button>
+                            <lightning-button label={actionSubmitLabel} variant="brand" onclick={addAction} disabled={saveDisabled} class="slds-m-top_small"></lightning-button>
+                            <lightning-button label="Cancel action inputs" onclick={cancelActionEdit} disabled={saveDisabled} class="slds-m-top_small slds-m-left_small"></lightning-button>
                         </div>
                     </div>
                 </lightning-tab>
 
                 <!-- ================= ASSIGNMENT (unchanged) ================= -->
-                <lightning-tab label="Assignment" value="assignment">
-                    <div class="slds-m-top_small">
-                        <p class="slds-text-color_weak slds-m-bottom_small">
-                            Who sees which layout. Audiences map to layout keys; the default
-                            audience applies to everyone.
-                        </p>
-                        <lightning-datatable
-                            key-field="audience"
-                            data={assignmentRows}
-                            columns={assignmentColumns}>
-                        </lightning-datatable>
-                        <div class="slds-m-top_small">
-                            <lightning-input
-                                label="New audience name"
-                                value={newAudience}
-                                onchange={handleNewAudienceInput}
-                                class="slds-m-bottom_small">
-                            </lightning-input>
-                            <lightning-button
-                                label="Add Audience"
-                                variant="brand"
-                                onclick={addAudience}>
-                            </lightning-button>
-                        </div>
-                    </div>
-                </lightning-tab>
 
                 <!-- ================= PERMISSIONS (unchanged) ================= -->
-                <lightning-tab label="Permissions" value="permissions">
+                <lightning-tab onactive={handleSubviewActive} label="Allowed edits" value="permissions">
                     <div class="slds-m-top_small">
                         <p class="slds-text-color_weak slds-m-bottom_small">
                             Allow chat edits for {selectedObjectLabel} only after publishing.
@@ -403,16 +380,16 @@
                                 checked={permissions.writeEnabled}
                                 onchange={handleWriteToggle}>
                             </lightning-input>
-                            <lightning-textarea
-                                label="Field denylist (one API name per line)"
-                                value={denylistText}
-                                onchange={handleDenylistEdit}
-                                class="slds-m-top_small">
-                            </lightning-textarea>
+                            <lightning-input type="search" label="Search fields to restrict" placeholder="Label or API name" value={restrictionSearch} onchange={handleRestrictionSearch} class="slds-m-top_small"></lightning-input>
+                            <div class="restriction-options"><template for:each={restrictionOptions} for:item="field"><lightning-input key={field.api} type="checkbox" label={field.labelWithApi} checked={field.restricted} data-api={field.api} onchange={toggleRestriction}></lightning-input></template></div>
+                            <template for:each={retainedRestrictionRows} for:item="field"><div key={field.api}><lightning-input type="checkbox" label={field.api} checked data-api={field.api} onchange={toggleRestriction}></lightning-input><p class="slds-text-color_weak">Existing restriction unavailable in current metadata; retained until removed.</p></div></template>
+                            <details class="slds-m-top_small"><summary>Restriction API names</summary><lightning-textarea label="Field restrictions (one API name per line)" value={denylistText} onchange={handleDenylistEdit}></lightning-textarea></details>
+                            <template if:true={restrictionError}><p role="alert" class="slds-text-color_error">{restrictionError}</p></template>
                             <lightning-button
-                                label="Stage Permissions"
+                                label={saveLabel}
                                 variant="brand"
                                 onclick={stagePermissions}
+                                disabled={saveDisabled}
                                 class="slds-m-top_small">
                             </lightning-button>
                         </template>

@@ -1,0 +1,39 @@
+{
+  "observedAt": "2026-10-11T11:33:23.066069+00:00",
+  "sourceCommit": "af661bb175c162a8a5932f1ee6325a544a1c3bee",
+  "packageVersion": "0.1.0.9",
+  "coveragePercent": 88,
+  "released": false,
+  "validation": "Success; no skip-validation or ignore-warning flags",
+  "orgAliasLabel": "cardstack-mcp-install-qa",
+  "install": "SUCCESS",
+  "installedTests": {
+    "outcome": "Passed",
+    "testsRan": 323,
+    "passing": 323,
+    "failing": 0,
+    "testRunCoverage": "89%",
+    "orgWideCoverage": "86%"
+  },
+  "remainingGates": [
+    "reviewed Sites route correction is not in this version",
+    "live Studio",
+    "both actual clients",
+    "lifecycle and isolation",
+    "owned cleanup",
+    "release review"
+  ],
+  "installedInventory": {
+    "apexClasses": 72,
+    "apexNamesMatchSource": true,
+    "lwcBundles": 13
+  },
+  "completeRunLocalTests": {
+    "outcome": "Passed",
+    "testsRan": 328,
+    "passing": 328,
+    "failing": 0,
+    "testRunCoverage": "89%",
+    "orgWideCoverage": "88%"
+  }
+}

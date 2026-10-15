@@ -1,5 +1,7 @@
 # Cardstack
 
+> **Current implementation:** Salesforce-native Cardstack is authoritative. Read the [native workspace overview](salesforce-native/README.md) and [project documentation](salesforce-native/docs/PROJECT_DOCUMENTATION_2026-10-14.md). The Node/Railway/HubSpot architecture and deployment instructions below describe the retired implementation.
+
 Configurable **MCP Apps** for Salesforce and HubSpot. CRM admins design
 interactive "record cards" in a web Studio; reps ask for records in Claude /
 ChatGPT / Copilot and get live, editable cards rendered inline via the MCP Apps

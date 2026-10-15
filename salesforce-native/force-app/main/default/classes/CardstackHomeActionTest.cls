@@ -1,76 +1,38 @@
+/** Checks the retained Home invocable schema after retirement. */
 @IsTest
 private class CardstackHomeActionTest {
-
     @IsTest
-    static void homeReturnsTasksAndSummary() {
-        insert new Task(Subject = 'Home Test Follow-up', Status = 'Not Started',
-            ActivityDate = Date.today().addDays(2), OwnerId = UserInfo.getUserId());
-
-        List<CardstackHomeAction.HomeResponse> resps =
-            CardstackHomeAction.home(
-                new List<CardstackHomeAction.HomeRequest>{
-                    new CardstackHomeAction.HomeRequest()
-                });
-
-        System.assertEquals(1, resps.size());
-        CardstackHomeAction.HomeResponse res = resps[0];
-        System.assertEquals(UserInfo.getName(), res.userName);
-        System.assertEquals(1, res.openTaskCount, 'the open task is counted');
-        System.assertEquals('Home Test Follow-up', res.tasks[0].subject);
-        System.assertEquals(false, res.tasks[0].overdue, 'due in future');
-        System.assert(res.summary.contains(UserInfo.getName()), 'summary: ' + res.summary);
+    static void cachedHomeReturnsRetirementWithoutQueries() {
+        insert new Task(Subject = 'Private follow-up', Status = 'Not Started', OwnerId = UserInfo.getUserId());
+        insert new Opportunity(Name = 'Private pipeline', StageName = 'Prospecting', CloseDate = Date.today().addDays(30), Amount = 42000);
+        Test.startTest();
+        Integer beforeQueries = Limits.getQueries();
+        List<CardstackHomeAction.HomeResponse> result = CardstackHomeAction.home(
+            new List<CardstackHomeAction.HomeRequest>{new CardstackHomeAction.HomeRequest()});
+        Assert.areEqual(beforeQueries, Limits.getQueries(), 'Cached Home calls must not query CRM data.');
+        Test.stopTest();
+        Assert.areEqual(1, result.size(), 'Preserve one result per input.');
+        Assert.areEqual(0, result[0].tasks.size(), 'No CRM task rows remain.');
+        Assert.areEqual(0, result[0].recent.size(), 'No CRM recent rows remain.');
+        Assert.areEqual(0, result[0].openTaskCount, 'No CRM task count remains.');
+        Assert.areEqual(0, result[0].openOpportunityCount, 'No CRM pipeline count remains.');
+        Assert.areEqual('', result[0].openPipelineTotal, 'No CRM pipeline amount remains.');
+        Assert.areEqual('', result[0].userName, 'No user identity is exposed.');
+        Assert.areEqual('Home Card has been retired. Request a record or list instead.', result[0].summary, 'Explain retirement.');
     }
 
     @IsTest
-    static void overdueTaskFlagged() {
-        insert new Task(Subject = 'Home Overdue', Status = 'In Progress',
-            ActivityDate = Date.today().addDays(-3), OwnerId = UserInfo.getUserId());
-
-        List<CardstackHomeAction.HomeResponse> resps =
-            CardstackHomeAction.home(
-                new List<CardstackHomeAction.HomeRequest>{
-                    new CardstackHomeAction.HomeRequest()
-                });
-
-        Boolean found = false;
-        for (CardstackHomeAction.HomeTask t : resps[0].tasks) {
-            if (t.subject == 'Home Overdue') {
-                found = true;
-                System.assertEquals(true, t.overdue, 'past due date flagged');
-            }
-        }
-        System.assert(found, 'overdue task in list');
-    }
-
-    @IsTest
-    static void pipelineSummaryPopulated() {
-        insert new Opportunity(Name = 'Home Pipe', StageName = 'Prospecting',
-            CloseDate = Date.today().addDays(30), Amount = 42000);
-
-        List<CardstackHomeAction.HomeResponse> resps =
-            CardstackHomeAction.home(
-                new List<CardstackHomeAction.HomeRequest>{
-                    new CardstackHomeAction.HomeRequest()
-                });
-
-        CardstackHomeAction.HomeResponse res = resps[0];
-        System.assert(res.openOpportunityCount >= 1, 'open opp counted');
-        System.assert(res.openPipelineTotal.startsWith('$'), 'formatted total: ' + res.openPipelineTotal);
-    }
-
-    @IsTest
-    static void completedTasksExcluded() {
-        insert new Task(Subject = 'Home Done Task', Status = 'Completed',
-            OwnerId = UserInfo.getUserId());
-
-        List<CardstackHomeAction.HomeResponse> resps =
-            CardstackHomeAction.home(
-                new List<CardstackHomeAction.HomeRequest>{
-                    new CardstackHomeAction.HomeRequest()
-                });
-
-        for (CardstackHomeAction.HomeTask t : resps[0].tasks) {
-            System.assertNotEquals('Home Done Task', t.subject, 'completed excluded');
+    static void cachedHomePreservesBulkResponseCardinality() {
+        List<CardstackHomeAction.HomeRequest> requests = new List<CardstackHomeAction.HomeRequest>();
+        for (Integer index = 0; index < 251; index++) requests.add(new CardstackHomeAction.HomeRequest());
+        Test.startTest();
+        List<CardstackHomeAction.HomeResponse> result = CardstackHomeAction.home(requests);
+        Assert.areEqual(0, Limits.getQueries(), 'Bulk cached Home calls must not query.');
+        Test.stopTest();
+        Assert.areEqual(requests.size(), result.size(), 'Every cached request receives a retirement result.');
+        for (CardstackHomeAction.HomeResponse response : result) {
+            Assert.areEqual(0, response.tasks.size(), 'Bulk result has no tasks.');
+            Assert.areEqual(0, response.recent.size(), 'Bulk result has no CRM rows.');
         }
     }
 }

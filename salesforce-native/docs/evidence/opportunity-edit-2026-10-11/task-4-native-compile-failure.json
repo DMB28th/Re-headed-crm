@@ -1,0 +1,73 @@
+{
+  "sourceHead": "f3a5b827604fd7eb9a2ec6db454e018c5a53b96c",
+  "zipSha256": "043f3bbddc1f6c511414f0555d8b632a84fe2cd0184a97acf77983369ce49197",
+  "apiVersion": "67.0",
+  "cliExit": 1,
+  "errorName": null,
+  "status": "Failed",
+  "done": true,
+  "checkOnly": true,
+  "compileErrorCount": 7,
+  "testsRun": 0,
+  "testFailures": 0,
+  "passed": 0,
+  "failures": [],
+  "coverage": [],
+  "compileErrors": [
+    {
+      "fullName": "CardstackMcpDispatcher",
+      "lineNumber": 96,
+      "columnNumber": 67,
+      "problemType": "Error",
+      "problem": "Variable does not exist: CardstackConnectionDiagnostics"
+    },
+    {
+      "fullName": "CardstackMcpDispatcher",
+      "lineNumber": 104,
+      "columnNumber": 66,
+      "problemType": "Error",
+      "problem": "Variable does not exist: CardstackConnectionDiagnostics"
+    },
+    {
+      "fullName": "CardstackMcpDispatcherTest",
+      "lineNumber": 73,
+      "columnNumber": 42,
+      "problemType": "Error",
+      "problem": "Variable does not exist: client"
+    },
+    {
+      "fullName": "CardstackMcpDispatcherTest",
+      "lineNumber": 74,
+      "columnNumber": 79,
+      "problemType": "Error",
+      "problem": "Variable does not exist: versions"
+    },
+    {
+      "fullName": "CardstackMcpDispatcherTest",
+      "lineNumber": 86,
+      "columnNumber": 57,
+      "problemType": "Error",
+      "problem": "Variable does not exist: CardstackConnectionDiagnostics"
+    },
+    {
+      "fullName": "CardstackMcpDispatcherTest",
+      "lineNumber": 90,
+      "columnNumber": 49,
+      "problemType": "Error",
+      "problem": "Variable does not exist: values"
+    },
+    {
+      "fullName": "CardstackMcpDispatcherTest",
+      "lineNumber": 103,
+      "columnNumber": 57,
+      "problemType": "Error",
+      "problem": "Variable does not exist: CardstackConnectionDiagnostics"
+    }
+  ],
+  "metadataPersisted": false,
+  "businessRecordsSaved": false,
+  "behavioralRedEstablished": false,
+  "proofScope": "Compilation failed due missing/older installed diagnostic foundation; zero tests ran",
+  "nextScope": "Include unmodified current ConnectionTypes/ConnectionDiagnostics and their tests; strengthen exact schema/action tests",
+  "jwt": "Previously restored verified ON; no subsequent setting changes"
+}

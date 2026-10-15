@@ -1,0 +1,23 @@
+{
+  "capturedAt": "2026-10-09T12:05:37.758Z",
+  "readOnly": true,
+  "ownedConnectionClasses": 0,
+  "privateSetupObjectExists": false,
+  "sets": [
+    {
+      "name": "Cardstack_Admin",
+      "assignments": 1,
+      "groups": 0,
+      "classAccesses": 4,
+      "customPermissions": 2
+    },
+    {
+      "name": "Cardstack_User",
+      "assignments": 1,
+      "groups": 0,
+      "classAccesses": 3,
+      "customPermissions": 1
+    }
+  ],
+  "baselineSHA256": "3d0e454ecc644d6ff72236847520c4e7eeb1e896f76282e44baabc68046158a2"
+}

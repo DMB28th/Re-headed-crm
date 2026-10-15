@@ -1,0 +1,39 @@
+{
+  "sourceCommit": "dfe130469fbbe9b185af374d20d444ce4c15abcd",
+  "apiVersion": "67.0",
+  "checkOnly": true,
+  "persisted": false,
+  "archiveSha256": "93d4dba8869392d43069bbc93e589922a06071f44699d34282d66045fada67d4",
+  "status": "Failed",
+  "componentErrors": 0,
+  "testErrors": 0,
+  "expectedTests": 156,
+  "exactMethodSet": true,
+  "passed": 156,
+  "failed": 0,
+  "validationBlocker": "SELECTED_CLASS_COVERAGE_BELOW_75_PERCENT",
+  "coverage": [
+    {
+      "class": "CardstackConnectionSetupRepository",
+      "covered": 146,
+      "locations": 153
+    },
+    {
+      "class": "CardstackConnectionSetupController",
+      "covered": 93,
+      "locations": 95
+    },
+    {
+      "class": "CardstackStudioController",
+      "covered": 161,
+      "locations": 229
+    }
+  ],
+  "limits": [
+    "All156tests passed; deploymentvalidationFailed dueStudioController70.306percent coverage.",
+    "LWC and Apex compiled in checkOnly; no live rendering or persistent deployment.",
+    "Original source dfe1304 only; later twoJS recovery/status fixes require compiler validation.",
+    "No permission sets, Site, guest, OAuth or schedules included; no JWT setting changes.",
+    "ActualStudio/client/lifecycle/freshinstallation remain release gates."
+  ]
+}

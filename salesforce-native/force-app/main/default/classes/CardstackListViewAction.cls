@@ -76,6 +76,10 @@ global with sharing class CardstackListViewAction {
             lim = Math.min(req.maxRows, MAX_LIMIT);
         }
 
+        CardstackListExposurePolicy.Policy policy = CardstackListExposurePolicy.loadPublished(objectName);
+        if (policy.mode == 'denied') { return deniedView(objectName); }
+        if (policy.mode == 'explicit') { return executePolicyView(objectName, d, req, lim, policy); }
+
         // 1. Resolve view name against real list views.
         // If no viewName was given but this looks like a plain "show me my X" request
         // (no specific filters), default to the "My {Object}" list view.
@@ -121,6 +125,94 @@ global with sharing class CardstackListViewAction {
         return res;
     }
 
+    private static ListViewResponse deniedView(String objectName) {
+        ListViewResponse response = new ListViewResponse();
+        response.objectName = objectName; response.count = 0; response.usedRealView = false;
+        response.rows = new List<ViewRow>(); response.columns = new List<TableColumn>();
+        response.summary = 'List not available in chat. Use an allowed canonical list ID or saved key, or check Salesforce access.';
+        return response;
+    }
+
+    private static ListViewResponse executePolicyView(String objectName, Schema.DescribeSObjectResult describe,
+        ListViewRequest request, Integer lim, CardstackListExposurePolicy.Policy policy) {
+        try {
+            if (String.isBlank(request.viewName)) {
+                if (!CardstackListExposurePolicy.allowsAdHoc(policy)) { return deniedView(objectName); }
+                ListViewResponse unnamed = executeFilterBased(objectName, describe, request, lim, null);
+                saveAllowedView(objectName, request, unnamed, false);
+                return unnamed;
+            }
+            Map<String,Object> target = resolvePolicyTarget(objectName, request.viewName.trim(), policy);
+            if (target == null) { return deniedView(objectName); }
+            String label = (String)target.get('label');
+            if (target.get('kind') == 'cardstack') {
+                Map<String,Object> filters = loadSavedViewKey((String)target.get('key'));
+                if (filters == null) { return deniedView(objectName); }
+                return executeSavedView(objectName, describe, label, filters, request, lim);
+            }
+            ListViewResponse response = executeFilterBased(objectName, describe, request, lim, label);
+            response.viewName = label; response.usedRealView = false;
+            response.fallbackNote = 'Beta filtered list for "' + label + '"; Salesforce saved-view filters, columns, and sort are not reproduced.';
+            saveAllowedView(objectName, request, response, isMyViewName(request.viewName) || isMyViewName(label));
+            return response;
+        } catch (Exception denied) {
+            // Native metadata, saved-config or CRM authorization failures never broaden execution.
+            return deniedView(objectName);
+        }
+    }
+
+    private static void saveAllowedView(String objectName, ListViewRequest request, ListViewResponse response, Boolean myOnly) {
+        if (String.isBlank(request.saveViewAs)) { return; }
+        saveView(objectName, request.saveViewAs.trim(), request, myOnly);
+        response.summary += ' Saved as "' + request.saveViewAs.trim() + '".';
+    }
+
+    private static Map<String,Object> resolvePolicyTarget(String objectName, String requested,
+        CardstackListExposurePolicy.Policy policy) {
+        List<Map<String,Object>> catalog = CardstackListCatalog.available(objectName);
+        // Full identities bypass label collisions and are never fuzzy-matched.
+        Boolean savedKey = requested.startsWith('listview:');
+        Boolean nativeId = requested.startsWith('00B');
+        String identity = nativeId ? CardstackConnectionTypes.normalizeId(requested) : requested;
+        if (savedKey || nativeId) {
+            for (Map<String,Object> target : catalog) {
+                if (((String)target.get('key')).equals(identity) && availableTarget(target, policy)) { return target; }
+            }
+            return null;
+        }
+        String want = normalize(requested);
+        if (String.isBlank(want)) { return null; }
+        List<Map<String,Object>> exact = new List<Map<String,Object>>();
+        for (Map<String,Object> target : catalog) {
+            String key = (String)target.get('key');
+            Boolean savedName = target.get('kind') == 'cardstack' && normalize(key.substring(key.lastIndexOf(':') + 1)) == want;
+            if (normalize((String)target.get('label')) == want
+                || normalize((String)target.get('developerName')) == want || savedName) { exact.add(target); }
+        }
+        // A hidden exact match must not be recovered by fuzzy matching another allowed view.
+        if (!exact.isEmpty()) { return exact.size() == 1 && availableTarget(exact[0], policy) ? exact[0] : null; }
+        List<Map<String,Object>> fuzzy = new List<Map<String,Object>>();
+        for (Map<String,Object> target : catalog) {
+            if (!availableTarget(target, policy) || target.get('kind') != 'salesforce') { continue; }
+            String have = normalize((String)target.get('label'));
+            if (!String.isBlank(have) && (have.contains(want) || want.contains(have))) { fuzzy.add(target); }
+        }
+        return fuzzy.size() == 1 ? fuzzy[0] : null;
+    }
+
+    private static Boolean availableTarget(Map<String,Object> target, CardstackListExposurePolicy.Policy policy) {
+        return target.get('availability') == 'available' && CardstackListExposurePolicy.isAllowed(policy,
+            (String)target.get('kind'), (String)target.get('key'));
+    }
+
+    private static Map<String,Object> loadSavedViewKey(String key) {
+        CardstackListExposurePolicy.requireConfigRead();
+        List<Cardstack_Config__c> rows = [SELECT Value__c FROM Cardstack_Config__c
+            WHERE Name = :key AND Is_Active__c = true WITH USER_MODE LIMIT 1];
+        if (rows.isEmpty()) { return null; }
+        return (Map<String,Object>)JSON.deserializeUntyped(rows[0].Value__c);
+    }
+
     // ── View resolution ───────────────────────────────────────────────
 
     /**
@@ -128,26 +220,10 @@ global with sharing class CardstackListViewAction {
      * org's real list views. Returns the best match or null.
      */
     private static ListView resolveView(String objectName, String viewName) {
-        List<ListView> views;
-        if (Test.isRunningTest()) {
-            // In tests there are no real list views; resolution is exercised
-            // via resolveViewName() unit tests with injected candidates.
-            return null;
-        }
         try {
-            views = [
-                SELECT Id, Name, DeveloperName
-                FROM ListView
-                WHERE SobjectType = :objectName
-                WITH USER_MODE
-                ORDER BY Name
-            ];
-        } catch (Exception e) {
-            return null;
-        }
-        try {
-            return matchView(views, viewName);
-        } catch (Exception e) {
+            return matchView(CardstackListCatalog.nativeViews(objectName), viewName);
+        } catch (Exception failure) {
+            // Legacy callers retain their documented fallback; explicit policy uses strict resolution.
             return null;
         }
     }

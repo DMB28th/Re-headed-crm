@@ -1,0 +1,29 @@
+ ›   Warning: @salesforce/cli update available from 2.144.6 to 2.153.5.
+
+Streaming logs in real time to:
+    /var/folders/mz/ks9d2k4d4vn2gpm1y2xyfh7h0000gn/T/sfca-2026_10_10_05_18_55_787.log
+
+Selecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 0%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 14%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 28%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 30%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 31%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 40%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 41%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 42%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 57%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 62%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 72%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 74%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 75%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 84%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 85%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 87%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 96%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 98%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 99%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow, pmd, cpd, sfge; Completion: 100%; Elapsed time: 0sSelecting rules... done.
+Executing rules... 0 of 1 engines finished after 0s.
+- pmd at 0% completion.Executing rules... 0 of 1 engines finished after 0s.
+- pmd at 2% completion.Executing rules... 0 of 1 engines finished after 0s.
+- pmd at 6.86% completion.Executing rules... 0 of 1 engines finished after 0s.
+- pmd at 10.58% completion.Executing rules... 0 of 1 engines finished after 0s.
+- pmd at 14.3% completion.Executing rules... 0 of 1 engines finished after 0s.
+- pmd at 32.9% completion.Executing rules... 0 of 1 engines finished after 0s.
+- pmd at 51.5% completion.Executing rules... 0 of 1 engines finished after 0s.
+- pmd at 70.1% completion.Executing rules... 0 of 1 engines finished after 0s.
+- pmd at 88.7% completion.Executing rules... 0 of 1 engines finished after 0s.
+- pmd at 93.35% completion.Executing rules... 0 of 1 engines finished after 0s.
+- pmd at 98% completion.Executing rules... 1 of 1 engines finished after 0s.
+- pmd at 100% completion.Executing rules... done. Executed rules from pmd.
+
+=== Summary
+
+Found 0 violations.
+
+Results written to:
+    salesforce-native/docs/evidence/install-auth-platform/canonical-disposable/code-analyzer-results-20261010-091847.json
+
+Additional log information written to:
+    /var/folders/mz/ks9d2k4d4vn2gpm1y2xyfh7h0000gn/T/sfca-2026_10_10_05_18_55_787.log

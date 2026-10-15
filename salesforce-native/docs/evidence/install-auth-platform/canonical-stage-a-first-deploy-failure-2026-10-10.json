@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "stage": "A",
+  "evidenceSource": "root-live-salesforce-api67-and-saved-operator-ui",
+  "deploymentArchiveSha256": "a1ee4a3dbc2de6a8dddb2ec97ca697e9855738a56f8cb7c1fe882fca62e35ee3",
+  "deployment": {
+    "singleSubmission": true,
+    "knownTerminalStatus": "Failed",
+    "componentErrors": 1,
+    "testsCompleted": 0,
+    "exactSixtyTestsPassed": false,
+    "rejectedComponent": "Cardstack_Canonical_Probe",
+    "safeError": "Unknown user permission: APIEnabled"
+  },
+  "rootCause": {
+    "correctName": "ApiEnabled",
+    "supportedByOriginalLiveApi67ProfileMetadata": true,
+    "rejectedNameAbsentInProfile": true
+  },
+  "jwtSession": {
+    "offSavedAt": "2026-10-10T10:48:20.944Z",
+    "freshOpaqueManagedLoginAt": "2026-10-10T10:48:42.551Z",
+    "finallyOnSavedAt": "2026-10-10T10:50:05.149Z",
+    "actualSavedOnVerified": true,
+    "fullAppMetadataPreserved": true,
+    "firstRestorationSaveDidNotPersist": true,
+    "correctiveSaveVerified": true
+  },
+  "independentFinalReadback": {
+    "ownedFourComponentsAbsent": true,
+    "baselinePreserved": true,
+    "siteInactive": true,
+    "actualJwtOnVerified": true,
+    "cleanupSkippedAfterIndependentAbsence": true,
+    "completeDeploymentQueueClear": true
+  },
+  "liveCanonicalProtocol": "Unknown",
+  "accessChanges": false,
+  "siteActivation": false,
+  "stageBApproved": false,
+  "clientCreated": false,
+  "ecaCreated": false,
+  "correctionNeedsSourceReview": true
+}

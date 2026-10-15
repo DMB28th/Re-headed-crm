@@ -1,0 +1,9 @@
+:host { display: block; }
+.overview { position: relative; }
+.org-context, .summary-row, .next-action { display: flex; align-items: center; justify-content: space-between; gap: var(--slds-g-spacing-3, 0.75rem); }
+.summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--slds-g-spacing-4, 1rem); }
+.summary-row { padding-block: var(--slds-g-spacing-2, 0.5rem); }
+@media (max-width: 48rem) {
+    .summary-grid { grid-template-columns: 1fr; }
+    .org-context, .next-action { align-items: flex-start; flex-direction: column; }
+}

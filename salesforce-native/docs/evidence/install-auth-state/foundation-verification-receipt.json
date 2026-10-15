@@ -1,0 +1,17 @@
+{
+  "checkedAt": "2026-10-09T14:42:57.289Z",
+  "persisted": true,
+  "classes": 8,
+  "classBodyMatchesExceptOptionalSingleTerminalLF": true,
+  "api67Verified": true,
+  "privateSchemaVerified": true,
+  "fields": 4,
+  "exactPermissionSetDelta": true,
+  "facadeOnlyClassAccess": true,
+  "noRepositoryAccessOrPrivateCRUD": true,
+  "bootstrapPermissionsPreserved": true,
+  "assignmentIdentitiesUnchanged": true,
+  "groupsUnchanged": true,
+  "setupRows": 0,
+  "exact28MethodsPassed": true
+}

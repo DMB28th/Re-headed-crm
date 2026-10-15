@@ -1,0 +1,21 @@
+{
+  "startedAt": "2026-10-08T20:33:37.823Z",
+  "apiVersion": "67.0",
+  "status": "Succeeded",
+  "success": true,
+  "done": true,
+  "componentErrors": 0,
+  "componentsTotal": 2,
+  "testErrors": 0,
+  "testsCompleted": 40,
+  "componentFailures": [],
+  "testFailures": [],
+  "coverage": [
+    {
+      "name": "CardstackSiteAuthProbe",
+      "locations": 70,
+      "uncovered": 1
+    }
+  ],
+  "finishedAt": "2026-10-08T20:33:48.386Z"
+}

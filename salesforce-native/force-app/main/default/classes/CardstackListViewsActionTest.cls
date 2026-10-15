@@ -1,19 +1,32 @@
 @IsTest
 private class CardstackListViewsActionTest {
+    private class FixtureViews implements CardstackListCatalog.MetadataProvider {
+        public List<ListView> nativeViews(String objectApi) {
+            return new List<ListView>{(ListView)JSON.deserialize('{"Id":"00B000000000001","Name":"My Opportunities","DeveloperName":"MyOpportunities"}', ListView.class)};
+        }
+    }
+    @TestSetup static void grantPackagePermissions() {
+        PermissionSet admin = [SELECT Id FROM PermissionSet WHERE Name='Cardstack_Admin' LIMIT 1];
+        if ([SELECT count() FROM PermissionSetAssignment WHERE AssigneeId=:UserInfo.getUserId() AND PermissionSetId=:admin.Id] == 0) {
+            insert new PermissionSetAssignment(AssigneeId=UserInfo.getUserId(), PermissionSetId=admin.Id);
+        }
+    }
+
 
     @IsTest
     static void listsViewsForObject() {
         CardstackListViewsAction.ListViewsRequest req =
             new CardstackListViewsAction.ListViewsRequest();
         req.objectName = 'Opportunity';
+        CardstackListCatalog.metadataProvider = new FixtureViews();
 
         List<CardstackListViewsAction.ListViewsResponse> resps =
             CardstackListViewsAction.listViews(
                 new List<CardstackListViewsAction.ListViewsRequest>{ req });
 
         CardstackListViewsAction.ListViewsResponse res = resps[0];
-        // Standard list views exist for Opportunity in any org.
-        System.assert(res.count > 0, 'expected list views, got ' + res.count);
+        // Deterministic native metadata; no assumptions about subscriber list views.
+        Assert.areEqual(1, res.count, 'The native fixture supplies one readable view.');
         System.assertNotEquals(null, res.columns);
         System.assert(!res.views.isEmpty());
         for (CardstackListViewsAction.ViewSummary v : res.views) {

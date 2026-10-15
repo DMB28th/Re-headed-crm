@@ -1,0 +1,88 @@
+{
+  "sourceHead": "65aa5d04ffd0962c052266efa5ae4e3bd124bcab",
+  "zipSha256": "4a8b79578fa0761a90d9ae5469afa07e0b5e68774742ae55dd79c289fdeb40c1",
+  "apiVersion": "67.0",
+  "cliExit": 0,
+  "errorName": null,
+  "status": "Succeeded",
+  "done": true,
+  "checkOnly": true,
+  "compileErrorCount": 0,
+  "testsRun": 154,
+  "testFailures": 0,
+  "passed": 154,
+  "failures": [],
+  "coverage": [
+    {
+      "class": "CardstackOpportunityWriteService",
+      "covered": 100,
+      "total": 107,
+      "percent": 93.458
+    },
+    {
+      "class": "CardstackOpportunityEditRepository",
+      "covered": 235,
+      "total": 256,
+      "percent": 91.797
+    },
+    {
+      "class": "CardstackOpportunitySelector",
+      "covered": 45,
+      "total": 52,
+      "percent": 86.538
+    },
+    {
+      "class": "CardstackOpportunityEditTypes",
+      "covered": 56,
+      "total": 65,
+      "percent": 86.154
+    },
+    {
+      "class": "CardstackOpportunityEditService",
+      "covered": 204,
+      "total": 228,
+      "percent": 89.474
+    },
+    {
+      "class": "CardstackOpportunityEditDomain",
+      "covered": 128,
+      "total": 142,
+      "percent": 90.141
+    },
+    {
+      "class": "CardstackOpportunityStageProvider",
+      "covered": 57,
+      "total": 61,
+      "percent": 93.443
+    },
+    {
+      "class": "CardstackOpportunityActionPolicy",
+      "covered": 20,
+      "total": 20,
+      "percent": 100.0
+    },
+    {
+      "class": "CardstackOpportunityWriteAudit",
+      "covered": 28,
+      "total": 28,
+      "percent": 100.0
+    }
+  ],
+  "metadataPersisted": false,
+  "businessRecordsSaved": false,
+  "fixtureScope": "Rolled-back @IsTest fixtures only",
+  "proofScope": "Native unit assertions/compilation/coverage; real provider, concurrency, package and actual-client acceptance remain unproved",
+  "reviews": [
+    "task-3-algorithm-spec-review.md: Approved",
+    "task-3-algorithm-quality-review.md: Approved"
+  ],
+  "jwt": "Previously restored and verified ON; no subsequent settings changes",
+  "remainingGates": [
+    "Product MCP ingress and custom app/Studio UI",
+    "Actual ConnectApi under lock sequence and ordinary-user access",
+    "Actual sales-process/currency contexts, automation and contention",
+    "Package creation and fresh-install acceptance",
+    "Actual Claude/ChatGPT governed CRM UI acceptance",
+    "Analyzer unavailable: missing Java, zero source files scanned"
+  ]
+}

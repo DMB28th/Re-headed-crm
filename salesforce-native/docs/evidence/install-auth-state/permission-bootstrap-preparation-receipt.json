@@ -1,0 +1,32 @@
+{
+  "preparedAt": "2026-10-09T11:38:59.958820+00:00",
+  "apiVersion": "67.0",
+  "components": 4,
+  "baselineSHA256": "8a940a2357199abb447082d856e531eb6cea9ac64c609eef1b2efacd3484b991",
+  "zipSHA256": "30e491ed6e11e9cef33743f20feb1d60bf2db031ee26f776a70803c296b336d3",
+  "newClassAccess": false,
+  "otherBaselinePropertiesUnchanged": true,
+  "persisted": false,
+  "files": [
+    {
+      "path": "customPermissions/Cardstack_Manage_Connections.customPermission",
+      "sha256": "007a8e8c68d17085a8538b7ba5cd9e34e88e2a75bfb3cc7314a9e4c2efe642ce"
+    },
+    {
+      "path": "customPermissions/Cardstack_Use_Connections.customPermission",
+      "sha256": "256fb4198359cafea7cab69ffb70d65bdb9092f3e386133e80775045cfb40727"
+    },
+    {
+      "path": "package.xml",
+      "sha256": "962b0e73d666fb66c277b756c180326e5edd82fd9c874112f02c2bf5b5f378c8"
+    },
+    {
+      "path": "permissionsets/Cardstack_Admin.permissionset",
+      "sha256": "7ad59bddb4bedfee9273a164a65ef1660164a7f0c4f8229afa719aa7811044dc"
+    },
+    {
+      "path": "permissionsets/Cardstack_User.permissionset",
+      "sha256": "e017f280f307f23eb55c1aab05efb6c22fa3ce4f772bff2b2a1e9a2ea8f50f8c"
+    }
+  ]
+}

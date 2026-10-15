@@ -1,0 +1,286 @@
+{
+  "sourceHead": "bd3dec4f7e7542648ae8122391c3e4d0b041a008",
+  "zipSha256": "4895d6ae9c98a6e60e10e63e9b6de40556a81092e7f60959482d8475f59a2b73",
+  "apiVersion": "67.0",
+  "cliExit": 0,
+  "errorName": null,
+  "status": "Failed",
+  "done": true,
+  "checkOnly": true,
+  "compileErrorCount": 0,
+  "testsRun": 154,
+  "testFailures": 41,
+  "passed": 113,
+  "failures": [
+    {
+      "class": "CardstackOpportunityEditRepositoryTest",
+      "method": "completionPersistsBothPrivateReceipts",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditRepositoryTest",
+      "method": "lockGrantBindsExactOwnedConfirmation",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditRepositoryTest",
+      "method": "lockGrantRejectsAlteredGrant",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "confirmCannotReplaceReviewedPatch",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "confirmRoutesOnlyOwnedReviewedValues",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteAuditTest",
+      "method": "requiredAuditFailurePropagates",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteAuditTest",
+      "method": "requiredAuditRecordsValidatedActorAndReviewedDiff",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteAuditTest",
+      "method": "requiredAuditRejectsEmptyReviewedDiff",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteAuditTest",
+      "method": "requiredAuditRejectsNoChangesReceipt",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteAuditTest",
+      "method": "requiredAuditRejectsNonOpportunityTarget",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteAuditTest",
+      "method": "requiredAuditRejectsUnknownReviewedField",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "accessRemovedHidesReceipt",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "allFieldsOrNone",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "alteredGrantOrReviewCannotWrite",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "alteredReviewRevisionCannotWrite",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "cancelAndConfirmSerialize",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "changedCanonicalPatchCannotWrite",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "changedFreshnessCannotWrite",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "changedPinnedCurrencyCannotWrite",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "changedStageContextCannotWrite",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "completedAlteredGrantHidesReceipt",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "completedAlteredReviewRevisionHidesReceipt",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "completedAlteredRevisionHidesReceipt",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "completedPolicyDriftHidesReceipt",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "confirmForbidsReplacementAnswers",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "confirmThenCancelPreservesCommittedOutcome",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "expiredCompletedConfirmReturnsOriginalReceipt",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "expiredCompletedResumeDoesNotWrite",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "lostResponseResumeReturnsOriginalReceipt",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "noChangesCompletionCannotInventConfirmAuthority",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "optionalAmountClearSavesExplicitNull",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "pendingExpiredGrantCannotWrite",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "receiptFailureRollsBack",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "redirectedInteractionCannotUseAnotherGrant",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "repeatConfirmReturnsOriginalReceipt",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "requiredAuditFailureRollsBack",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "rotatedGrantCannotWrite",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "staleInteractionRevisionCannotWrite",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "validationFailureRequiresNewReview",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "wrongActorCannotConfirm",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityWriteServiceTest",
+      "method": "wrongClientCannotConfirm",
+      "type": "System.AssertException"
+    }
+  ],
+  "coverage": [
+    {
+      "class": "CardstackOpportunityActionPolicy",
+      "covered": 20,
+      "total": 20,
+      "percent": 100.0
+    },
+    {
+      "class": "CardstackOpportunityEditTypes",
+      "covered": 53,
+      "total": 62,
+      "percent": 85.484
+    },
+    {
+      "class": "CardstackOpportunitySelector",
+      "covered": 45,
+      "total": 52,
+      "percent": 86.538
+    },
+    {
+      "class": "CardstackOpportunityStageProvider",
+      "covered": 57,
+      "total": 61,
+      "percent": 93.443
+    },
+    {
+      "class": "CardstackOpportunityWriteService",
+      "covered": 8,
+      "total": 8,
+      "percent": 100.0
+    },
+    {
+      "class": "CardstackOpportunityWriteAudit",
+      "covered": 5,
+      "total": 5,
+      "percent": 100.0
+    },
+    {
+      "class": "CardstackOpportunityEditDomain",
+      "covered": 128,
+      "total": 142,
+      "percent": 90.141
+    },
+    {
+      "class": "CardstackOpportunityEditService",
+      "covered": 197,
+      "total": 222,
+      "percent": 88.739
+    },
+    {
+      "class": "CardstackOpportunityEditRepository",
+      "covered": 189,
+      "total": 208,
+      "percent": 90.865
+    }
+  ],
+  "metadataPersisted": false,
+  "businessRecordsSaved": false,
+  "fixtureScope": "Rolled-back @IsTest fixtures only",
+  "proofScope": "Native compilation and intended behavioral assertion RED; confirmed save not yet implemented",
+  "reviews": [
+    "task-3-red-spec-review.md: Approved",
+    "task-3-red-quality-review.md: Approved"
+  ],
+  "jwt": "Previously restored and verified ON; no subsequent settings changes"
+}

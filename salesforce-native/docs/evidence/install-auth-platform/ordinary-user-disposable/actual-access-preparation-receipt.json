@@ -1,0 +1,10 @@
+{
+  "checkedAt": "2026-10-10T07:43:33.375Z",
+  "success": true,
+  "ownedProbeAssignments": 1,
+  "ownedGuestGrants": 2,
+  "siteInactive": true,
+  "existingGuestBaselinePreserved": true,
+  "existingPermissionSetBaselinesPreserved": true,
+  "ordinaryOAuthTested": false
+}

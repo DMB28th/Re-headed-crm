@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<StaticResource xmlns="http://soap.sforce.com/2006/04/metadata">
+    <cacheControl>Private</cacheControl>
+    <contentType>text/html</contentType>
+    <description>Immutable Opportunity editor 5275b7e; exact sha256 e2b9d0699964d727fd6c0b113cce7f61c03062dd7ac19d96bc7eef1f175767eb. Historical reads only.</description>
+</StaticResource>

@@ -1,0 +1,222 @@
+{
+  "date": "2026-10-13",
+  "sourceHead": "81e45fa3e38fe1c0a8bdfd4e44fc5c8647f54531",
+  "environment": "Existing owned QA org, installed beta0.1.0.11 plus validated QA source updates; not fresh corrected package",
+  "studio": {
+    "exactDraft": "CD-000004",
+    "publishedOnlyVerifiedDraft": true,
+    "configuredSection": "Contact details",
+    "columns": 2,
+    "fields": [
+      "LastName",
+      "Description",
+      "HasOptedOutOfEmail"
+    ],
+    "mappings": "current record values",
+    "syntheticPreviewObserved": "Three edited values reach Review; Save disabled",
+    "authoringIssue": "Immediate post-stage view returned cached older state; normal reload showed the actual saved draft"
+  },
+  "actualChatGPT": {
+    "openEditReviewConfirmReceiptRefresh": true,
+    "ordinaryActorVerified": "A",
+    "requiredErrorAndFocus": true,
+    "cancelBeforeReviewZeroEffects": true,
+    "startingValuesLoaded": true,
+    "reviewedChanges": [
+      {
+        "field": "LastName",
+        "before": "Cardstack QA Contact13",
+        "after": "Cardstack QA Contact13 ChatGPT"
+      },
+      {
+        "field": "Description",
+        "before": "QA starting description",
+        "after": null
+      },
+      {
+        "field": "HasOptedOutOfEmail",
+        "before": false,
+        "after": true
+      }
+    ],
+    "nativeRecordAuditPersistedReceiptExactMatch": true,
+    "receiptReference": "receipt-c1bd081231c8162a7251093ce9660456",
+    "completedAt": "2026-10-13T14:17:18Z",
+    "savedEffects": 1,
+    "receiptRetainedDuringRefresh": true,
+    "chat": "https://chatgpt.com/c/6ace3c43-9508-83ea-81dc-af9e6b180b5e"
+  },
+  "actualClaude": {
+    "openEditReviewConfirmReceiptRefresh": true,
+    "ordinaryActorVerified": "A",
+    "requiredErrorAndFocus": true,
+    "cancelAfterReviewZeroEffects": true,
+    "freshReviewAfterCancel": true,
+    "startingValuesLoaded": true,
+    "reviewedChanges": [
+      {
+        "field": "LastName",
+        "before": "Cardstack QA Contact13 ChatGPT",
+        "after": "Cardstack QA Contact13 Claude"
+      },
+      {
+        "field": "Description",
+        "before": null,
+        "after": "QA Claude description"
+      },
+      {
+        "field": "HasOptedOutOfEmail",
+        "before": true,
+        "after": false
+      }
+    ],
+    "nativeRecordAuditPersistedReceiptExactMatch": true,
+    "receiptReference": "receipt-9016c7feef8661ecfc9095a7a07aa180",
+    "completedAt": "2026-10-13T14:22:31Z",
+    "savedEffects": 1,
+    "receiptRetainedDuringRefresh": true,
+    "chat": "https://claude.ai/chat/dcfa3353-2366-4241-8130-52d0880a6e3e"
+  },
+  "opportunityCompatibility": {
+    "Claude": "Current Stage Needs Analysis, native picker selected2026-12-16, native Review exact date then Cancel; Amount22,500.25",
+    "ChatGPT": "Open/edit/Cancel worked but older HTML observed: keep-current Stage sentinel, text date, ungrouped13000.25. Updated controls NOT passed. Constant URI reuse is contributing source defect; exact host cache layer unestablished",
+    "nativeAlphaBetaAndThreePriorAuditEffectsUnchanged": true
+  },
+  "remainingActualHostGaps": [
+    "Save-response loss after commit and recovery not induced",
+    "Delayed response after switching records unexercised",
+    "Ordinary actor B acceptance unproved",
+    "Updated ChatGPT Opportunity controls pending resource-versioning fix",
+    "Fresh corrected package install unproved"
+  ],
+  "budgets": {
+    "ContactSaveEffects": 2,
+    "ContactMaximum": 2,
+    "totalSaveEffects": 5,
+    "totalMaximum": 8,
+    "adminFreshnessEdits": 0,
+    "adminFreshnessMaximum": 4
+  },
+  "cleanup": {
+    "status": "COMPLETE exactapprovedContactcleanup",
+    "deletedTargets": [
+      {
+        "sobject": "Contact",
+        "count": 1,
+        "normalQueryAbsent": true,
+        "nativeIsDeletedTrue": true,
+        "softDeleteConfirmed": true
+      },
+      {
+        "sobject": "Cardstack_Config__c",
+        "count": 1,
+        "normalQueryAbsent": true,
+        "nativeIsDeletedTrue": true,
+        "softDeleteConfirmed": true
+      },
+      {
+        "sobject": "Cardstack_Config_Draft__c",
+        "count": 3,
+        "normalQueryAbsent": true,
+        "nativeIsDeletedTrue": true,
+        "softDeleteConfirmed": true
+      }
+    ],
+    "exactTwoPSAssignmentsAbsent": true,
+    "ownedPermissionSetAbsent": true,
+    "ContactPolicyAbsent": true,
+    "AAdminRightsRestoredToPreGrantBaseline": true,
+    "restoredRights": [
+      {
+        "role": "A",
+        "kind": "entity",
+        "flags": {
+          "EntityDefinitionId": "Contact",
+          "IsReadable": false,
+          "IsCreatable": false,
+          "IsUpdatable": false,
+          "IsDeletable": false
+        }
+      },
+      {
+        "role": "A",
+        "kind": "Description",
+        "flags": {
+          "FieldDefinitionId": "Contact.Description",
+          "IsAccessible": false,
+          "IsCreatable": false,
+          "IsUpdatable": false
+        }
+      },
+      {
+        "role": "A",
+        "kind": "HasOptedOutOfEmail",
+        "flags": {
+          "FieldDefinitionId": "Contact.HasOptedOutOfEmail",
+          "IsAccessible": false,
+          "IsCreatable": false,
+          "IsUpdatable": false
+        }
+      },
+      {
+        "role": "admin",
+        "kind": "entity",
+        "flags": {
+          "EntityDefinitionId": "Contact",
+          "IsReadable": true,
+          "IsCreatable": true,
+          "IsUpdatable": true,
+          "IsDeletable": true
+        }
+      },
+      {
+        "role": "admin",
+        "kind": "Description",
+        "flags": {
+          "FieldDefinitionId": "Contact.Description",
+          "IsAccessible": true,
+          "IsCreatable": true,
+          "IsUpdatable": true
+        }
+      },
+      {
+        "role": "admin",
+        "kind": "HasOptedOutOfEmail",
+        "flags": {
+          "FieldDefinitionId": "Contact.HasOptedOutOfEmail",
+          "IsAccessible": false,
+          "IsCreatable": false,
+          "IsUpdatable": false
+        }
+      }
+    ],
+    "immutableHistoryPayloadHashesUnchanged": true,
+    "preservedHistory": {
+      "audits": 2,
+      "confirmationGrantRows": 3,
+      "savedReceipts": 2,
+      "interactions": 4
+    },
+    "OpportunityPolicyDraftPayloadHashesAndTimestampsUnchanged": true,
+    "Alpha": {
+      "StageName": "Qualification",
+      "CloseDate": "2026-12-15",
+      "Amount": "13000.25"
+    },
+    "Beta": {
+      "StageName": "Needs Analysis",
+      "CloseDate": "2026-12-15",
+      "Amount": "22500.25"
+    },
+    "OpportunityWriteAuditCount": 3,
+    "frozenContactSaveEffects": 2,
+    "totalSuccessfulEffects": 5,
+    "totalAllowance": 8,
+    "noAdditionalCrmSaveEffects": true,
+    "appsSiteOrgOtherDataNotTargeted": true,
+    "sourceAuthHostChanges": false,
+    "privateCleanupIdsPreserved": true,
+    "postcheckedUtc": "20261013T144850Z"
+  },
+  "boundary": "Native backend tests and synthetic renderer loss/switch fixtures do not prove these outstanding actual-host scenarios"
+}

@@ -1,0 +1,22 @@
+{
+  "sourceHead": "812fb6a6d5bdcfb0c7a057d40f94d7cb7dc044d1",
+  "zipSha256": "c2c7d0f62aa7537d3f83296b97951c06156079cfe7775685c04f21d5c3100fa5",
+  "apiVersion": "67.0",
+  "cliExit": 1,
+  "errorName": null,
+  "status": "Failed",
+  "done": true,
+  "checkOnly": true,
+  "compileErrorCount": 61,
+  "testsRun": 0,
+  "testFailures": 0,
+  "passed": 0,
+  "failures": [],
+  "coverage": [],
+  "metadataPersisted": false,
+  "businessRecordsSaved": false,
+  "behavioralRedEstablished": false,
+  "rootCause": "Target lacks existing diagnostic Cardstack_Connection_Check__c object; 61 cascading compile errors",
+  "proofScope": "Corrected source reviews Approved; zero native tests executed",
+  "nextScope": "Bundle-only unchanged diagnostic check object and existing fields; no ordinary permissions added"
+}

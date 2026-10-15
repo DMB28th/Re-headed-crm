@@ -1,0 +1,145 @@
+{
+  "checkedAt": "2026-10-10T08:12:45.200Z",
+  "stage": "Pass",
+  "scope": "ordinary-user native boundary",
+  "ordinaryInteractive": true,
+  "profile": "Minimum Access - Salesforce",
+  "firstLoginVerified": true,
+  "sameToken": true,
+  "siteActivated": false,
+  "siteStatusDuringMeasurement": "Inactive",
+  "crmRecordsRead": false,
+  "steps": [
+    {
+      "name": "noUse",
+      "measurement": {
+        "validityPassed": true,
+        "schemaValid": false,
+        "identityStatus": 200,
+        "restStatus": 200,
+        "actorMatches": true,
+        "probeStatus": 403,
+        "transportFailure": false
+      }
+    },
+    {
+      "name": "use",
+      "measurement": {
+        "validityPassed": true,
+        "schemaValid": true,
+        "identityStatus": 200,
+        "restStatus": 200,
+        "actorMatches": true,
+        "probeStatus": 200,
+        "transportFailure": false,
+        "privateCrud": {
+          "read": false,
+          "create": false,
+          "update": false,
+          "delete": false
+        }
+      }
+    },
+    {
+      "name": "admin",
+      "measurement": {
+        "validityPassed": true,
+        "schemaValid": false,
+        "identityStatus": 200,
+        "restStatus": 200,
+        "actorMatches": true,
+        "probeStatus": 403,
+        "transportFailure": false
+      }
+    },
+    {
+      "name": "unknown",
+      "measurement": {
+        "validityPassed": true,
+        "schemaValid": false,
+        "identityStatus": 200,
+        "restStatus": 200,
+        "actorMatches": true,
+        "probeStatus": 404,
+        "transportFailure": false
+      }
+    },
+    {
+      "name": "nested",
+      "measurement": {
+        "validityPassed": true,
+        "schemaValid": false,
+        "identityStatus": 200,
+        "restStatus": 200,
+        "actorMatches": true,
+        "probeStatus": 404,
+        "transportFailure": false
+      }
+    },
+    {
+      "name": "guest",
+      "measurement": {
+        "validityPassed": true,
+        "schemaValid": false,
+        "identityStatus": 200,
+        "restStatus": 200,
+        "actorMatches": true,
+        "probeStatus": 401,
+        "transportFailure": false
+      }
+    },
+    {
+      "name": "fabricated",
+      "measurement": {
+        "validityPassed": true,
+        "schemaValid": false,
+        "identityStatus": 200,
+        "restStatus": 200,
+        "actorMatches": true,
+        "probeStatus": 401,
+        "transportFailure": false
+      }
+    },
+    {
+      "name": "revokeUse",
+      "measurement": {
+        "validityPassed": true,
+        "schemaValid": false,
+        "identityStatus": 200,
+        "restStatus": 200,
+        "actorMatches": true,
+        "probeStatus": 403,
+        "transportFailure": false
+      }
+    },
+    {
+      "name": "validToken",
+      "measurement": {
+        "validityPassed": true,
+        "schemaValid": false,
+        "identityStatus": 200,
+        "restStatus": 200,
+        "actorMatches": true,
+        "probeStatus": 403,
+        "transportFailure": false
+      }
+    },
+    {
+      "name": "revokedToken",
+      "measurement": {
+        "validityPassed": false,
+        "schemaValid": false,
+        "postRevokeRestStatus": 401,
+        "probeStatus": 401,
+        "transportFailure": false
+      }
+    }
+  ],
+  "tokenCleanup": {
+    "accessRevoked": true,
+    "refreshRevoked": true,
+    "vaultPurged": true
+  },
+  "fixtureCleanupComplete": true,
+  "fixtureCleanupReceipt": "actual-cleanup-receipt.json"
+}

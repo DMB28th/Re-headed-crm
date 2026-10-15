@@ -1,0 +1,11 @@
+{
+  "status": "FAILED_GRANT_CLEANED",
+  "ordinaryTestPassed": false,
+  "expectedActorMatched": false,
+  "preRest200": true,
+  "postRest401": true,
+  "probe401": true,
+  "bothRevoked": true,
+  "purged": true,
+  "purgedAt": "2026-10-10T07:59:45.952Z"
+}

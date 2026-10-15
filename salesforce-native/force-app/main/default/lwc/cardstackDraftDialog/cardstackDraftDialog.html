@@ -1,0 +1,5 @@
+<template>
+    <lightning-modal-header label="Unsaved changes"></lightning-modal-header>
+    <lightning-modal-body><p>{description}</p><p class="slds-m-top_small">Saving creates a draft for review. It does not change the published card.</p></lightning-modal-body>
+    <lightning-modal-footer><lightning-button label="Stay" onclick={stay}></lightning-button><lightning-button class="slds-m-left_small" label="Discard changes" onclick={discard}></lightning-button><lightning-button class="slds-m-left_small" label="Save draft" variant="brand" onclick={save}></lightning-button></lightning-modal-footer>
+</template>

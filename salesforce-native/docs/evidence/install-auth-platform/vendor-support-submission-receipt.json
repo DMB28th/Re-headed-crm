@@ -1,0 +1,14 @@
+{
+  "checkedAt": "2026-10-08T23:48:49Z",
+  "destination": "Salesforce Help Agentforce support assistant",
+  "sanitizedClarificationSent": true,
+  "sentMessageVisiblyConfirmed": true,
+  "humanReviewRequested": true,
+  "humanSupportCaseCreated": false,
+  "caseReferenceReceived": false,
+  "nextStep": "Salesforce Support / Trailblazer sign-in required",
+  "automatedResponseAcceptedAsPlatformEvidence": false,
+  "reason": "Generated response contradicted documented introspection support and SessionManagement return signature",
+  "liveOrgSettingsChanged": false,
+  "credentialsOrRawLogsSent": false
+}

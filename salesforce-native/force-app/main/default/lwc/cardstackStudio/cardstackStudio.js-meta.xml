@@ -3,7 +3,7 @@
     <apiVersion>67.0</apiVersion>
     <isExposed>true</isExposed>
     <masterLabel>Cardstack Studio</masterLabel>
-    <description>Native admin Studio for the Cardstack package: dashboard, object layouts, lists, actions, flows, home card, audit log, and publish center.</description>
+    <description>Native Studio Overview with record card states, saved drafts, activity, and client Setup navigation.</description>
     <targets>
         <target>lightning__AppPage</target>
         <target>lightning__HomePage</target>

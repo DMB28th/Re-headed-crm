@@ -1,0 +1,69 @@
+{
+  "sourceHead": "2d65d7224fe47dec4adf05f2feff6dd28b097448",
+  "zipSha256": "41baf574f9fa77e84288f67d408c638f8a747461f2f9259996b033b9cb2b8b79",
+  "apiVersion": "67.0",
+  "status": "Failed",
+  "done": true,
+  "checkOnly": true,
+  "compileErrorCount": 0,
+  "testsRun": 530,
+  "testFailures": 0,
+  "passed": 530,
+  "sourceClassesSelected": 44,
+  "newStudioMethods": 13,
+  "newStudioMethodsExecuted": 13,
+  "missingNewStudioMethods": [],
+  "lowCoverageClasses": [
+    {
+      "class": "CardstackFlowContinueAction",
+      "covered": 13,
+      "total": 48,
+      "percent": 27.083
+    },
+    {
+      "class": "CardstackQuickActionStartAction",
+      "covered": 30,
+      "total": 61,
+      "percent": 49.18
+    },
+    {
+      "class": "CardstackDmlError",
+      "covered": 76,
+      "total": 106,
+      "percent": 71.698
+    },
+    {
+      "class": "CardstackFlowStartAction",
+      "covered": 35,
+      "total": 69,
+      "percent": 50.725
+    }
+  ],
+  "changedProductionCoverage": [
+    {
+      "class": "CardstackOpportunityActionPolicy",
+      "covered": 46,
+      "total": 48,
+      "percent": 95.833
+    },
+    {
+      "class": "CardstackConfigService",
+      "covered": 96,
+      "total": 109,
+      "percent": 88.073
+    },
+    {
+      "class": "CardstackStudioController",
+      "covered": 217,
+      "total": 230,
+      "percent": 94.348
+    },
+    {
+      "class": "CardstackPolicyService",
+      "covered": 70,
+      "total": 72,
+      "percent": 97.222
+    }
+  ],
+  "coverageWarningCount": 4
+}

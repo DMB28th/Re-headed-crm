@@ -1,0 +1,53 @@
+{
+  "sourceCommit": "af661bb175c162a8a5932f1ee6325a544a1c3bee",
+  "apiVersion": "67.0",
+  "checkOnly": true,
+  "persisted": false,
+  "archiveSha256": "b86a6833806e63dd3b2521c1636f8ab4b3de030fc775016ce680c747e957ec01",
+  "testLevel": "RunSpecifiedTests",
+  "validationStatus": "Failed",
+  "componentErrors": 0,
+  "testErrors": 0,
+  "expectedTests": 310,
+  "exactMethodSet": true,
+  "passed": 310,
+  "failed": 0,
+  "coveredStatements": 2821,
+  "reportedStatements": 3176,
+  "aggregatePercent": 88.822,
+  "validationBlocker": "FIVE_UNCHANGED_CLASSES_BELOW_PER_CLASS_75_PERCENT",
+  "belowPerClassThreshold": [
+    {
+      "class": "CardstackFlowContinueAction",
+      "covered": 13,
+      "locations": 48
+    },
+    {
+      "class": "CardstackQuickActionStartAction",
+      "covered": 30,
+      "locations": 61
+    },
+    {
+      "class": "CardstackDmlError",
+      "covered": 76,
+      "locations": 106
+    },
+    {
+      "class": "CardstackRecordActionService",
+      "covered": 29,
+      "locations": 39
+    },
+    {
+      "class": "CardstackFlowStartAction",
+      "covered": 35,
+      "locations": 69
+    }
+  ],
+  "limits": [
+    "All310source tests passed; supplemental RunSpecifiedTests deployment validation Failed due individual class coverage.",
+    "Five low-coverage Flow/action classes unchanged from source-build base8e78cfd; no beta behavior refactor.",
+    "Same core archive previously Succeeded in API67 RunLocalTests validation,190orglocaltestsPassed.",
+    "88.822percent is measured aggregate of reported coverage, not computed fresh package-version coverage.",
+    "Fresh package --code-coverage validation, installation and liveclient/Studio/lifecycle remainpending; no skip-validation or ignore-warning flags."
+  ]
+}

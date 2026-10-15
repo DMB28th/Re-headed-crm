@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Future controller canonical synthetic receipt; no raw identities URLs credentials or payloads",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "liveExecution",
+    "deployHash",
+    "cleanupHash",
+    "stages"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "liveExecution": {
+      "const": true
+    },
+    "deployHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "cleanupHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "stages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "stage",
+          "status",
+          "source",
+          "startedAt",
+          "endedAt",
+          "code",
+          "checks"
+        ],
+        "properties": {
+          "stage": {
+            "enum": [
+              "baseline",
+              "deploy",
+              "jwt-restoration",
+              "assignment",
+              "site-exposure",
+              "site-activation",
+              "metadata",
+              "challenge",
+              "invalid-route",
+              "missing-use",
+              "method-denied",
+              "notification",
+              "initialize",
+              "ping",
+              "tools",
+              "resources",
+              "html",
+              "open",
+              "echo",
+              "empty-text",
+              "reload",
+              "rpc-error",
+              "callback-observation",
+              "eca-creation",
+              "draft-creation",
+              "callback-registration",
+              "consent",
+              "iframe",
+              "host-bridge",
+              "owned-grant-revocation",
+              "client-cleanup",
+              "metadata-cleanup",
+              "site-access-restoration",
+              "preservation"
+            ]
+          },
+          "status": {
+            "enum": [
+              "Pass",
+              "Fail",
+              "Unknown"
+            ]
+          },
+          "source": {
+            "enum": [
+              "provider",
+              "fixture",
+              "operator-ui",
+              "independent-controller"
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "code": {
+            "enum": [
+              "NONE",
+              "NOT_EXECUTED",
+              "CONTRACT_MISMATCH",
+              "PROVIDER_DENIED",
+              "FIXTURE_DENIED",
+              "CONTEXT_UNAVAILABLE",
+              "RESOURCE_UNAVAILABLE",
+              "CALLBACK_NOT_DISPLAYED",
+              "CALLBACK_ORDERING_BLOCKED",
+              "APP_FIRST_REQUIRED",
+              "PREDRAFT_CALLBACK_REQUIRED",
+              "DRIFT_DETECTED",
+              "OWNERSHIP_UNVERIFIED",
+              "UI_UNAVAILABLE",
+              "LOGIN_FAILED",
+              "JOB_OUTCOME_UNKNOWN",
+              "CLEANUP_UNVERIFIED"
+            ]
+          },
+          "checks": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "expectedActor": {
+                "type": "boolean"
+              },
+              "expectedOrg": {
+                "type": "boolean"
+              },
+              "existingUse": {
+                "type": "boolean"
+              },
+              "collisionFree": {
+                "type": "boolean"
+              },
+              "ownershipVerified": {
+                "type": "boolean"
+              },
+              "dependenciesClear": {
+                "type": "boolean"
+              },
+              "exactResource": {
+                "type": "boolean"
+              },
+              "exactIssuer": {
+                "type": "boolean"
+              },
+              "prefixOnce": {
+                "type": "boolean"
+              },
+              "exactSibling": {
+                "type": "boolean"
+              },
+              "hashMatch": {
+                "type": "boolean"
+              },
+              "exactSeven": {
+                "type": "boolean"
+              },
+              "emptyText": {
+                "type": "boolean"
+              },
+              "reload": {
+                "type": "boolean"
+              },
+              "exactFrozenCallback": {
+                "type": "boolean"
+              },
+              "ownedAbsent": {
+                "type": "boolean"
+              },
+              "baselinePreserved": {
+                "type": "boolean"
+              },
+              "jwtOn": {
+                "type": "boolean"
+              },
+              "noPendingJob": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

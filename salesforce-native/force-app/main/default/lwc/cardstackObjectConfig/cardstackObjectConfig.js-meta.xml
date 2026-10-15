@@ -3,5 +3,5 @@
     <apiVersion>67.0</apiVersion>
     <isExposed>false</isExposed>
     <masterLabel>Cardstack Object Config</masterLabel>
-    <description>Per-object configuration: layouts, lists, actions, assignment, permissions.</description>
+    <description>Per-object configuration: default layouts, lists, actions, permissions.</description>
 </LightningComponentBundle>

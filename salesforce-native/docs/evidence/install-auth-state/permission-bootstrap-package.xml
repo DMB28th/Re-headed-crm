@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+  <types><members>Cardstack_Manage_Connections</members><members>Cardstack_Use_Connections</members><name>CustomPermission</name></types>
+  <types><members>Cardstack_Admin</members><members>Cardstack_User</members><name>PermissionSet</name></types>
+  <version>67.0</version>
+</Package>

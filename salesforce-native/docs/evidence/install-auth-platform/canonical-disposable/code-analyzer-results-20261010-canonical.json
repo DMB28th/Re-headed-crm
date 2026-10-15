@@ -1,0 +1,61 @@
+{
+  "runDir": "/Users/danielben-atar/.codex/worktrees/mcp-apps-delivery-proof/Re-headed-crm/",
+  "violationCounts": {
+    "total": 3,
+    "sev1": 3,
+    "sev2": 0,
+    "sev3": 0,
+    "sev4": 0,
+    "sev5": 0
+  },
+  "versions": {
+    "code-analyzer": "0.49.0",
+    "pmd": "unknown",
+    "cpd": "unknown",
+    "sfge": "unknown"
+  },
+  "violations": [
+    {
+      "rule": "UninstantiableEngineError",
+      "engine": "pmd",
+      "severity": 1,
+      "tags": [],
+      "primaryLocationIndex": 0,
+      "locations": [
+        {
+          "comment": "Undefined Code Location"
+        }
+      ],
+      "message": "The engine with name 'pmd' could not be instantiated. Error: Could not locate Java v11.0.0+.\n  | Attempt 1:\n  |     When attempting to find the version of command 'java', an error was thrown:\n  |       | The operation couldn’t be completed. Unable to locate a Java Runtime.\n  |       | Please visit http://www.java.com for information on installing Java.\n  |       | \n  |       | \nIf you have Java installed, specify the command in your Code Analyzer configuration as the value of property 'engines.pmd.java_command'.\nIf you choose not to install Java, you may disable the corresponding engine in your Code Analyzer configuration by setting 'engines.pmd.disable_engine' to true.\n    at PmdConfigValueExtractor.attemptToAutoDetectJavaCommand (/Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/node_modules/@salesforce/code-analyzer-pmd-engine/dist/config.js:158:15)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async PmdConfigValueExtractor.extractJavaCommand (/Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/node_modules/@salesforce/code-analyzer-pmd-engine/dist/config.js:128:20)\n    at async validateAndNormalizePmdConfig (/Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/node_modules/@salesforce/code-analyzer-pmd-engine/dist/config.js:98:23)\n    at async PmdCpdEnginesPlugin.createEngineConfig (/Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/node_modules/@salesforce/code-analyzer-pmd-engine/dist/plugin.js:34:20)\n    at async CodeAnalyzer.createAndAddEngineIfValid (/Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/node_modules/@salesforce/code-analyzer-core/dist/code-analyzer.js:656:34)\n    at async Promise.all (index 0)\n    at async CodeAnalyzer.addEnginePlugin (/Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/node_modules/@salesforce/code-analyzer-core/dist/code-analyzer.js:164:9)\n    at async Promise.all (index 1)\n    at async RunAction.execute (file:///Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/lib/lib/actions/RunAction.js:35:9)",
+      "resources": []
+    },
+    {
+      "rule": "UninstantiableEngineError",
+      "engine": "cpd",
+      "severity": 1,
+      "tags": [],
+      "primaryLocationIndex": 0,
+      "locations": [
+        {
+          "comment": "Undefined Code Location"
+        }
+      ],
+      "message": "The engine with name 'cpd' could not be instantiated. Error: Could not locate Java v11.0.0+.\n  | Attempt 1:\n  |     When attempting to find the version of command 'java', an error was thrown:\n  |       | The operation couldn’t be completed. Unable to locate a Java Runtime.\n  |       | Please visit http://www.java.com for information on installing Java.\n  |       | \n  |       | \nIf you have Java installed, specify the command in your Code Analyzer configuration as the value of property 'engines.cpd.java_command'.\nIf you choose not to install Java, you may disable the corresponding engine in your Code Analyzer configuration by setting 'engines.cpd.disable_engine' to true.\n    at CpdConfigValueExtractor.attemptToAutoDetectJavaCommand (/Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/node_modules/@salesforce/code-analyzer-pmd-engine/dist/config.js:158:15)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async CpdConfigValueExtractor.extractJavaCommand (/Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/node_modules/@salesforce/code-analyzer-pmd-engine/dist/config.js:128:20)\n    at async validateAndNormalizeCpdConfig (/Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/node_modules/@salesforce/code-analyzer-pmd-engine/dist/config.js:110:23)\n    at async PmdCpdEnginesPlugin.createEngineConfig (/Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/node_modules/@salesforce/code-analyzer-pmd-engine/dist/plugin.js:31:20)\n    at async CodeAnalyzer.createAndAddEngineIfValid (/Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/node_modules/@salesforce/code-analyzer-core/dist/code-analyzer.js:656:34)\n    at async Promise.all (index 1)\n    at async CodeAnalyzer.addEnginePlugin (/Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/node_modules/@salesforce/code-analyzer-core/dist/code-analyzer.js:164:9)\n    at async Promise.all (index 1)\n    at async RunAction.execute (file:///Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/lib/lib/actions/RunAction.js:35:9)",
+      "resources": []
+    },
+    {
+      "rule": "UninstantiableEngineError",
+      "engine": "sfge",
+      "severity": 1,
+      "tags": [],
+      "primaryLocationIndex": 0,
+      "locations": [
+        {
+          "comment": "Undefined Code Location"
+        }
+      ],
+      "message": "The engine with name 'sfge' could not be instantiated. Error: Could not locate Java v11.0.0+.\n  | Attempt 1:\n  |     When attempting to find the version of command 'java', an error was thrown:\n  |       | The operation couldn’t be completed. Unable to locate a Java Runtime.\n  |       | Please visit http://www.java.com for information on installing Java.\n  |       | \n  |       | \nIf you have Java installed, specify the command in your Code Analyzer configuration as the value of property 'engines.sfge.java_command'.\nIf you choose not to install Java, you may disable the corresponding engine in your Code Analyzer configuration by setting 'engines.sfge.disable_engine' to true.\n    at SfgeConfigValueExtractor.attemptToAutoDetectJavaCommand (/Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/node_modules/@salesforce/code-analyzer-sfge-engine/dist/config.js:119:15)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async SfgeConfigValueExtractor.extractJavaCommand (/Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/node_modules/@salesforce/code-analyzer-sfge-engine/dist/config.js:89:20)\n    at async validateAndNormalizeConfig (/Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/node_modules/@salesforce/code-analyzer-sfge-engine/dist/config.js:72:23)\n    at async SfgeEnginePlugin.createEngineConfig (/Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/node_modules/@salesforce/code-analyzer-sfge-engine/dist/plugin.js:24:16)\n    at async CodeAnalyzer.createAndAddEngineIfValid (/Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/node_modules/@salesforce/code-analyzer-core/dist/code-analyzer.js:656:34)\n    at async Promise.all (index 0)\n    at async CodeAnalyzer.addEnginePlugin (/Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/node_modules/@salesforce/code-analyzer-core/dist/code-analyzer.js:164:9)\n    at async Promise.all (index 5)\n    at async RunAction.execute (file:///Users/danielben-atar/.local/share/sf/node_modules/@salesforce/plugin-code-analyzer/lib/lib/actions/RunAction.js:35:9)",
+      "resources": []
+    }
+  ]
+}

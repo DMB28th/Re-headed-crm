@@ -1,0 +1,6 @@
+{
+  "loginOrigin": "https://REPLACE-OBSERVED-MYDOMAIN.my.salesforce.com",
+  "dedicated": {"developerName": "CardstackApiBoundaryDedicatedProbe", "clientId": "REPLACE-OWNED-PUBLIC-CONSUMER-KEY"},
+  "unrelated": {"developerName": "CardstackApiBoundaryUnrelatedProbe", "clientId": "REPLACE-OWNED-PUBLIC-CONSUMER-KEY"},
+  "identity": {"developerName": "CardstackIdentityOnlyBoundaryProbe", "clientId": "REPLACE-OWNED-PUBLIC-CONSUMER-KEY"}
+}

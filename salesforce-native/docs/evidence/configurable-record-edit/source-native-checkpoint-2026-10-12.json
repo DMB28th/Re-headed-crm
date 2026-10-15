@@ -1,0 +1,139 @@
+{
+  "sourceHead": "81e45fa3e38fe1c0a8bdfd4e44fc5c8647f54531",
+  "apiVersion": "67.0",
+  "environment": "existing owned disposable QA org; installed beta0.1.0.11 plus prior QA source updates",
+  "providerStatus": "Succeeded",
+  "checkOnly": true,
+  "componentErrors": 0,
+  "expectedRegularMethods": 330,
+  "passedRegularMethods": 330,
+  "allExpectedMethodIdentitiesExactlyOnce": true,
+  "setupFailures": 0,
+  "coverageWarnings": [],
+  "runtimeCoverage": [
+    {
+      "className": "CardstackOpportunityEditRepository",
+      "totalLocations": 281,
+      "uncoveredLocations": 21,
+      "coveredLocations": 260,
+      "coveragePercent": 92.527
+    },
+    {
+      "className": "CardstackOpportunityWriteService",
+      "totalLocations": 119,
+      "uncoveredLocations": 7,
+      "coveredLocations": 112,
+      "coveragePercent": 94.118
+    },
+    {
+      "className": "CardstackRecordActionService",
+      "totalLocations": 45,
+      "uncoveredLocations": 5,
+      "coveredLocations": 40,
+      "coveragePercent": 88.889
+    },
+    {
+      "className": "CardstackOpportunityEditService",
+      "totalLocations": 287,
+      "uncoveredLocations": 32,
+      "coveredLocations": 255,
+      "coveragePercent": 88.85
+    },
+    {
+      "className": "CardstackConfigService",
+      "totalLocations": 111,
+      "uncoveredLocations": 13,
+      "coveredLocations": 98,
+      "coveragePercent": 88.288
+    },
+    {
+      "className": "CardstackOpportunityMcpAdapter",
+      "totalLocations": 243,
+      "uncoveredLocations": 17,
+      "coveredLocations": 226,
+      "coveragePercent": 93.004
+    },
+    {
+      "className": "CardstackOpportunityEditTypes",
+      "totalLocations": 71,
+      "uncoveredLocations": 6,
+      "coveredLocations": 65,
+      "coveragePercent": 91.549
+    },
+    {
+      "className": "CardstackStudioController",
+      "totalLocations": 231,
+      "uncoveredLocations": 13,
+      "coveredLocations": 218,
+      "coveragePercent": 94.372
+    },
+    {
+      "className": "CardstackRecordMcpAdapter",
+      "totalLocations": 233,
+      "uncoveredLocations": 27,
+      "coveredLocations": 206,
+      "coveragePercent": 88.412
+    },
+    {
+      "className": "CardstackRecordScreenCapability",
+      "totalLocations": 139,
+      "uncoveredLocations": 3,
+      "coveredLocations": 136,
+      "coveragePercent": 97.842
+    },
+    {
+      "className": "CardstackOpportunityWriteAudit",
+      "totalLocations": 32,
+      "uncoveredLocations": 0,
+      "coveredLocations": 32,
+      "coveragePercent": 100.0
+    },
+    {
+      "className": "CardstackMcpDispatcher",
+      "totalLocations": 115,
+      "uncoveredLocations": 9,
+      "coveredLocations": 106,
+      "coveragePercent": 92.174
+    }
+  ],
+  "independentPostcheck": [
+    {
+      "type": "apex-source",
+      "recordsBefore": 14,
+      "recordsAfter": 14,
+      "exactStateUnchanged": true
+    },
+    {
+      "type": "resource-source",
+      "recordsBefore": 2,
+      "recordsAfter": 2,
+      "exactStateUnchanged": true
+    },
+    {
+      "type": "lwc-source",
+      "recordsBefore": 2,
+      "recordsAfter": 2,
+      "exactStateUnchanged": true
+    }
+  ],
+  "persistentSourceChange": false,
+  "localTests": {
+    "passed": 208,
+    "failed": 0,
+    "skipped": 0,
+    "sourceHead": "5e3709b",
+    "laterChanges": "Apex test files only"
+  },
+  "sourceReview": "READY; scoped test repairs preserve assertions and runtime authorization",
+  "inventory": {
+    "apexClasses": 20,
+    "staticResources": 3,
+    "lwcBundles": 2,
+    "rootManifestArchiveEntries": 54
+  },
+  "preservedArtifacts": 260,
+  "liveContactAcceptance": false,
+  "freshCorrectedPackageInstall": false,
+  "staticAnalysis": "Unavailable Java runtime; zero scanned, no clean claim",
+  "historicFailures": "Packaging, compiler, fixture-access and test-context failures retained in private ledger"
+}

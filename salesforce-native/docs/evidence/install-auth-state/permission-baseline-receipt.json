@@ -1,0 +1,44 @@
+{
+  "capturedAt": "2026-10-09T11:37:22.796Z",
+  "definitionCount": 0,
+  "sets": [
+    {
+      "name": "Cardstack_Admin",
+      "counts": {
+        "assignments": 1,
+        "groups": 0,
+        "objectPermissions": 3,
+        "fieldPermissions": 8,
+        "setupEntityAccess": 5
+      },
+      "metadataCounts": {
+        "classAccesses": 4,
+        "customPermissions": 0,
+        "objectPermissions": 3,
+        "fieldPermissions": 8,
+        "pageAccesses": 0,
+        "userPermissions": 0
+      }
+    },
+    {
+      "name": "Cardstack_User",
+      "counts": {
+        "assignments": 1,
+        "groups": 0,
+        "objectPermissions": 1,
+        "fieldPermissions": 3,
+        "setupEntityAccess": 3
+      },
+      "metadataCounts": {
+        "classAccesses": 3,
+        "customPermissions": 0,
+        "objectPermissions": 1,
+        "fieldPermissions": 3,
+        "pageAccesses": 0,
+        "userPermissions": 0
+      }
+    }
+  ],
+  "baselineSHA256": "8a940a2357199abb447082d856e531eb6cea9ac64c609eef1b2efacd3484b991",
+  "readOnly": true
+}

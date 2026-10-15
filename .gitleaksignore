@@ -1,0 +1,4 @@
+# Exact false positives: SHA256 source checksums in sanitized verification receipts.
+salesforce-native/docs/evidence/install-auth-platform/native-boundary-offline-receipt.json:generic-api-key:29
+salesforce-native/docs/evidence/install-auth-state/source-inventory.json:generic-api-key:6
+salesforce-native/docs/evidence/install-auth-state/source-inventory.json:generic-api-key:7

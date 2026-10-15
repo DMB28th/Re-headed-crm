@@ -1,0 +1,103 @@
+{
+  "sourceHead": "0f1662f545a5d99b2fbffe32ffe4ccd609657de2",
+  "zipSha256": "1f6d03b213206c408a577deeb1f8d725aa5b3f9821e0c82c183f2e10cc0366d2",
+  "apiVersion": "67.0",
+  "cliExit": 0,
+  "errorName": null,
+  "status": "Succeeded",
+  "done": true,
+  "checkOnly": true,
+  "compileErrorCount": 0,
+  "testsRun": 272,
+  "testFailures": 0,
+  "passed": 272,
+  "failures": [],
+  "coverage": [
+    {
+      "class": "CardstackOpportunityWriteAudit",
+      "covered": 28,
+      "total": 28,
+      "percent": 100.0
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapter",
+      "covered": 225,
+      "total": 242,
+      "percent": 92.975
+    },
+    {
+      "class": "CardstackOpportunityEditTypes",
+      "covered": 56,
+      "total": 65,
+      "percent": 86.154
+    },
+    {
+      "class": "CardstackOpportunitySelector",
+      "covered": 45,
+      "total": 52,
+      "percent": 86.538
+    },
+    {
+      "class": "CardstackOpportunityEditRepository",
+      "covered": 235,
+      "total": 256,
+      "percent": 91.797
+    },
+    {
+      "class": "CardstackOpportunityStageProvider",
+      "covered": 57,
+      "total": 61,
+      "percent": 93.443
+    },
+    {
+      "class": "CardstackOpportunityEditService",
+      "covered": 210,
+      "total": 235,
+      "percent": 89.362
+    },
+    {
+      "class": "CardstackOpportunityActionPolicy",
+      "covered": 20,
+      "total": 20,
+      "percent": 100.0
+    },
+    {
+      "class": "CardstackOpportunityWriteService",
+      "covered": 100,
+      "total": 107,
+      "percent": 93.458
+    },
+    {
+      "class": "CardstackOpportunityEditDomain",
+      "covered": 128,
+      "total": 142,
+      "percent": 90.141
+    }
+  ],
+  "metadataPersisted": false,
+  "businessRecordsSaved": false,
+  "fixtureScope": "Rolled-back @IsTest fixtures only; unchanged private diagnostic schema supplied in checkOnly overlay",
+  "localChecks": {
+    "opportunityProtocol": {
+      "passed": 7,
+      "failed": 0
+    },
+    "diagnosticProtocol": {
+      "passed": 22,
+      "failed": 0
+    }
+  },
+  "reviews": [
+    "task-4-algorithm-spec-review.md: Approved",
+    "task-4-algorithm-quality-review.md: Approved"
+  ],
+  "proofScope": "Scoped native compilation/assertions/coverage and local source protocol checks; actual provider/package/client/UI acceptance still pending",
+  "jwt": "Previously restored verified ON; no subsequent setting changes",
+  "remainingGates": [
+    "Package coverage build and fresh install/full installed Apex suite",
+    "Real supported ConnectApi under ordinary-user/record-type/process/currency contexts and lock sequence",
+    "Task5 custom editor/recovery UI and Task6 Studio preset/preview",
+    "Task7 actual clients, automation/concurrency and independent readback",
+    "Analyzer unavailable: missing Java, zero source files scanned"
+  ]
+}

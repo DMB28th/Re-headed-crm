@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "evidenceSource": "root-live-http",
+  "liveExecution": true,
+  "requiredCaseCount": 4,
+  "complete": true,
+  "cases": [
+    {
+      "id": "claude.mcp",
+      "httpStatus": 405,
+      "statusAvailable": true,
+      "contentCategory": "fixture-json",
+      "fixtureError": "method_not_allowed",
+      "stopReason": "None"
+    },
+    {
+      "id": "claude.encoded-mcp",
+      "httpStatus": 405,
+      "statusAvailable": true,
+      "contentCategory": "fixture-json",
+      "fixtureError": "method_not_allowed",
+      "stopReason": "None"
+    },
+    {
+      "id": "chatgpt.mcp",
+      "httpStatus": 405,
+      "statusAvailable": true,
+      "contentCategory": "fixture-json",
+      "fixtureError": "method_not_allowed",
+      "stopReason": "None"
+    },
+    {
+      "id": "chatgpt.encoded-mcp",
+      "httpStatus": 405,
+      "statusAvailable": true,
+      "contentCategory": "fixture-json",
+      "fixtureError": "method_not_allowed",
+      "stopReason": "None"
+    }
+  ],
+  "stopReason": "None",
+  "independentConsentRevocation": "Unknown",
+  "networkAbort": "Unknown",
+  "attemptCount": 4,
+  "attemptsPerCase": 1,
+  "originalStageAResultUnchanged": true,
+  "normalizationLayer": "Unknown"
+}

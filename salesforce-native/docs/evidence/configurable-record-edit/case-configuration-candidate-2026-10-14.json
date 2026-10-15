@@ -1,0 +1,87 @@
+{
+  "permissions": {
+    "writeEnabled": true
+  },
+  "fields": [
+    {
+      "api": "SuppliedEmail",
+      "editable": true,
+      "required": false
+    },
+    {
+      "api": "Subject",
+      "editable": true,
+      "required": true
+    },
+    {
+      "api": "Description",
+      "editable": true,
+      "required": false
+    },
+    {
+      "api": "SuppliedPhone",
+      "editable": true,
+      "required": false
+    }
+  ],
+  "sections": [
+    {
+      "label": "Request",
+      "columns": 1,
+      "fields": [
+        {
+          "api": "Subject",
+          "editable": true,
+          "required": true
+        },
+        {
+          "api": "Description",
+          "editable": true,
+          "required": false
+        }
+      ]
+    },
+    {
+      "label": "Reply details",
+      "columns": 2,
+      "fields": [
+        {
+          "api": "SuppliedPhone",
+          "editable": true,
+          "required": false
+        },
+        {
+          "api": "SuppliedEmail",
+          "editable": true,
+          "required": false
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "name": "case_details",
+      "label": "Update case details",
+      "enabled": true,
+      "type": "record-edit",
+      "mappings": [
+        {
+          "fieldApi": "SuppliedEmail",
+          "source": "current"
+        },
+        {
+          "fieldApi": "Subject",
+          "source": "current"
+        },
+        {
+          "fieldApi": "Description",
+          "source": "current"
+        },
+        {
+          "fieldApi": "SuppliedPhone",
+          "source": "current"
+        }
+      ]
+    }
+  ]
+}

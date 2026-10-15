@@ -1,6 +1,8 @@
 <template>
     <div class="wizard">
         <div class="wizard-heading"><div><p class="eyebrow">FLOW LAUNCH CARD</p><h2>{stepTitle}</h2></div><lightning-button label="Cancel" onclick={cancel}></lightning-button></div>
+        <p role="status" aria-live="polite">{statusLabel}</p>
+        <template if:true={saveUnknown}><lightning-button label="Check saved state" onclick={checkSavedState} disabled={checkingSavedState}></lightning-button></template>
         <template if:true={error}><p role="alert" class="slds-text-color_error slds-m-vertical_small">{error}</p></template>
         <template if:true={isStep1}>
             <p class="intro">Choose an active flow your team should open from chat. The flow runs in Salesforce.</p>
@@ -18,7 +20,7 @@
             <lightning-input label="Card name" value={flowLabel} onchange={handleLabelInput} required maxlength="120"></lightning-input>
             <p class="flow-api slds-m-top_x-small">Salesforce flow: {selectedFlow.apiName}</p>
             <div class="preview"><p class="eyebrow">CHAT CARD PREVIEW</p><div class="sample-card"><div class="card-heading"><lightning-icon icon-name="standard:flow" size="small"></lightning-icon><h3>{flowLabel}</h3></div><p>Ready to open for [record name].</p><p class="handoff">Complete this flow in Salesforce. Your Salesforce access and the flow’s own settings apply.</p><lightning-button label="Open in Salesforce" variant="brand" disabled></lightning-button></div><p class="preview-note">Preview only. Staging this card does not run the flow.</p></div>
-            <div class="footer"><lightning-button label={backLabel} onclick={goBack}></lightning-button><lightning-button label="Stage launch card" variant="brand" onclick={stagePolicy} disabled={cannotStage}></lightning-button></div>
+            <div class="footer"><lightning-button label={backLabel} onclick={goBack}></lightning-button><lightning-button label={saveLabel} variant="brand" onclick={stagePolicy} disabled={cannotStage}></lightning-button></div>
         </template>
     </div>
 </template>

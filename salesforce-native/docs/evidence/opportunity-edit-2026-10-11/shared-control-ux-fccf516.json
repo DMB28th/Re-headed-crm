@@ -1,0 +1,32 @@
+{
+  "source": "fccf5162864397f17ba942fe818aff704fe8c975",
+  "initialFailurePreserved": "SourceConflictError four conflicts",
+  "rootCause": "Fresh prepared project tracked revisions78/79 as unsynced lastRetrievedFromServer=null; local new resources overlapped unchanged installed8ffd components",
+  "normalLocalReconciliation": "Frozen4 files/tracking backed up; moved only local4; standard same-project retrieve; verified old8ffd4 and synchronized two tracking members; restored frozenfccf4; reverified full18owned identity",
+  "conflictOverrideUsed": false,
+  "trackingResetUsed": false,
+  "retryCount": 1,
+  "deployStatus": "Succeeded",
+  "deployedComponents": 2,
+  "componentErrors": 0,
+  "testsExecuted": 0,
+  "independentRetrieveStatus": "Succeeded",
+  "retrievedHashMatches": 4,
+  "runtimeSha256": "3cec5c61012b9e4e30d53f285d557af89a139b5a5f306f4f9ff0cecb093f4597",
+  "previewSha256": "cd87dfa5bcb7b47cb7d8a2150b19174baeb66faeea56ed689a3b2ef64b36599f",
+  "environment": "Installed beta0.1.0.11 plus reviewed UI-resource QA updates",
+  "nativeBrowserRetest": {
+    "status": "PARTIAL_ACTUAL_STUDIO",
+    "loadedPicklist": "Discovery selected",
+    "numericInitializer": "10,000",
+    "nativeDateControl": "Native picker with month/day/year segments and calendar exposed",
+    "calendarKeyboard": "Left moved selected day December30 to December29",
+    "finalCalendarDaySelection": "Not verified; foreground window changed during keyboard operation",
+    "syntheticSave": "Disabled; no native record writes",
+    "chatClientUpdatedControls": "Pending"
+  },
+  "actualClientRetest": "NOT_RUN",
+  "browserOpened": false,
+  "jwtSettingsChanged": false,
+  "additionalPackageOrOrg": false
+}

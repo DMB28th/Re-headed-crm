@@ -1,0 +1,27 @@
+{
+  "checkedAt": "2026-10-09T00:33:52.723Z",
+  "mode": "deploy",
+  "success": true,
+  "done": true,
+  "status": "Succeeded",
+  "componentErrors": 0,
+  "componentsTotal": 2,
+  "testErrors": 0,
+  "testsCompleted": 4,
+  "coverage": [
+    {
+      "name": "CardstackNativeApiBoundaryProbe",
+      "locations": 18,
+      "uncovered": 0
+    }
+  ],
+  "stages": {
+    "connectionCreated": true,
+    "opaquePreconditionPassed": true,
+    "baselineChecked": true,
+    "submissionStarted": true,
+    "enqueued": true,
+    "pollingStarted": true,
+    "terminalResultReceived": true
+  }
+}

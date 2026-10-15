@@ -51,12 +51,6 @@
         <resourceUri>ui://widget/lightningType/c__cardstackListViewsResultV2</resourceUri>
     </resources>
     <resources>
-        <description>Renders the Cardstack home dashboard.</description>
-        <resourceName>cardstackHome</resourceName>
-        <resourceTitle>Cardstack Home</resourceTitle>
-        <resourceUri>ui://widget/lightningType/c__cardstackHomeResult</resourceUri>
-    </resources>
-    <resources>
         <description>Renders Cardstack confirmation cards.</description>
         <resourceName>cardstackConfirm</resourceName>
         <resourceTitle>Cardstack Confirm</resourceTitle>
@@ -175,22 +169,6 @@
         <toolName>CardstackListViewAction</toolName>
         <toolTitle>Cardstack List View</toolTitle>
         <uiResource>cardstackTableListViewV2</uiResource>
-    </tools>
-    <tools>
-        <apiDefinition>
-            <apiIdentifier>aa:apex-CardstackHomeAction</apiIdentifier>
-            <apiSource>API_CATALOG</apiSource>
-            <operation>CardstackHomeAction</operation>
-        </apiDefinition>
-        <descriptionOverride>Open the CRM home card: open follow-up tasks, recently touched records, and pipeline summary.</descriptionOverride>
-        <destructive>false</destructive>
-        <idempotent>true</idempotent>
-        <openWorld>false</openWorld>
-        <readOnly>true</readOnly>
-        <returnDirect>false</returnDirect>
-        <toolName>CardstackHomeAction</toolName>
-        <toolTitle>Cardstack Home</toolTitle>
-        <uiResource>cardstackHome</uiResource>
     </tools>
     <tools>
         <apiDefinition>

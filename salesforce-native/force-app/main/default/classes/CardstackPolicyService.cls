@@ -13,19 +13,27 @@ public with sharing class CardstackPolicyService {
         public Boolean readOnly = true;
     }
     public static Policy resolve(String objectApiName) {
-        Schema.SObjectType objectType = Schema.getGlobalDescribe().get(objectApiName);
-        if (objectType == null || !objectType.getDescribe().isAccessible()) {
-            throw new PolicyException('Object is not available.');
-        }
-        Schema.DescribeSObjectResult describe = objectType.getDescribe();
+        String canonicalApi = describeObject(objectApiName).getName();
+        String raw = CardstackConfigService.getConfig('layout:' + canonicalApi + ':default');
+        return resolveCandidate(canonicalApi, raw);
+    }
+    /**
+     * Pure candidate-policy projection for Studio validation only. Runtime callers
+     * use resolve(), which reloads published configuration on every authorization.
+     * No candidate policy is accepted by a CRM execution entry point.
+     * @param objectApiName Target object API name.
+     * @param raw Candidate layout JSON; native rights still restrict the projection.
+     * @return The restrictive policy for authoring validation.
+     */
+    public static Policy resolveCandidate(String objectApiName, String raw) {
+        Schema.DescribeSObjectResult describe = describeObject(objectApiName);
         Policy policy = new Policy();
         policy.objectApiName = describe.getName();
-        String raw = CardstackConfigService.getConfig('layout:' + policy.objectApiName + ':default');
         policy.revision = EncodingUtil.convertToHex(Crypto.generateDigest('SHA-256', Blob.valueOf(raw == null ? '' : raw)));
         if (String.isBlank(raw)) return policy;
         Map<String,Object> cfg;
         try { cfg = (Map<String,Object>) JSON.deserializeUntyped(raw); }
-        catch (Exception e) { throw new PolicyException('Published layout is invalid.'); }
+        catch (Exception e) { throw new PolicyException('Layout is invalid.'); }
         if (cfg == null) return policy;
         Map<String,Object> permissions = mapOf(cfg.get('permissions'));
         policy.editEnabled = enabled(permissions.get('writeEnabled')) && describe.isUpdateable();
@@ -78,6 +86,13 @@ public with sharing class CardstackPolicyService {
             Object value=answers.containsKey(field.apiName) ? answers.get(field.apiName) : record.get(field.apiName);
             if (value==null || (value instanceof String && String.isBlank((String)value))) throw new PolicyException('Required field cannot be blank: '+field.apiName);
         }
+    }
+    private static Schema.DescribeSObjectResult describeObject(String objectApiName) {
+        Schema.SObjectType objectType = Schema.getGlobalDescribe().get(objectApiName);
+        if (objectType == null || !objectType.getDescribe().isAccessible()) {
+            throw new PolicyException('Object is not available.');
+        }
+        return objectType.getDescribe();
     }
     private static Boolean enabled(Object value) { return value instanceof Boolean && (Boolean)value; }
     private static Map<String,Object> mapOf(Object value) {

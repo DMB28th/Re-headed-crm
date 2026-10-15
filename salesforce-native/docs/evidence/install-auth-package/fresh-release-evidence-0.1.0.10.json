@@ -1,0 +1,138 @@
+{
+  "observedAt": "2026-10-11T13:07:43.713901+00:00",
+  "packageVersion": "0.1.0.10",
+  "contractVersions": {
+    "package": "0.1.0.8",
+    "transport": "cardstack/v1",
+    "ui": "mcp-apps/v1",
+    "permissionPolicy": "1"
+  },
+  "configurationRevision": {
+    "claude": 2,
+    "chatgpt": 5
+  },
+  "orgAliasLabel": "cardstack-mcp-install-qa",
+  "artifact": "Unreleased validation version; 88% actual package coverage; installed only owned disposable org",
+  "packageChecks": {
+    "installedApex": "332/332 RunLocalTests Pass",
+    "localNative": "124/124 Pass independently reviewed",
+    "packageCoverage": "88%; coverage gate passed; validation not skipped"
+  },
+  "perClientStages": {
+    "claude": {
+      "consent": "Pass",
+      "discovery": "Pass",
+      "iframe": "Pass",
+      "hostBridge": "Pass",
+      "sevenValues": "Pass",
+      "emptyText": "Pass",
+      "reload": "Pass",
+      "actor": "Pass; private full checksum18 ordinary QA actor independently matched",
+      "observedAt": "2026-10-11T12:22:09.714473+00:00",
+      "evidenceReference": "fresh-claude-0.1.0.10.json",
+      "testedRevision": 2,
+      "oauthExpiryRefresh": {
+        "status": "Pass",
+        "sessionCreatedAt": "2026-10-11T13:01:39Z",
+        "checkedAt": "2026-10-11T13:01:54.016Z",
+        "testedRevision": 2,
+        "expiredSessionLifetimeSeconds": 900,
+        "grantUseCountBefore": 3,
+        "grantUseCountAfter": 5,
+        "humanLoginRequired": false,
+        "oldSessionReplaced": true,
+        "ordinaryActorIndependentlyMatched": true,
+        "exactSevenValueReceipt": "Pass",
+        "sessionCreatedAtMeaning": "replacement session created by natural refresh",
+        "priorSessionCreatedAt": "2026-10-11T12:44:32Z",
+        "idleWindowStartedAt": "2026-10-11T12:45:11Z",
+        "preRequestReadbackAt": "2026-10-11T13:01:25Z",
+        "preRequestReadback": "Same prior900second session and grant usecount3 before any natural request; no ordinary/client requests during idle"
+      },
+      "revocation": "Pass; Access Revoked/count0 and actual Connection request requiring reconnect",
+      "reconnect": "Pass; fresh actual seven-value receipt, ordinary actor verified",
+      "lifecycleEvidence": "fresh-lifecycle-0.1.0.10.json",
+      "forcedAccessSessionRefresh": {
+        "status": "Pass",
+        "testedRevision": 2,
+        "newLifetimeSeconds": 900,
+        "humanLoginRequired": false,
+        "evidenceReference": "fresh-lifecycle-0.1.0.10.json"
+      }
+    },
+    "chatgpt": {
+      "consent": "Pass",
+      "discovery": "Pass",
+      "iframe": "Pass",
+      "hostBridge": "Pass",
+      "sevenValues": "Pass",
+      "emptyText": "Pass",
+      "reload": "Pass",
+      "actor": "Pass; private full checksum18 ordinary QA actor independently matched",
+      "observedAt": "2026-10-11T12:13:53.674762+00:00",
+      "evidenceReference": "fresh-chatgpt-0.1.0.10.json",
+      "testedRevision": 1,
+      "oauthExpiryRefresh": {
+        "status": "Pass",
+        "sessionCreatedAt": "2026-10-11T13:04:09Z",
+        "checkedAt": "2026-10-11T13:04:38.125Z",
+        "testedRevision": 5,
+        "expiredSessionLifetimeSeconds": 900,
+        "grantUseCountBefore": 3,
+        "grantUseCountAfter": 5,
+        "humanLoginRequired": false,
+        "oldSessionReplaced": true,
+        "ordinaryActorIndependentlyMatched": true,
+        "exactSevenValueReceipt": "Pass",
+        "sessionCreatedAtMeaning": "replacement session created by natural refresh",
+        "priorSessionCreatedAt": "2026-10-11T12:44:16Z",
+        "idleWindowStartedAt": "2026-10-11T12:45:11Z",
+        "preRequestReadbackAt": "2026-10-11T13:01:25Z",
+        "preRequestReadback": "Same prior900second session and grant usecount3 before any natural request; no ordinary/client requests during idle"
+      },
+      "otherClientRevocationIsolation": "Pass; fresh actual seven-value receipt after Claude revoked; ordinary actor verified",
+      "isolationTestedRevision": 3,
+      "configurationDrift": "Pass; prior accepted revision3 form rejected after configrevision5",
+      "lifecycleEvidence": "fresh-lifecycle-0.1.0.10.json",
+      "freshAfterDrift": {
+        "status": "Pass",
+        "testedRevision": 5,
+        "evidenceReference": "fresh-lifecycle-0.1.0.10.json"
+      },
+      "forcedAccessSessionRefresh": {
+        "status": "Pass",
+        "testedRevision": 5,
+        "newLifetimeSeconds": 900,
+        "humanLoginRequired": false,
+        "evidenceReference": "fresh-lifecycle-0.1.0.10.json"
+      }
+    }
+  },
+  "cleanup": {
+    "status": "Pass",
+    "timeouts": "Both restored to default/absent through API67 Metadata; independent retrieve verified. Explicit0 rejected by platform before successful default restoration.",
+    "site": "Owned Site Inactive independently read back before scratch deletion",
+    "clientEntries": "Owned Claude entry disconnected/removed; owned ChatGPT app permanently deleted with action-time human approval. Original entries retained.",
+    "scratchOrg": "CLI deletion succeeded; owned apps/user/checks/Site removed with disposable org",
+    "endpoints": "Both owned metadata discovery URLs HTTP404; no discovery JSON served",
+    "validationVersion": "Retained unreleased for audit",
+    "crmWrites": 0,
+    "scratchOrgHubStatus": "Deleted"
+  },
+  "remainingGates": [
+    "Direct revoked old access/refresh requests not independently captured from client-held credentials; no wire rejection proof claimed",
+    "Final evidence review",
+    "Governed CRM writes/interpreter/HXLcutover separate unapproved follow-on scope"
+  ],
+  "crmWrites": 0,
+  "originalBeta": "Preserved0.1.0.8; no promotion/release/push/merge",
+  "auditReadback": {
+    "verifiedAt": "2026-10-11T12:54:00.029157+00:00",
+    "validationVersionUnreleased": true,
+    "actualCoveragePercentage": 88,
+    "actualCoverageGatePassed": true,
+    "originalOrgInstalledBetaVersion": "0.1.0.8",
+    "correctedStagedForceAppFiles": 239,
+    "sourceHashMismatches": 0
+  }
+}

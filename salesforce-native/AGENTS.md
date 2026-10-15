@@ -64,30 +64,31 @@ Apply Cardstack-specific constraints instead of generic API or hosting defaults.
 
 ## Current decisions and proof boundaries
 
-The installed beta 0.1.0.8 uses HXL. Account text/integer editing and published
-record-action mappings passed live Claude review/confirm/save/refresh QA. Arbitrary
-multi-field HXL forms, full Screen Flow interpretation, and ChatGPT editor parity
-are not delivered claims.
+Updated October 15, 2026 for GitHub reconciliation of verified source `a9a304e`.
+The whole runtime remains Salesforce hosted; Railway is retired architecture.
+Keep native Apex execution/state and Studio. HXL beta 0.1.0.8 is retained for
+compatibility during the selected migration, not the custom editor scope ceiling.
 
-The user explicitly selected HXL retirement, reuse of Cardstack's custom MCP Apps
-renderer and earlier bounded Flow interpreter, and retention of the native Apex
-backend and Studio. HXL is not a planned long-term fallback or parallel product.
-Replace its runtime bindings at the verified cutover; do not remove the currently
-deployed UI before a working replacement exists. Carry interpreter logic into
-Apex-owned execution/state with a supported subset, not the retired Node backend.
-This direction does not approve an implementation spec that has not been reviewed.
+The combined developer QA milestone passed actual Claude and ChatGPT Case editing,
+explicit record discovery/choice, related pagination/child/parent navigation,
+controlled lost-Confirm-reply recovery and stale related-page rejection. Normal
+local resources were restored, but that is not a claim of ordinary-resource cutover
+in the org. Controlled SDK delivery faults do not prove natural network outage or
+full-page reload recovery. See docs/OVERNIGHT_PROGRESS_2026-10-15.md and the combined
+milestone for exact backend, renderer, deployment and client evidence.
 
-The legacy renderer already uses ext-apps. Prior external-host probes showed
-read-only two-screen interactions in Claude and ChatGPT. The custom Salesforce
-Apex REST prototype passed authenticated API resource/typed-echo tests; actual
-client OAuth/discovery and a confirmed Salesforce-only custom-UI save remain
-unproven. Resource format alone does not establish interoperability.
+A bounded native Flow interpreter foundation is built. Dedicated per-user Flow
+OAuth and actual managed user/org identity verification succeeded in the owner
+chat; Studio metadata acquisition/compilation is under test. Successful Flow
+publication and interpreted host journeys are not yet proved. Reference lookup
+remains unsupported pending separate product/access/backend qualification. No
+fresh-install/release claim for the latest integrated application is established.
 
-The proposed Opportunity Stage/CloseDate/Amount spec has not been approved and
-needs its presentation architecture reconsidered before implementation. See
-`docs/MCP_APPS_RESEARCH_2026-10-08.md` and
-`docs/superpowers/specs/2026-10-08-opportunity-editing-design.md` for evidence and
-proposed scope. Update these status notes when decisions or proof change.
+Do not change existing OAuth clients or deployment settings while reconciling
+source. Consult docs/MCP_APPS_AUTH_RUNBOOK.md and docs/MCP_APPS_INSTALL.md before
+runtime setup. Preserve the working connected-user authority and current host
+connections. New uncommitted Flow work belongs to the integration owner; this
+snapshot deliberately excludes it.
 
 ## Verification
 
@@ -97,3 +98,7 @@ Apex suite before release. Test a fresh package install for release claims. Use
 disposable records and restore temporary configurations/settings. Report actual
 results, distinguish protocol/API evidence from live-client proof, and state
 platform limits plainly.
+
+## Salesforce identifier format
+
+User instruction: always use 18-character Salesforce IDs. Normalize valid 15-character platform inputs to checksum18 at ingestion, validate 18-character checksums and compare full IDs; never truncate comparisons to 15 characters. Keep private identifiers out of logs and receipts.

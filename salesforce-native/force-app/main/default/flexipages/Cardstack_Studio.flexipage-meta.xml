@@ -4,7 +4,7 @@
     <flexiPageRegions>
         <itemInstances>
             <componentInstance>
-                <componentName>c:cardstackStudio</componentName>
+                <componentName>cardstackStudio</componentName>
                 <identifier>c_cardstackStudio</identifier>
             </componentInstance>
         </itemInstances>

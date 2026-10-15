@@ -1,0 +1,15 @@
+{
+  "sdkVersion": "1.7.4",
+  "baseMcpSdkVersion": "1.29.0",
+  "source": "approved private apex-mcp-probe/build-ui.mjs and CardstackMcpTransportProbeUi.resource; source assets only",
+  "copyMode": "unchanged byte-for-byte resource, renamed metadata component only",
+  "targetResource": "CardstackCanonicalProbeUi",
+  "bytes": 309866,
+  "sha256": "2ca5d8564f646d661763dfc924d49133ad66e43d195f990a690d47eb73ea758f",
+  "resourceUri": "ui://cardstack/apex-transport-probe.html",
+  "mimeType": "text/html;profile=mcp-app",
+  "reusedTools": ["open_cardstack_apex_probe", "echo_cardstack_values"],
+  "sourceObserved": true,
+  "newSdkInstalled": false,
+  "newRendererLiveProof": "Unknown"
+}

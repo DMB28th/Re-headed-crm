@@ -1,0 +1,26 @@
+<template>
+    <lightning-modal-header label="Review configuration publication"></lightning-modal-header>
+    <lightning-modal-body>
+        <p class="slds-m-bottom_medium">Review each exact saved candidate before publishing. Selected drafts publish sequentially in separate transactions; some may succeed while others fail.</p>
+        <template for:each={rows} for:item="row">
+            <section key={row.draftId} class="slds-box slds-m-bottom_small">
+                <h2 class="slds-text-heading_small">{row.label}</h2>
+                <p class="slds-text-body_small slds-text-color_weak">{row.key} · Draft {row.draftId}</p>
+                <p class="slds-m-top_small">{row.comparisonMessage}</p>
+                <template for:each={row.changes} for:item="change"><p key={change.id}>{change.text}</p></template>
+                <lightning-button label="Inspect exact saved values" data-id={row.draftId} onclick={inspect} class="slds-m-top_small"></lightning-button>
+                <template lwc:if={row.inspected}>
+                    <lightning-textarea label="Published raw JSON" value={row.liveRaw} readonly></lightning-textarea>
+                    <lightning-textarea label="Draft raw JSON" value={row.draftRaw} readonly></lightning-textarea>
+                    <template lwc:if={row.unavailable}>
+                        <lightning-input type="checkbox" label="I inspected both saved values and choose to publish despite the unavailable comparison" checked={row.acknowledged} data-id={row.draftId} onchange={acknowledge}></lightning-input>
+                    </template>
+                </template>
+            </section>
+        </template>
+    </lightning-modal-body>
+    <lightning-modal-footer>
+        <lightning-button label="Cancel" onclick={cancel} class="slds-m-right_small"></lightning-button>
+        <lightning-button label="Publish reviewed drafts" variant="brand" disabled={confirmDisabled} onclick={confirm}></lightning-button>
+    </lightning-modal-footer>
+</template>

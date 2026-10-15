@@ -1,0 +1,13 @@
+.setup-stages,
+.setup-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--slds-g-spacing-2, 0.5rem);
+}
+.stage-heading:focus {
+    outline: var(--slds-g-sizing-border-2, 2px) solid var(--slds-g-color-brand-base-50, #0176d3);
+    outline-offset: var(--slds-g-spacing-1, 0.25rem);
+}
+summary {
+    cursor: pointer;
+}

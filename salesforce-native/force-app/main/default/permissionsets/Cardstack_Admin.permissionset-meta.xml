@@ -17,6 +17,30 @@
         <enabled>true</enabled>
     </classAccesses>
     <classAccesses><apexClass>CardstackRecordEditAction</apexClass><enabled>true</enabled></classAccesses>
+    <classAccesses>
+        <apexClass>CardstackConnectionSetup</apexClass>
+        <enabled>true</enabled>
+    </classAccesses>
+    <classAccesses>
+        <apexClass>CardstackMcpIngress</apexClass>
+        <enabled>true</enabled>
+    </classAccesses>
+    <classAccesses><apexClass>CardstackConnectionSetupController</apexClass><enabled>true</enabled></classAccesses>
+    <classAccesses><apexClass>CardstackListCatalog</apexClass><enabled>true</enabled></classAccesses>
+    <classAccesses><apexClass>CardstackListExposurePolicy</apexClass><enabled>true</enabled></classAccesses>
+    <classAccesses><apexClass>CardstackMcpTransportProbe</apexClass><enabled>true</enabled></classAccesses>
+    <customPermissions>
+        <enabled>true</enabled>
+        <name>Cardstack_Manage_Connections</name>
+    </customPermissions>
+    <customPermissions>
+        <enabled>true</enabled>
+        <name>Cardstack_Use_Connections</name>
+    </customPermissions>
+    <customPermissions>
+        <enabled>true</enabled>
+        <name>Cardstack_Manage_Studio</name>
+    </customPermissions>
     <description>Full administrative access to the Cardstack package: manage configuration, drafts, audit log, and Studio.</description>
     <fieldPermissions>
         <editable>true</editable>

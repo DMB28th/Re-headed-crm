@@ -1,0 +1,108 @@
+{
+  "date": "2026-10-14",
+  "applicationCommit": "5275b7e56136ae7484a3bcc4e8849121cf0d0e8c",
+  "orgAlias": "cardstack-spike2",
+  "apiVersion": "67.0",
+  "status": "PASSED_CURRENT_WORKSPACE_MILESTONE",
+  "deployment": {
+    "scope": "3 StaticResource components only",
+    "sha256": "df22a31e3ab027e8d1e86ea3d4afb705d9ee35c57b8368fe91d6dfa4a41ed585",
+    "nativeTestsPassed": 124,
+    "exactRetrievedResourceFiles": 6,
+    "nonUiCoreFilesUnchangedFrom808QualifiedBaseline": 357
+  },
+  "backendBaseline": {
+    "commit": "3daad61",
+    "nativeTestsPassed": 808,
+    "coveragePercent": 90.38,
+    "notRepeatedForPresentationCorrection": true
+  },
+  "rendererVerification": {
+    "focusedTestsPassed": 93,
+    "completeNativeLocalSuiteAtPrimaryImplementation": 442,
+    "checkpointPreparationTestsPassed": 14,
+    "deterministicRebuiltAssets": 5,
+    "syntheticChecksAreNotLiveHostProof": true
+  },
+  "hosts": {
+    "chatgpt": {
+      "status": "PASSED",
+      "browser": "Codex In-app Browser",
+      "connectionRecreated": false,
+      "fixture": "owned synthetic Lead",
+      "configuredFieldsEditedTogether": 10,
+      "journey": [
+        "open",
+        "edit",
+        "client_validation_error",
+        "review",
+        "cancel_before_review",
+        "cancel_after_review",
+        "back_to_edit",
+        "re_review",
+        "confirm_once",
+        "completion_receipt",
+        "refresh_current_record"
+      ],
+      "invalidValue": "Employees 1.5",
+      "validationLayer": "renderer; native business rules remain authoritative at save",
+      "independentSalesforceReadback": true,
+      "exactProposalValuesVerified": true,
+      "cancellationChangedRecordOrLastModifiedDate": false,
+      "cancellationAuditEntries": 0,
+      "confirmedSaveAuditEntries": 1,
+      "workspaceHeightPixels": 500,
+      "freshHeaderNameVerified": true
+    },
+    "claude": {
+      "status": "PASSED",
+      "browser": "Codex In-app Browser",
+      "connectionRecreated": false,
+      "fixture": "owned synthetic Lead",
+      "configuredFieldsEditedTogether": 10,
+      "journey": [
+        "open",
+        "edit",
+        "client_validation_error",
+        "review",
+        "cancel_before_review",
+        "cancel_after_review",
+        "back_to_edit",
+        "re_review",
+        "confirm_once",
+        "completion_receipt",
+        "refresh_current_record"
+      ],
+      "invalidValue": "Employees 1.5",
+      "validationLayer": "renderer; native business rules remain authoritative at save",
+      "independentSalesforceReadback": true,
+      "exactProposalValuesVerified": true,
+      "cancellationChangedRecordOrLastModifiedDate": false,
+      "cancellationAuditEntries": 0,
+      "confirmedSaveAuditEntries": 1,
+      "workspaceHeightPixels": 500,
+      "freshHeaderNameVerified": true,
+      "outerChatPosition": {
+        "reviewThroughConfirmAndRefresh": "UNCHANGED",
+        "iframeTop": 134,
+        "iframeBottom": 634,
+        "viewportHeight": 720,
+        "ancestorScrollTop": 186
+      },
+      "discoveryRecovery": "Existing tools list refreshed; old conversation continued to fail; fresh conversation rendered successfully. No authentication or grant change. Stale discovery is supported by source/runbook, failed resource request itself was not captured."
+    }
+  },
+  "preservation": {
+    "status": "PASSED",
+    "configurationRecordsUnchanged": 6,
+    "preservedDirtyFilesUnchanged": 5,
+    "rebuiltAssetsIdentical": 5
+  },
+  "limitations": [
+    "REFERENCE lookup remains unsupported until native authority/backend integration is complete.",
+    "Known-ID Open is verified; natural-language record resolution/disambiguation is a separate capability.",
+    "Actual-host response-loss and delayed record-switch fault induction NOT_RUN; backend/renderer tests do not qualify live recovery faults.",
+    "Current actual-host acceptance used configured Lead; Opportunity/Contact compatibility is covered by existing renderer/native regression, not a fresh complete actual-host write journey in this milestone.",
+    "No clean-install/package release/production claim."
+  ]
+}

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<StaticResource xmlns="http://soap.sforce.com/2006/04/metadata">
+    <cacheControl>Private</cacheControl>
+    <contentType>text/html</contentType>
+    <description>Immutable Record editor 5275b7e; exact sha256 5552323110417f4e8d870affa2030ce04a4b7c82e805abcca82cfdcdd28c3b56. Historical reads only.</description>
+</StaticResource>

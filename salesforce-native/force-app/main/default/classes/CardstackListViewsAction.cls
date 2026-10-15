@@ -33,16 +33,17 @@ global with sharing class CardstackListViewsAction {
                 return res;
             }
             res.objectName = objectName;
-            List<ListView> views = [
-                SELECT Id, Name, DeveloperName
-                FROM ListView
-                WHERE SobjectType = :objectName
-                WITH USER_MODE
-                ORDER BY Name
-            ];
+            CardstackListExposurePolicy.Policy policy = CardstackListExposurePolicy.loadPublished(objectName);
+            if (policy.mode == 'denied') {
+                res.count = 0;
+                res.summary = 'Lists not available in chat. Check the published policy and Salesforce access.';
+                return res;
+            }
+            List<ListView> views = CardstackListCatalog.nativeViews(objectName);
             for (ListView v : views) {
+                if (!CardstackListExposurePolicy.isAllowed(policy, 'salesforce', String.valueOf(v.Id))) continue;
                 ViewSummary s = new ViewSummary();
-                s.viewId = v.Id;
+                s.viewId = CardstackConnectionTypes.normalizeId(String.valueOf(v.Id));
                 s.name = v.Name;
                 s.developerName = v.DeveloperName;
                 s.cells = new List<String>{ v.Name };
@@ -53,7 +54,8 @@ global with sharing class CardstackListViewsAction {
                 + ' available for ' + t.getDescribe().getLabelPlural()
                 + '. Ask for one by name, e.g. "show my opportunities".';
         } catch (Exception e) {
-            res.summary = 'Could not list views: ' + e.getMessage();
+            res.views.clear();
+            res.summary = 'Lists not available in chat. Could not read Salesforce views.';
             res.count = 0;
         }
         return res;

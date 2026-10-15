@@ -1,0 +1,60 @@
+{
+  "preparedAt": "2026-10-12T23:19:43.353955+00:00",
+  "native": {
+    "ownedOrgIdentityMatched": true,
+    "singleExactOwnedSite": true,
+    "siteActive": true,
+    "guestAuraEnabled": false,
+    "standardPortalEnabled": false,
+    "registrationEnabled": false,
+    "guestObjectPermissionRows": 0,
+    "guestProfileOnlyAssignment": true,
+    "guestEnabledApexClasses": [
+      "CardstackMcpIngress"
+    ],
+    "ownedConstantLandingPage": "CSQA95ScreenHome",
+    "retainedPlatformErrorTemplatePages": [
+      "BandwidthExceeded",
+      "Exception",
+      "FileNotFound",
+      "InMaintenance",
+      "SiteTemplate",
+      "Unauthorized"
+    ],
+    "removedUnnecessaryGeneratedPages": [
+      "ForgotPassword",
+      "ForgotPasswordConfirm",
+      "SiteLogin",
+      "SiteRegister",
+      "SiteRegisterConfirm"
+    ],
+    "baselineFieldPermissionRowsRetained": 808,
+    "fieldPermissionsDoNotConferObjectAccess": true,
+    "newObjectOrFieldGrants": false
+  },
+  "protocol": {
+    "anonymousObservations": 30,
+    "bothMetadataRoutes200": true,
+    "metadataResourceIssuerDerivedActualContext": true,
+    "missingBearerExactMatching401Challenge": true,
+    "fabricatedBearerAll401": true,
+    "htmlAndToolResponsesDenied": true,
+    "afterDenialCounts": {
+      "Cardstack_Audit_Log__c": 0,
+      "Cardstack_Confirmation__c": 0
+    }
+  },
+  "actualClientProof": false,
+  "ecaCreatedOrModified": false,
+  "studioOrConfigChanged": false,
+  "deploymentAppChanged": false,
+  "callbacksUnresolved": true,
+  "ownershipGuard": "full18Org/Site/Guest/Profile checked privately; private resolution is exact; no replacement Site created",
+  "proofLimits": "No named OAuth/host/iframe proof; denial source returns before renderer dispatch. Post-denial audit/confirmation counts corroborate no successful-save artifact; no before/after CRM-value diff was performed by this phase.",
+  "evidenceLevels": [
+    "native",
+    "protocol"
+  ],
+  "apiVersion": "67.0",
+  "installedArtifact": "0.1.0.11"
+}

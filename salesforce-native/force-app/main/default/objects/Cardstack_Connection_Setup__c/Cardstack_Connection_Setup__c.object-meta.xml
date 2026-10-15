@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata"><deploymentStatus>Deployed</deploymentStatus><description>Private server-owned client setup. No direct user CRUD; permission-gated system repository.</description><label>Cardstack Connection Setup</label><nameField><displayFormat>CS-{000000}</displayFormat><label>Setup</label><type>AutoNumber</type></nameField><pluralLabel>Cardstack Connection Setups</pluralLabel><sharingModel>Private</sharingModel></CustomObject>

@@ -1,0 +1,200 @@
+{
+  "date": "2026-10-13",
+  "sourceHead": "aa3e0c5a342dc423a8cd87d84a35c343a765c345",
+  "deployment": {
+    "sourceHead": "aa3e0c5a342dc423a8cd87d84a35c343a765c345",
+    "archiveSha256": "62b2e23d8ebdaf73b7f562ef8f59072dfa5e1a4ec9197d50fb6b5efc1b801997",
+    "providerStatus": "Succeeded",
+    "checkOnly": false,
+    "persistentApexComponents": 8,
+    "archiveEntries": 17,
+    "regularPass": 98,
+    "regularFail": 0,
+    "testClasses": 4,
+    "methodIdentityExactlyOnce": true,
+    "setupFailures": 0,
+    "componentErrors": 0,
+    "productionClassCoverage": [
+      {
+        "className": "CardstackOpportunityMcpAdapter",
+        "coveragePercent": 94.758
+      },
+      {
+        "className": "CardstackRecordMcpAdapter",
+        "coveragePercent": 90.336
+      },
+      {
+        "className": "CardstackEditorUiResource",
+        "coveragePercent": 93.333
+      },
+      {
+        "className": "CardstackMcpDispatcher",
+        "coveragePercent": 94.167
+      }
+    ],
+    "coverageWarnings": 0,
+    "independentRetrieveStatus": "Succeeded",
+    "all16ApexSourceMetadataAgreement": true,
+    "providerSerializationClassifications": {
+      "ONLY_ONE_TERMINAL_LF_OMITTED": 8,
+      "BYTE_EXACT": 6,
+      "FULL_XML_TREE_IDENTICAL": 2
+    },
+    "unchangedAssetsAndLwcByteExactFiles": 13,
+    "unchangedStaticResources": 3,
+    "unchangedLwcBundles": 2,
+    "independentPreservation": [
+      {
+        "baseline": "untargeted-current81e-apex",
+        "unchangedRecords": 15,
+        "exactNativeRowsUnchanged": true,
+        "onlyApprovedEightClassesUpdated": true,
+        "newHelperClassesPresent": true
+      },
+      {
+        "baseline": "resource-source",
+        "records": 3,
+        "beforeAfterHashEqual": true
+      },
+      {
+        "baseline": "lwc-source",
+        "records": 2,
+        "beforeAfterHashEqual": true
+      },
+      {
+        "baseline": "opportunity-policy",
+        "records": 1,
+        "beforeAfterHashEqual": true
+      },
+      {
+        "baseline": "contact-interaction-metadata",
+        "records": 10,
+        "beforeAfterHashEqual": true
+      },
+      {
+        "baseline": "contact-retained-receipts",
+        "records": 3,
+        "beforeAfterHashEqual": true
+      },
+      {
+        "baseline": "contact-retained-audits",
+        "records": 2,
+        "beforeAfterHashEqual": true
+      }
+    ],
+    "protocolReadOnlyObservation": {
+      "httpStatus": 503,
+      "error": "public_context_unavailable",
+      "stopped": true,
+      "currentUriBodyNotObserved": true
+    },
+    "actualHostCacheResolution": "Current controls observed after upgrade in actual ChatGPT; Claude current controls compatible. Exact cache tier unknown.",
+    "rootUiRefreshReady": true,
+    "full343SuiteExecuted": false,
+    "contactSetupOrSaveByWorker": false,
+    "newPackageOrOrg": false,
+    "authSettingsOrSiteChanged": false,
+    "protected260Preserved": true,
+    "dirty5Preserved": true,
+    "beforeMetadataArchived": true,
+    "verifiedUtc": "2026-10-13T16:32:47.704446+00:00"
+  },
+  "actualHosts": {
+    "chatgpt": {
+      "chatUrl": "https://chatgpt.com/c/6ace5c66-2b58-83ea-941c-9b7dbb79c0da",
+      "discoveryRefresh": "existing app Refresh tools completed; permissions unchanged",
+      "currentControls": "PASS: Qualification selected, native date picker, Amount 13,000.25",
+      "calendarSelection": "PASS: December15 selected, Right/Return selected December16",
+      "nativeReview": "PASS: CloseDate2026-12-15 ->2026-12-16",
+      "cancel": "PASS: Edit cancelled",
+      "refreshDisplayedValues": {
+        "StageName": "Qualification",
+        "CloseDate": "2026-12-15",
+        "Amount": "USD 13,000.25"
+      },
+      "confirmClicked": false
+    },
+    "claude": {
+      "chatUrl": "https://claude.ai/chat/dcfa3353-2366-4241-8130-52d0880a6e3e",
+      "discovery": "fresh Open through existing owned connector; no connector permissions changed",
+      "currentControls": "PASS: Needs Analysis selected, native date picker, Amount22,500.25",
+      "calendarSelection": "PASS: screenshot-grounded calendar button, Right/Return selected December16",
+      "nativeReview": "PASS: CloseDate2026-12-15 ->2026-12-16",
+      "cancel": "PASS: Edit cancelled",
+      "refreshDisplayedValues": {
+        "StageName": "Needs Analysis",
+        "CloseDate": "2026-12-15",
+        "Amount": "USD22,500.25"
+      },
+      "confirmClicked": false
+    }
+  },
+  "evidenceLimits": {
+    "currentControlsObservedInActualHosts": true,
+    "actualHostDigestUriDirectlyObserved": false,
+    "exactCacheTierKnown": false,
+    "cliProtocolProbe": "503 public_context_unavailable: stopped without auth changes",
+    "actualLostResponseAfterCommit": "NOT_PROVED",
+    "actualLateRecordSwitch": "NOT_PROVED",
+    "ordinaryActorB": "NOT_PROVED",
+    "freshCorrectedPackageInstall": "NOT_PROVED"
+  },
+  "nativeAfterWalkthrough": {
+    "status": "PASS",
+    "nativeRecordMatches": [
+      {
+        "role": "Alpha",
+        "all3FieldsMatchPrivateBaseline": true,
+        "fields": {
+          "StageName": true,
+          "CloseDate": true,
+          "Amount": true
+        }
+      },
+      {
+        "role": "Beta",
+        "all3FieldsMatchPrivateBaseline": true,
+        "fields": {
+          "StageName": true,
+          "CloseDate": true,
+          "Amount": true
+        }
+      }
+    ],
+    "OpportunityUpdateAudits": 3,
+    "ContactUpdateAudits": 2,
+    "totalSuccessfulAudits": 5,
+    "savedConfirmations": 5,
+    "newSavedConfirmationsSinceVersioningDeployment": 0,
+    "newSuccessfulSaveEffects": 0,
+    "totalSuccessfulEffectsObserved": 5,
+    "totalAllowance": 8,
+    "contactEffectsObserved": 2,
+    "contactAllowance": 2,
+    "adminFreshnessEdits": 0,
+    "eachLatestReviewedInteractionCancelled": true,
+    "ordinaryActorABindingMatched": true,
+    "eachClientRecordOrgSchemaBindingMatched": true,
+    "answersPatchDiffConfirmationAuthorityCleared": true,
+    "rawStateOrKeysStored": false,
+    "clientResults": [
+      {
+        "client": "chatgpt",
+        "recordRole": "Alpha",
+        "nativeCancelled": true,
+        "allBindingsMatched": true,
+        "reviewAuthorityCleared": true
+      },
+      {
+        "client": "claude",
+        "recordRole": "Beta",
+        "nativeCancelled": true,
+        "allBindingsMatched": true,
+        "reviewAuthorityCleared": true
+      }
+    ],
+    "evidence": "Independent native post-walkthrough readback; actual iframe walkthrough supplied by root",
+    "mutations": 0,
+    "verifiedUtc": "2026-10-13T16:42:11.667694+00:00"
+  }
+}

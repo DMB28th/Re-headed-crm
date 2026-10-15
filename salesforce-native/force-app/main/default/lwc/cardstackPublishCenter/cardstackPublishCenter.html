@@ -7,6 +7,7 @@
                         label="Status"
                         options={statusOptions}
                         value={statusFilter}
+                        disabled={busy}
                         onchange={handleStatusChange}>
                     </lightning-combobox>
                 </div>
@@ -14,22 +15,28 @@
                     <lightning-button
                         label="Refresh"
                         icon-name="utility:refresh"
-                        onclick={refresh}>
+                        onclick={handleRefresh}
+                        disabled={busy}>
                     </lightning-button>
                 </div>
             </div>
             <div class="slds-m-top_large">
                 <template if:true={hasPendingDrafts}>
                     <lightning-button
-                        label="Publish All"
+                        label={publishSelectedLabel}
                         variant="brand"
                         icon-name="utility:publish"
-                        onclick={askPublishAll}>
+                        onclick={publishSelected}
+                        disabled={selectionDisabled}>
                     </lightning-button>
                 </template>
             </div>
         </div>
 
+        <template lwc:if={busy}><lightning-spinner size="small" alternative-text="Reviewing or publishing selected drafts"></lightning-spinner></template>
+        <template lwc:if={persistentError}><p role="alert" class="slds-text-color_error slds-m-bottom_small">{persistentError}</p></template>
+        <template for:each={resultRows} for:item="result"><p key={result.draftId} role="status" class="slds-m-bottom_small">{result.text}</p></template>
+        <p class="slds-text-color_weak slds-m-bottom_small">This is a bounded draft window. Select the specific drafts to publish. Refresh to load more after publication. Each draft publishes separately.</p>
         <template if:true={pendingDrafts.length}>
             <h3 class="slds-text-heading_small slds-m-bottom_small">
                 Pending drafts ({pendingDrafts.length})
@@ -38,23 +45,27 @@
                 <div key={d.Id} class="slds-box slds-m-bottom_small">
                     <div class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center">
                         <div>
-                            <p class="slds-text-heading_small">{d.Name}</p>
+                            <lightning-input type="checkbox" label={d.label} checked={d.selected} disabled={d.reviewDisabled} data-id={d.Id} onchange={handleSelection}></lightning-input>
+                            <p class="slds-text-heading_small">{d.label}</p>
                             <p class="slds-text-color_weak slds-text-body_small">
                                 <span class="draft-age">{d.ageText}</span>
                                 <template if:true={d.createdBy}> by {d.createdBy}</template>
-                                · <span class="slds-text-title">{d.configKey}</span>
+                                · <span class="slds-text-title">{d.configKey}</span> · Draft {d.Id}
                             </p>
                         </div>
                         <div>
                             <lightning-button
-                                label="Publish"
+                                label="Review and publish"
+                                data-review="true"
+                                disabled={d.reviewDisabled}
                                 variant="brand"
                                 data-id={d.Id}
                                 onclick={publish}
                                 class="slds-m-right_x-small">
                             </lightning-button>
                             <lightning-button
-                                label="Roll Back"
+                                label="Discard draft"
+                                disabled={d.reviewDisabled}
                                 variant="destructive-text"
                                 data-id={d.Id}
                                 onclick={askRollback}>
@@ -91,13 +102,29 @@
                         </lightning-button>
                         <template if:true={d.showJson}>
                             <lightning-textarea
-                                label="Raw JSON"
+                                label="Draft raw JSON"
                                 value={d.prettyValue}
                                 readonly
                                 class="slds-m-top_x-small json-editor">
                             </lightning-textarea>
+                            <lightning-textarea label="Published raw JSON" value={d.prettyLiveValue} readonly class="slds-m-top_x-small json-editor"></lightning-textarea>
                         </template>
                     </div>
+                </div>
+            </template>
+        </template>
+
+        <template if:true={retainedDrafts.length}>
+            <h3 class="slds-text-heading_small slds-m-top_medium slds-m-bottom_small">Retained drafts ({retainedDrafts.length})</h3>
+            <p class="slds-text-color_weak slds-m-bottom_small">These configurations are no longer supported for Studio publication. Inspect the saved values or discard the draft; existing live values and history remain.</p>
+            <template for:each={retainedDrafts} for:item="d">
+                <div key={d.Id} class="slds-box slds-m-bottom_small">
+                    <div class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center">
+                        <div><p class="slds-text-heading_small">{d.label}</p><p class="slds-text-color_weak">{d.configKey} · Draft {d.Id}</p></div>
+                        <lightning-button label="Discard draft" variant="destructive-text" disabled={d.reviewDisabled} data-id={d.Id} onclick={askRollback}></lightning-button>
+                    </div>
+                    <lightning-button label={d.jsonToggleLabel} variant="base" icon-name={d.jsonToggleIcon} data-id={d.Id} onclick={toggleJson}></lightning-button>
+                    <template if:true={d.showJson}><lightning-textarea label="Retained raw JSON" value={d.prettyValue} readonly></lightning-textarea></template>
                 </div>
             </template>
         </template>
@@ -118,47 +145,5 @@
             <p class="slds-text-color_weak">No drafts found. Stage changes from any Studio section first.</p>
         </template>
 
-        <!-- Rollback confirm -->
-        <template if:true={confirmRollbackId}>
-            <section class="slds-modal slds-fade-in-open">
-                <div class="slds-modal__container">
-                    <div class="slds-modal__header">
-                        <h2 class="slds-text-heading_medium">Roll back draft?</h2>
-                    </div>
-                    <div class="slds-modal__content slds-p-around_medium">
-                        <p>The draft will be discarded. The live config is untouched.</p>
-                    </div>
-                    <div class="slds-modal__footer">
-                        <lightning-button label="Cancel" onclick={cancelRollback} class="slds-m-right_x-small"></lightning-button>
-                        <lightning-button label="Roll Back" variant="destructive" onclick={rollback}></lightning-button>
-                    </div>
-                </div>
-            </section>
-            <div class="slds-backdrop slds-backdrop_open"></div>
-        </template>
-
-        <!-- Publish all confirm -->
-        <template if:true={confirmPublishAll}>
-            <section class="slds-modal slds-fade-in-open">
-                <div class="slds-modal__container">
-                    <div class="slds-modal__header">
-                        <h2 class="slds-text-heading_medium">Publish all drafts?</h2>
-                    </div>
-                    <div class="slds-modal__content slds-p-around_medium">
-                        <p class="slds-m-bottom_small">The following drafts will go live:</p>
-                        <ul class="slds-list_dotted">
-                            <template for:each={pendingDrafts} for:item="d">
-                                <li key={d.Id}>{d.Name} <span class="slds-text-color_weak">({d.configKey})</span></li>
-                            </template>
-                        </ul>
-                    </div>
-                    <div class="slds-modal__footer">
-                        <lightning-button label="Cancel" onclick={cancelPublishAll} class="slds-m-right_x-small"></lightning-button>
-                        <lightning-button label="Publish All" variant="brand" onclick={publishAll}></lightning-button>
-                    </div>
-                </div>
-            </section>
-            <div class="slds-backdrop slds-backdrop_open"></div>
-        </template>
     </div>
 </template>
