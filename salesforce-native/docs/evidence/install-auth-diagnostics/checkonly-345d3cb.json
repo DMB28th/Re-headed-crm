@@ -1,0 +1,47 @@
+{
+  "sourceCommit": "345d3cbf5dca4d0ed6580abf38874b8e30f7f4d1",
+  "apiVersion": "67.0",
+  "checkOnly": true,
+  "persisted": false,
+  "archiveSha256": "d3f4f1105a6e786f455dcfbc74bc09b77e37ad61ce9a59b9f0efce851ab963d0",
+  "resourceSha256": "44089f1120aef3f49ea551995e6830c5c3513f4c0c69944dbfe0750591ad7d24",
+  "status": "Failed",
+  "componentErrors": 0,
+  "expectedTests": 109,
+  "exactMethodSet": true,
+  "passed": 104,
+  "failed": 5,
+  "failures": [
+    {
+      "class": "CardstackConnectionDiagnosticsTest",
+      "method": "duplicateEchoReturnsSameReceipt",
+      "finding": "Receipt replay serialization assertion failed."
+    },
+    {
+      "class": "CardstackConnectionDiagnosticsTest",
+      "method": "observerStoredSeparatelyAndSummarySanitized",
+      "finding": "Test-only private Actor field query rejected."
+    },
+    {
+      "class": "CardstackConnectionDiagnosticsTest",
+      "method": "sameRevisionDigestChangeStales",
+      "finding": "Test-only private configuration digest query rejected."
+    },
+    {
+      "class": "CardstackConnectionDiagnosticsTest",
+      "method": "secretsOnlyStoredHashed",
+      "finding": "Test-only private state query rejected."
+    },
+    {
+      "class": "CardstackConnectionRetentionTest",
+      "method": "explicitScheduleEntryUsesBoundedPurge",
+      "finding": "Existing org schedule count differs from assumed zero."
+    }
+  ],
+  "limits": [
+    "Raw provider results and assertion messages retained privately.",
+    "These failures require diagnosis; no runtime completion claim.",
+    "No access, schedule, Site, guest, OAuth or JWT setting changes.",
+    "Resource subsequently changed by UI-only review fix; this receipt covers the exact listed archive."
+  ]
+}

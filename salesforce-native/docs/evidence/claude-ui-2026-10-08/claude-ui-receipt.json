@@ -1,0 +1,13 @@
+{
+  "checkedAt": "2026-10-08T20:38:26.207Z",
+  "proofChat": "https://claude.ai/chat/84883358-2a9c-4ff7-9ce5-daf8342038a1",
+  "actualIframeRendered": true,
+  "hostBridgeReady": true,
+  "exactSevenTypesAndValues": true,
+  "emptyTextExact": true,
+  "reloadHostBridgeReady": true,
+  "reloadSevenValuesExact": true,
+  "probeJwtRestoredOn": true,
+  "probeAppDisabled": true,
+  "deploymentJwtRestoredOn": true
+}

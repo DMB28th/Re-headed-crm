@@ -1,0 +1,29 @@
+{
+  "status": "NATIVE_FIXTURES_VERIFIED",
+  "counts": {
+    "ordinaryIdentities": 2,
+    "ordinaryActive": 1,
+    "accounts": 1,
+    "opportunities": 4,
+    "temporaryEditShares": 2,
+    "salesProcesses": 2,
+    "recordTypes": 2,
+    "validationRules": 1,
+    "ownedMinimalPermissionSets": 2
+  },
+  "adminActive": true,
+  "actorAActive": false,
+  "actorBActive": true,
+  "opportunitySharing": "Private",
+  "amountEditOnlyRemovableOwnedSet": true,
+  "ordinaryPrivateCrudGranted": false,
+  "stageResolution": "Real active Stage API values and independent metadata readback; runtime/UI RecordUi acceptance remains unobserved",
+  "publication": "Not performed; root owns native Studio",
+  "oauthAppSettingsTouched": false,
+  "confirmedSaveEffects": 0,
+  "limitation": "Inactive opposite actor; no simultaneous-active isolation proof",
+  "apiVersion": "67.0",
+  "sourceHead": "95acd7d7776625cb28496d5996db9404f449c4b0",
+  "ownedConstantLandingPage": "Native deploy Succeeded, no Site or guest grant created",
+  "actualClientAcceptance": "NOT_RUN; Salesforce browser sign-in handoff pending"
+}

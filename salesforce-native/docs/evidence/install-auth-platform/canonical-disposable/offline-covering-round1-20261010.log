@@ -1,0 +1,33 @@
+✔ I1 rejects extra initialize identity result field (0.84675ms)
+✔ I1 rejects open fallback substitution beside valid structured result (0.118875ms)
+✔ I1 rejects echo fallback substitution beside valid structured result (0.082708ms)
+✔ I1 accepts deterministic open fallback (0.059ms)
+✔ I1 rejects extra tools result field (0.040959ms)
+✔ I1 rejects extra tool output field (0.075083ms)
+✔ I1 rejects extra tool metadata field (0.048667ms)
+✔ I1 rejects extra input schema keyword (0.042416ms)
+✔ I1 rejects OpenAI UI alias resource mismatch (0.063125ms)
+✔ I1 rejects extra HTML result field (0.417292ms)
+✔ I1 rejects extra HTML resource field (0.282042ms)
+✔ I1 rejects extra HTML metadata field (0.736208ms)
+✔ I1 rejects extra HTML UI metadata field (0.799875ms)
+✔ I1 rejects broadened OpenAI connect CSP alias (0.659459ms)
+✔ I1 rejects broadened OpenAI resource CSP alias (0.562333ms)
+✔ I1 rejects missing OpenAI CSP alias (0.689417ms)
+✔ I1 rejects broadened SDK frame CSP (0.578167ms)
+✔ I1 rejects resource listing extra metadata fields (0.047625ms)
+✔ I2 null tools entries return Fail without throwing (0.055459ms)
+✔ I2 malformed nested tool schema returns Fail without throwing (0.061125ms)
+✔ I2 primitive observed response returns Fail (0.03875ms)
+✔ I2 null resource entry returns Fail without throwing (0.032333ms)
+✔ I2 measurement retains earlier Pass and malformed-observation Fail without raw payload (0.141292ms)
+✔ I2 malformed observation still distinguishes invalid caller context (0.124792ms)
+✔ I2 malformed observation still distinguishes unknown requested stage (0.027375ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 39.154208

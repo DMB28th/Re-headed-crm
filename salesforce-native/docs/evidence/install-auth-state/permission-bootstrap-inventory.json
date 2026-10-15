@@ -1,0 +1,12 @@
+{
+  "apiVersion": "67.0",
+  "offlineOnly": true,
+  "deployableByItself": false,
+  "scope": "Two CustomPermission source files only; no PermissionSet baselines or deployment credentials",
+  "files": {
+    "force-app/main/default/customPermissions/Cardstack_Manage_Connections.customPermission-meta.xml": "007a8e8c68d17085a8538b7ba5cd9e34e88e2a75bfb3cc7314a9e4c2efe642ce",
+    "force-app/main/default/customPermissions/Cardstack_Use_Connections.customPermission-meta.xml": "256fb4198359cafea7cab69ffb70d65bdb9092f3e386133e80775045cfb40727"
+  },
+  "archiveSha256": "27967b7b730147b6e79af060858535f6c2bd22075f43d592e1194d74cb0b2696",
+  "fourComponentManifestSha256": "ec82aaa9dc89fe86cedb9c4ad78c79eae3b2a14cbaff3ccb14360a025ee6b1c6"
+}

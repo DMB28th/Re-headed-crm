@@ -1,10 +1,11 @@
 <template>
     <div class="flow-page">
+        <c-cardstack-flow-interpreter-config></c-cardstack-flow-interpreter-config>
         <template if:true={showWizard}><c-cardstack-flow-wizard initial-policy={initialPolicy} onwizarddone={handleWizardDone}></c-cardstack-flow-wizard></template>
         <template if:false={showWizard}>
-            <div class="page-heading"><div><h2>Flow launch cards</h2><p>Give your team a clear card that opens a Salesforce flow from chat.</p></div><lightning-button label="Add launch card" variant="brand" icon-name="utility:add" onclick={openWizard}></lightning-button></div>
+            <div class="page-heading"><div><p>Configure in-chat screens and Salesforce Flow launch cards.</p></div><lightning-button label="Add launch card" variant="brand" icon-name="utility:add" onclick={openWizard}></lightning-button></div>
             <div class="handoff-note"><lightning-icon icon-name="utility:new_window" size="x-small"></lightning-icon><span><strong>Runs in Salesforce.</strong> Chat shows the launch card. Salesforce handles the flow’s screens, inputs, and record changes.</span></div>
-            <template if:true={hasDraft}><div class="draft-notice"><p>{draftMessage}</p><lightning-button label="Open Publish Center" onclick={openPublish}></lightning-button></div></template>
+            <template if:true={hasDraft}><div class="draft-notice"><p>{draftMessage}</p><lightning-button label="Review &amp; Publish" onclick={openPublish}></lightning-button></div></template>
             <template if:true={error}><p role="alert" class="slds-text-color_error slds-m-vertical_small">{error}</p></template>
             <template if:true={loading}><lightning-spinner alternative-text="Loading launch cards" size="small"></lightning-spinner></template>
             <template if:false={loading}>

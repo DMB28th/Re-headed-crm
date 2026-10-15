@@ -8,47 +8,176 @@
  */
 public with sharing class CardstackStudioController {
 
+    /**
+     * @description Describe native editor eligibility; draft metadata grants no execution rights.
+     * @param objectApi Canonical native object API name.
+     * @return Shared record-edit-eligibility/v1 descriptor.
+     */
+    @AuraEnabled(cacheable=true)
+    public static Map<String,Object> getRecordEditCapability(String objectApi) {
+        CardstackStudioAccess.requireAdmin();
+        return CardstackRecordScreenCapability.describeEligibility(objectApi);
+    }
+
+    /** Returns only native metadata needed to author related-list configuration. */
+    @AuraEnabled(cacheable=true)
+    public static List<Map<String,Object>> getRelatedListCatalog(String objectApi) {
+        CardstackStudioAccess.requireAdmin();
+        List<Map<String,Object>> result = new List<Map<String,Object>>();
+        try {
+            for (CardstackRelatedListPolicy.Definition definition : CardstackRelatedListPolicy.catalog(objectApi)) {
+                List<Map<String,Object>> columns = new List<Map<String,Object>>();
+                for (CardstackRelatedListPolicy.Column column : definition.columns) {
+                    columns.add(new Map<String,Object>{'fieldApi'=>column.fieldApi,'label'=>column.label,'sortable'=>column.sortable});
+                }
+                result.add(new Map<String,Object>{'relationship'=>definition.relationship,'label'=>definition.label,'columns'=>columns});
+            }
+            return result;
+        } catch (Exception failure) {
+            throw studioError('Related-list metadata is unavailable.');
+        }
+    }
+
     // ---------- Config staging ----------
 
     @AuraEnabled(cacheable=true)
     public static String getConfigValue(String key) {
+        CardstackStudioAccess.requireAdmin();
         return CardstackConfigService.getConfig(key);
     }
 
     @AuraEnabled(cacheable=true)
     public static Map<String, Object> getStagingInfo(String key) {
+        CardstackStudioAccess.requireAdmin();
         return CardstackConfigService.getStagingInfo(key);
+    }
+
+    /**
+     * @description Return fresh staging state for authoritative editor reconciliation.
+     * @param key Configuration key.
+     * @return Persisted draft and published values.
+     */
+    @AuraEnabled
+    public static Map<String, Object> getStagingInfoFresh(String key) {
+        CardstackStudioAccess.requireAdmin();
+        return CardstackConfigService.getStagingInfo(key);
+    }
+
+    /** Bounded metadata-only choices; runtime rechecks the exact published plan independently. */
+    @AuraEnabled
+    public static Map<String,Object> getPublishedFlowPlans(String objectApi) {
+        CardstackStudioAccess.requireAdmin();
+        try {
+            return CardstackFlowPublication.catalog(objectApi);
+        } catch (Exception failure) {
+            throw studioError('Published in-chat Flow metadata is unavailable.');
+        }
+    }
+
+    /** Acquires exact native metadata and stages a checked immutable interpreter plan. */
+    @AuraEnabled
+    public static Map<String,Object> prepareInterpretedFlowDraft(String definitionId18) {
+        CardstackStudioAccess.requireAdmin();
+        try {
+            return CardstackFlowPublication.prepareDraft(CardstackConnectionTypes.normalizeId(definitionId18));
+        } catch (Exception failure) {
+            throw studioError('Flow metadata could not be acquired or compiled. Existing launch cards are retained.');
+        }
     }
 
     // Flow editing needs a fresh snapshot after staging/publishing; do not cache this response.
     @AuraEnabled
     public static Map<String, Object> getFlowLaunchCards() {
+        CardstackStudioAccess.requireAdmin();
         return CardstackConfigService.getStagingInfo('flows');
     }
 
     @AuraEnabled
     public static String saveDraft(String key, String value) {
+        CardstackStudioAccess.requireAdmin();
         validateJson(value);
-        return String.valueOf(CardstackConfigService.saveDraft(key, value));
+        return CardstackConnectionTypes.normalizeId(String.valueOf(CardstackConfigService.saveDraft(key, value)));
     }
 
     @AuraEnabled
     public static void publishDraft(String draftId) {
-        CardstackConfigService.publishDraft((Id) draftId);
+        CardstackStudioAccess.requireAdmin();
+        CardstackConfigService.publishDraft((Id) CardstackConnectionTypes.normalizeId(draftId));
+    }
+
+    /** Fresh exact candidate snapshot; caching would invalidate review semantics. */
+    @AuraEnabled
+    public static Map<String, Object> getDraftReview(String draftId) {
+        CardstackStudioAccess.requireAdmin();
+        try {
+            return CardstackConfigService.getDraftReview((Id) CardstackConnectionTypes.normalizeId(draftId));
+        } catch (CardstackConfigService.ConfigException failure) {
+            throw studioError(failure.getMessage());
+        }
+    }
+
+    /** Publish the raw values acknowledged in native Studio review. */
+    @AuraEnabled
+    public static void publishReviewedDraft(String draftId, String expectedLiveDigest, String expectedDraftDigest) {
+        CardstackStudioAccess.requireAdmin();
+        try {
+            Id nativeDraftId = (Id)CardstackConnectionTypes.normalizeId(draftId);
+            Map<String,Object> reviewed = CardstackConfigService.getDraftReview(nativeDraftId);
+            String key = (String)reviewed.get('key');
+            if (key != null && key.startsWith('flow-plan:')) {
+                CardstackFlowPublication.publishReviewed(nativeDraftId, expectedLiveDigest, expectedDraftDigest);
+            } else {
+                CardstackConfigService.publishReviewedDraft(nativeDraftId, expectedLiveDigest, expectedDraftDigest);
+            }
+        } catch (CardstackConfigService.ConfigException failure) {
+            throw studioError(failure.getMessage());
+        } catch (CardstackOpportunityActionPolicy.PolicyException failure) {
+            throw studioError(failure.getMessage());
+        }
+    }
+
+    /** Exact fresh status: bounded history absence cannot establish publication. */
+    @AuraEnabled
+    public static String getDraftStatus(String draftId) {
+        CardstackStudioAccess.requireAdmin();
+        Id normalizedId = (Id) CardstackConnectionTypes.normalizeId(draftId);
+        return [SELECT Status__c FROM Cardstack_Config_Draft__c WHERE Id = :normalizedId WITH USER_MODE LIMIT 1].Status__c;
+    }
+
+    private static AuraHandledException studioError(String message) {
+        AuraHandledException error = new AuraHandledException(message);
+        error.setMessage(message);
+        return error;
     }
 
     @AuraEnabled
     public static void rollbackDraft(String draftId) {
-        CardstackConfigService.rollbackDraft((Id) draftId);
+        CardstackStudioAccess.requireAdmin();
+        CardstackConfigService.rollbackDraft((Id) CardstackConnectionTypes.normalizeId(draftId));
     }
 
     @AuraEnabled(cacheable=true)
     public static List<Cardstack_Config_Draft__c> getDrafts(String status) {
-        return CardstackConfigService.listDrafts(status);
+        CardstackStudioAccess.requireAdmin();
+        List<Cardstack_Config_Draft__c> drafts = CardstackConfigService.listDrafts(status);
+        // Keep the bounded generic history, including retained candidates for
+        // inspection/discard. Add the separate supported window in active views
+        // so retained history cannot displace active work before LIMIT 200.
+        if (!String.isBlank(status) && status != 'Draft') return drafts;
+        Set<Id> included = new Set<Id>();
+        for (Cardstack_Config_Draft__c draft : drafts) included.add(draft.Id);
+        for (Cardstack_Config_Draft__c draft : CardstackConfigService.listSupportedDrafts()) {
+            if (!included.contains(draft.Id)) {
+                drafts.add(draft);
+                included.add(draft.Id);
+            }
+        }
+        return drafts;
     }
 
     @AuraEnabled(cacheable=true)
     public static List<Map<String, String>> listConfigKeys() {
+        CardstackStudioAccess.requireAdmin();
         List<Map<String, String>> keys = new List<Map<String, String>>();
         for (Cardstack_Config__c c : CardstackConfigService.listConfigs()) {
             keys.add(new Map<String, String>{
@@ -67,6 +196,7 @@ public with sharing class CardstackStudioController {
         String term, String tool, Integer limitSize,
         String fromDateStr, String toDateStr, String userId
     ) {
+        CardstackStudioAccess.requireAdmin();
         Date fromDate = parseDate(fromDateStr);
         Date toDate = parseDate(toDateStr);
         return CardstackAuditService.searchLogs(term, tool, limitSize, fromDate, toDate, userId);
@@ -74,16 +204,19 @@ public with sharing class CardstackStudioController {
 
     @AuraEnabled(cacheable=true)
     public static List<String> listAuditTools() {
+        CardstackStudioAccess.requireAdmin();
         return CardstackAuditService.listTools();
     }
 
     @AuraEnabled(cacheable=true)
     public static List<Map<String, String>> listAuditUsers() {
+        CardstackStudioAccess.requireAdmin();
         return CardstackAuditService.listUsers();
     }
 
     @AuraEnabled
     public static void setSetupFlag(String key, Boolean value) {
+        CardstackStudioAccess.requireAdmin();
         if (String.isBlank(key)) {
             return;
         }
@@ -118,6 +251,7 @@ public with sharing class CardstackStudioController {
      */
     @AuraEnabled(cacheable=true)
     public static List<Map<String, String>> getCrmObjects() {
+        CardstackStudioAccess.requireAdmin();
         List<Map<String, String>> objects = new List<Map<String, String>>();
         Map<String, Schema.SObjectType> gd = Schema.getGlobalDescribe();
         List<String> names = new List<String>(gd.keySet());
@@ -164,6 +298,7 @@ public with sharing class CardstackStudioController {
      */
     @AuraEnabled(cacheable=true)
     public static List<Map<String, String>> getObjectFields(String objectApi) {
+        CardstackStudioAccess.requireAdmin();
         List<Map<String, String>> fields = new List<Map<String, String>>();
         try {
             Schema.SObjectType t = Schema.getGlobalDescribe().get(objectApi);
@@ -184,11 +319,39 @@ public with sharing class CardstackStudioController {
                 fields.add(new Map<String, String>{
                     'api' => f.getName(),
                     'label' => f.getLabel(),
-                    'type' => String.valueOf(f.getType())
+                    'type' => String.valueOf(f.getType()),
+                    'updateable' => String.valueOf(f.isUpdateable()),
+                    'nillable' => String.valueOf(f.isNillable())
                 });
             }
         } catch (Exception e) {
             System.debug(LoggingLevel.WARN, 'getObjectFields failed: ' + e.getMessage());
+        }
+        return fields;
+    }
+
+    /** @param objectApi Native object API. @return Actor-readable lists for admin authoring. */
+    @AuraEnabled(cacheable=true)
+    public static List<Map<String,Object>> getStudioListCatalog(String objectApi) {
+        CardstackStudioAccess.requireAdmin();
+        try { return CardstackListCatalog.available(objectApi); }
+        catch (Exception failure) { throw new AuraHandledException('Could not read the list catalog. Check Salesforce access.'); }
+    }
+
+    /** @param objectApi Native object API. @return Readable fields with Boolean editability. */
+    @AuraEnabled(cacheable=true)
+    public static List<Map<String,Object>> getStudioFieldCatalog(String objectApi) {
+        CardstackStudioAccess.requireAdmin();
+        List<Map<String,Object>> fields = new List<Map<String,Object>>();
+        Schema.SObjectType objectType = Schema.getGlobalDescribe().get(objectApi);
+        if (objectType == null || !objectType.getDescribe().isAccessible()) return fields;
+        Map<String,Schema.SObjectField> fieldMap = objectType.getDescribe().fields.getMap();
+        List<String> names = new List<String>(fieldMap.keySet()); names.sort();
+        for (String api : names) {
+            Schema.DescribeFieldResult field = fieldMap.get(api).getDescribe();
+            if (!field.isAccessible()) continue;
+            fields.add(new Map<String,Object>{'api'=>field.getName(), 'label'=>field.getLabel(),
+                'type'=>String.valueOf(field.getType()), 'updateable'=>field.isUpdateable()});
         }
         return fields;
     }
@@ -202,13 +365,14 @@ public with sharing class CardstackStudioController {
      */
     @AuraEnabled(cacheable=true)
     public static Map<String, Object> getConnectionInfo() {
+        CardstackStudioAccess.requireAdmin();
         Map<String, Object> info = new Map<String, Object>();
         Organization org = [
             SELECT Id, Name, OrganizationType, InstanceName, IsSandbox
-            FROM Organization LIMIT 1
+            FROM Organization WITH USER_MODE LIMIT 1
         ];
         info.put('orgName', org.Name);
-        info.put('orgId', org.Id);
+        info.put('orgId', CardstackConnectionTypes.normalizeId(String.valueOf(org.Id)));
         info.put('instance', org.InstanceName);
         info.put('isSandbox', org.IsSandbox);
         info.put('userName', UserInfo.getUserName());
@@ -219,6 +383,60 @@ public with sharing class CardstackStudioController {
         return info;
     }
 
+    /** Accurate default-layout state, independent of the bounded Publish/history window. */
+    @AuraEnabled(cacheable=true)
+    public static Map<String, Object> getStudioOverview() {
+        CardstackStudioAccess.requireAdmin();
+        Map<String, Map<String, Object>> objectsByApi = new Map<String, Map<String, Object>>();
+        for (Map<String, String> objectInfo : getCrmObjects()) {
+            objectsByApi.put(objectInfo.get('api'), overviewObject(objectInfo.get('api'), objectInfo.get('label'), 'ready'));
+        }
+        // One bulk relationship query obtains the latest candidate for EACH default
+        // layout, including objects whose candidate is older than the newest 200.
+        Map<String, Schema.SObjectType> metadata = Schema.getGlobalDescribe();
+        for (Cardstack_Config__c config : [
+            SELECT Name, Value__c, Is_Active__c,
+                (SELECT Id FROM Drafts__r WHERE Status__c = 'Draft' ORDER BY CreatedDate DESC, Id DESC LIMIT 1)
+            FROM Cardstack_Config__c WHERE Name LIKE 'layout:%'
+            WITH USER_MODE
+        ]) {
+            if (!CardstackConfigService.isSupportedStudioKey(config.Name)) continue;
+            String objectApi = config.Name.substringAfter('layout:').substringBefore(':');
+            if (!objectsByApi.containsKey(objectApi)) {
+                Schema.SObjectType objectType = metadata.get(objectApi);
+                Boolean available = objectType != null && objectType.getDescribe().isAccessible();
+                objectsByApi.put(objectApi, overviewObject(objectApi,
+                    available ? objectType.getDescribe().getLabel() : objectApi, available ? 'ready' : 'unavailable'));
+            }
+            Map<String, Object> state = objectsByApi.get(objectApi);
+            state.put('hasLive', config.Is_Active__c && !String.isBlank(config.Value__c));
+            state.put('hasDraft', !config.Drafts__r.isEmpty());
+            if (!config.Drafts__r.isEmpty()) state.put('latestDraftId', CardstackConnectionTypes.normalizeId(String.valueOf(config.Drafts__r[0].Id)));
+        }
+        List<String> objectApis = new List<String>(objectsByApi.keySet());
+        objectApis.sort();
+        List<Map<String, Object>> objects = new List<Map<String, Object>>();
+        for (String objectApi : objectApis) objects.add(objectsByApi.get(objectApi));
+        List<Map<String, Object>> recent = new List<Map<String, Object>>();
+        for (Cardstack_Audit_Log__c log : CardstackAuditService.searchLogs('', '', 10)) {
+            recent.add(new Map<String, Object>{
+                'action' => log.Action__c, 'tool' => log.Tool_Name__c,
+                'user' => log.User__r != null ? log.User__r.Name : '', 'time' => log.Timestamp__c
+            });
+        }
+        return new Map<String, Object>{
+            'org' => getConnectionInfo(), 'objects' => objects,
+            'activePendingDraftCount' => CardstackConfigService.countSupportedDrafts(), 'recentActivity' => recent
+        };
+    }
+
+    private static Map<String, Object> overviewObject(String objectApi, String label, String metadataStatus) {
+        return new Map<String, Object>{
+            'objectApi' => objectApi, 'label' => label, 'hasLive' => false,
+            'hasDraft' => false, 'latestDraftId' => null, 'metadataStatus' => metadataStatus
+        };
+    }
+
     // ---------- Dashboard ----------
 
     /**
@@ -227,17 +445,14 @@ public with sharing class CardstackStudioController {
      */
     @AuraEnabled(cacheable=true)
     public static Map<String, Object> getDashboardData() {
+        CardstackStudioAccess.requireAdmin();
         Map<String, Object> data = new Map<String, Object>();
 
         // Org identity (reuse connection info)
         data.put('org', getConnectionInfo());
 
         // Config coverage: published layout:* configs vs configurable CRM objects
-        Integer layoutCount = [
-            SELECT COUNT() FROM Cardstack_Config__c
-            WHERE Name LIKE 'layout:%' AND Is_Active__c = true
-            WITH USER_MODE
-        ];
+        Integer layoutCount = 0;
         // Count distinct objects with at least one layout (strip :audience suffix)
         Set<String> objectsWithLayout = new Set<String>();
         for (Cardstack_Config__c c : [
@@ -245,6 +460,8 @@ public with sharing class CardstackStudioController {
             WHERE Name LIKE 'layout:%' AND Is_Active__c = true
             WITH USER_MODE
         ]) {
+            if (!CardstackConfigService.isSupportedStudioKey(c.Name)) continue;
+            layoutCount++;
             String remainder = c.Name.substringAfter('layout:');
             Integer colonIdx = remainder.indexOf(':');
             objectsWithLayout.add(colonIdx > 0 ? remainder.substring(0, colonIdx) : remainder);
@@ -255,8 +472,8 @@ public with sharing class CardstackStudioController {
         data.put('totalObjects', totalObjects);
 
         // Pending drafts
-        List<Cardstack_Config_Draft__c> drafts = CardstackConfigService.listDrafts('Draft');
-        data.put('pendingDraftCount', drafts.size());
+        List<Cardstack_Config_Draft__c> drafts = CardstackConfigService.listSupportedDrafts();
+        data.put('pendingDraftCount', CardstackConfigService.countSupportedDrafts());
         List<Map<String, Object>> draftSummaries = new List<Map<String, Object>>();
         for (Cardstack_Config_Draft__c d : drafts) {
             draftSummaries.add(new Map<String, Object>{
@@ -293,14 +510,14 @@ public with sharing class CardstackStudioController {
      */
     @AuraEnabled(cacheable=true)
     public static Map<String, Object> getChecklistState() {
+        CardstackStudioAccess.requireAdmin();
         List<Map<String, Object>> items = new List<Map<String, Object>>();
 
         // 1. First object layout published
-        Integer layoutCount = [
-            SELECT COUNT() FROM Cardstack_Config__c
-            WHERE Name LIKE 'layout:%' AND Is_Active__c = true
-            WITH USER_MODE
-        ];
+        Integer layoutCount = 0;
+        for (Cardstack_Config__c config : CardstackConfigService.listConfigs()) {
+            if (config.Is_Active__c && config.Name.startsWith('layout:') && CardstackConfigService.isSupportedStudioKey(config.Name)) layoutCount++;
+        }
         items.add(checklistItem(
             'layout', 'Configure your first object layout',
             'Pick an object and design its chat card in the visual builder.',
@@ -308,7 +525,7 @@ public with sharing class CardstackStudioController {
         ));
 
         // 2. No pending drafts
-        Integer draftCount = CardstackConfigService.listDrafts('Draft').size();
+        Integer draftCount = CardstackConfigService.countSupportedDrafts();
         items.add(checklistItem(
             'drafts', 'Publish pending drafts',
             draftCount == 0 ? 'All drafts are published.' : draftCount + ' draft(s) waiting to publish.',
@@ -319,12 +536,12 @@ public with sharing class CardstackStudioController {
         Integer permCount = [
             SELECT COUNT() FROM PermissionSetAssignment
             WHERE AssigneeId = :UserInfo.getUserId()
-            AND PermissionSet.Name IN ('Cardstack_Admin', 'Cardstack_User')
+            AND PermissionSet.Name = 'Cardstack_Admin'
             WITH USER_MODE
         ];
         items.add(checklistItem(
             'perms', 'Assign a Cardstack permission set',
-            'You need Cardstack_Admin or Cardstack_User to use the Studio and tools.',
+            'Cardstack_Admin is required for Studio. Cardstack_User grants chat access only.',
             permCount > 0, false, null
         ));
 
@@ -332,16 +549,16 @@ public with sharing class CardstackStudioController {
         Boolean mcpActive = isMcpServerActive();
         Boolean mcpConfirmed = getSetupFlag('setup:mcpServerConfirmed');
         items.add(checklistItem(
-            'mcp', 'Activate the MCP server',
-            'Create an active McpServerAccess record for the Cardstack definition.',
+            'mcp', 'Legacy MCP server setup history',
+            'Legacy beta history only; this does not verify the MCP Apps connection below.',
             mcpActive || mcpConfirmed, !mcpActive, null
         ));
 
         // 5. Claude connected (manual)
         Boolean claudeDone = getSetupFlag('setup:claudeConnected');
         items.add(checklistItem(
-            'claude', 'Connect Claude',
-            'Add a custom connector in Claude pointing at your hosted MCP URL.',
+            'claude', 'Legacy Claude setup history',
+            'Legacy beta history only; each client needs current MCP Apps diagnostic evidence.',
             claudeDone, true, null
         ));
 
@@ -411,28 +628,39 @@ public with sharing class CardstackStudioController {
      */
     @AuraEnabled(cacheable=true)
     public static List<Map<String, String>> getActiveFlows() {
+        CardstackStudioAccess.requireAdmin();
         List<Map<String, String>> flows = new List<Map<String, String>>();
         try {
             for (FlowDefinitionView f : [
-                SELECT ApiName, Label, Description, ProcessType
+                SELECT Id, ActiveVersionId, ApiName, Label, Description, ProcessType
                 FROM FlowDefinitionView
                 WHERE IsActive = true
                     AND ProcessType IN ('Flow', 'AutoLaunchedFlow')
                     AND (TriggerType = null OR TriggerType = 'None')
+                WITH USER_MODE
                 ORDER BY Label
                 LIMIT 200
             ]) {
                 flows.add(new Map<String, String>{
                     'apiName' => f.ApiName,
+                    'definitionId18' => nativeFlowIdentity(String.valueOf(f.Id)),
+                    'activeVersionId18' => nativeFlowIdentity(f.ActiveVersionId),
                     'label' => f.Label,
                     'description' => String.valueOf(f.Description),
                     'processType' => String.valueOf(f.ProcessType)
                 });
             }
         } catch (Exception e) {
-            // FlowDefinitionView may not be visible to all users; return empty.
+            throw studioError('Active Flow metadata is unavailable.');
         }
         return flows;
+    }
+
+    /** Native metadata views may return opaque references; only actual IDs enable exact acquisition. */
+    @TestVisible private static String nativeFlowIdentity(String reference) {
+        if(String.isBlank(reference)) return null;
+        try { return CardstackConnectionTypes.normalizeId(reference); }
+        catch(CardstackConnectionTypes.ConnectionException unavailable) { return null; }
     }
 
     /**
@@ -441,6 +669,7 @@ public with sharing class CardstackStudioController {
      */
     @AuraEnabled(cacheable=true)
     public static List<Map<String, Object>> getFlowInputs(String flowApiName) {
+        CardstackStudioAccess.requireAdmin();
         List<Map<String, Object>> inputs = new List<Map<String, Object>>();
         if (String.isBlank(flowApiName)) {
             return inputs;
@@ -451,6 +680,7 @@ public with sharing class CardstackStudioController {
                 FROM FlowVariableView
                 WHERE FlowVersionView.FlowDefinitionView.ApiName = :flowApiName
                     AND IsInput = true
+                WITH USER_MODE
                 ORDER BY ApiName
                 LIMIT 100
             ]) {
@@ -462,7 +692,7 @@ public with sharing class CardstackStudioController {
                 });
             }
         } catch (Exception e) {
-            // Not visible or no variables; return empty.
+            throw studioError('Flow input metadata is unavailable.');
         }
         return inputs;
     }

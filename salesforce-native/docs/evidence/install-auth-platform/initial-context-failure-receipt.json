@@ -1,0 +1,21 @@
+{
+  "checkedAt": "2026-10-08T21:13:09.129Z",
+  "success": false,
+  "error": "CONTEXT_VERIFICATION_FAILED",
+  "checks": {
+    "anonymous": {
+      "status": 404,
+      "exactPublicKeys": false,
+      "baseMatches": false,
+      "prefixMatches": false,
+      "issuerMatches": false
+    },
+    "named": {
+      "status": 404,
+      "exactPublicKeys": false,
+      "baseMatches": false,
+      "prefixMatches": false,
+      "issuerMatches": false
+    }
+  }
+}

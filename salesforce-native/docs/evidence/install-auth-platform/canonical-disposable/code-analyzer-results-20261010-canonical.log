@@ -1,0 +1,89 @@
+ ›   Warning: @salesforce/cli update available from 2.144.6 to 2.153.5.
+
+Streaming logs in real time to:
+    /var/folders/mz/ks9d2k4d4vn2gpm1y2xyfh7h0000gn/T/sfca-2026_10_10_05_17_38_539.log
+
+ ›   Error: Code Analyzer [5:17:38.558]:
+ ›       Failed to create engine with name 'pmd' due to the following error:
+ ›       Could not locate Java v11.0.0+.
+ ›         | Attempt 1:
+ ›         |     When attempting to find the version of command 'java', an
+ ›   error was thrown:
+ ›         |       | The operation couldn’t be completed. Unable to locate a
+ ›   Java Runtime.
+ ›         |       | Please visit http://www.java.com for information on
+ ›   installing Java.
+ ›         |       |
+ ›         |       |
+ ›       If you have Java installed, specify the command in your Code Analyzer
+ ›   configuration as the value of property 'engines.pmd.java_command'.
+ ›       If you choose not to install Java, you may disable the corresponding
+ ›   engine in your Code Analyzer configuration by setting
+ ›   'engines.pmd.disable_engine' to true.
+ ›
+ ›       If you wish to ignore this error and disable this engine, then update
+ ›   your Code Analyzer configuration with:
+ ›       engines:
+ ›         pmd:
+ ›           disable_engine: true
+
+ ›   Error: Code Analyzer [5:17:38.561]:
+ ›       Failed to create engine with name 'cpd' due to the following error:
+ ›       Could not locate Java v11.0.0+.
+ ›         | Attempt 1:
+ ›         |     When attempting to find the version of command 'java', an
+ ›   error was thrown:
+ ›         |       | The operation couldn’t be completed. Unable to locate a
+ ›   Java Runtime.
+ ›         |       | Please visit http://www.java.com for information on
+ ›   installing Java.
+ ›         |       |
+ ›         |       |
+ ›       If you have Java installed, specify the command in your Code Analyzer
+ ›   configuration as the value of property 'engines.cpd.java_command'.
+ ›       If you choose not to install Java, you may disable the corresponding
+ ›   engine in your Code Analyzer configuration by setting
+ ›   'engines.cpd.disable_engine' to true.
+ ›
+ ›       If you wish to ignore this error and disable this engine, then update
+ ›   your Code Analyzer configuration with:
+ ›       engines:
+ ›         cpd:
+ ›           disable_engine: true
+
+ ›   Error: Code Analyzer [5:17:38.561]:
+ ›       Failed to create engine with name 'sfge' due to the following error:
+ ›       Could not locate Java v11.0.0+.
+ ›         | Attempt 1:
+ ›         |     When attempting to find the version of command 'java', an
+ ›   error was thrown:
+ ›         |       | The operation couldn’t be completed. Unable to locate a
+ ›   Java Runtime.
+ ›         |       | Please visit http://www.java.com for information on
+ ›   installing Java.
+ ›         |       |
+ ›         |       |
+ ›       If you have Java installed, specify the command in your Code Analyzer
+ ›   configuration as the value of property 'engines.sfge.java_command'.
+ ›       If you choose not to install Java, you may disable the corresponding
+ ›   engine in your Code Analyzer configuration by setting
+ ›   'engines.sfge.disable_engine' to true.
+ ›
+ ›       If you wish to ignore this error and disable this engine, then update
+ ›   your Code Analyzer configuration with:
+ ›       engines:
+ ›         sfge:
+ ›           disable_engine: true
+
+Selecting rules... Eligible engines: retire-js, regex, eslint, flow; Completion: 0%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow; Completion: 25%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow; Completion: 50%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow; Completion: 75%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow; Completion: 77%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow; Completion: 78%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow; Completion: 79%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow; Completion: 95%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow; Completion: 96%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow; Completion: 97%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow; Completion: 98%; Elapsed time: 0sSelecting rules... Eligible engines: retire-js, regex, eslint, flow; Completion: 100%; Elapsed time: 0sSelecting rules... done.
+
+=== Summary
+
+Found 3 violation(s) across 0 file(s):
+    3 Critical severity violation(s) found.
+
+Results written to:
+    salesforce-native/docs/evidence/install-auth-platform/canonical-disposable/code-analyzer-results-20261010-canonical.json
+
+Additional log information written to:
+    /var/folders/mz/ks9d2k4d4vn2gpm1y2xyfh7h0000gn/T/sfca-2026_10_10_05_17_38_539.log

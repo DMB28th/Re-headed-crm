@@ -1,0 +1,3 @@
+.status, .buttons { display: flex; flex-wrap: wrap; gap: var(--slds-g-spacing-3, var(--lwc-spacingSmall)); }
+.list-choice { overflow-wrap: anywhere; }
+section { position: relative; }

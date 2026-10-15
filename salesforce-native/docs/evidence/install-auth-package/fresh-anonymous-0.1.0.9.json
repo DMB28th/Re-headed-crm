@@ -1,0 +1,73 @@
+{
+  "observedAt": "2026-10-11T11:33:50.937993+00:00",
+  "orgAliasLabel": "cardstack-mcp-install-qa",
+  "guestAccess": {
+    "classes": [
+      "CardstackMcpIngress"
+    ],
+    "pages": [
+      "CardstackSiteAuthProbeHome"
+    ],
+    "objectGrantCount": 0
+  },
+  "httpChecks": [
+    {
+      "client": "claude",
+      "leaf": "metadata",
+      "method": "GET",
+      "status": 200,
+      "contentType": "application/json",
+      "challengePresent": false,
+      "publicOnly": true
+    },
+    {
+      "client": "claude",
+      "leaf": "mcp",
+      "method": "GET",
+      "status": 401,
+      "contentType": "application/json",
+      "challengePresent": true,
+      "publicOnly": true
+    },
+    {
+      "client": "claude",
+      "leaf": "mcp",
+      "method": "POST",
+      "status": 401,
+      "contentType": "application/json",
+      "challengePresent": true,
+      "publicOnly": true
+    },
+    {
+      "client": "chatgpt",
+      "leaf": "metadata",
+      "method": "GET",
+      "status": 200,
+      "contentType": "application/json",
+      "challengePresent": false,
+      "publicOnly": true
+    },
+    {
+      "client": "chatgpt",
+      "leaf": "mcp",
+      "method": "GET",
+      "status": 401,
+      "contentType": "application/json",
+      "challengePresent": true,
+      "publicOnly": true
+    },
+    {
+      "client": "chatgpt",
+      "leaf": "mcp",
+      "method": "POST",
+      "status": 401,
+      "contentType": "application/json",
+      "challengePresent": true,
+      "publicOnly": true
+    }
+  ],
+  "limitations": [
+    "Named OAuth and actual-client UI remain Pending",
+    "No guest CRM/write test is inferred beyond these ingress denials"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "sourceHead": "8893ffbbeb2dd3076cf531aef8cbe154ef64d404",
+  "sourceTreeSha256": "dc5c239a39ceb9ac776f9015b85e62ab8809d2187808ecbe4c554b4f481ad967",
+  "apiVersion": "67.0",
+  "status": "Success",
+  "version": "0.1.0.1",
+  "coveragePercent": 89,
+  "hasPassedCoverage": true,
+  "validationErrorCount": 0,
+  "evidenceKind": "Actual unreleased core package creation; not installed-package or live-client proof",
+  "includesReusableScreen": false,
+  "promotionPerformed": false,
+  "freshInstall": "Pending",
+  "fullInstalledSuite": "Pending",
+  "actualStageProvider": "NotRun",
+  "actualClaude": "NotRun",
+  "actualChatGPT": "NotRun"
+}

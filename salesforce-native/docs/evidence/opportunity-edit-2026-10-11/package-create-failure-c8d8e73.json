@@ -1,0 +1,11 @@
+{
+  "sourceHead": "c8d8e739ef39abfbbbe05813eca712a4bbabe3b4",
+  "apiVersion": "67.0",
+  "evidenceKind": "Actual package creation validation; not installed-package or live-client proof",
+  "status": "Error",
+  "validationErrorCount": 60,
+  "packageVersionCreated": false,
+  "freshOrgCreated": false,
+  "productionAuthorizationChanged": false,
+  "rendererDevelopmentBlocked": false
+}

@@ -1,0 +1,22 @@
+{
+  "sourceHead": "bd3dec4f7e7542648ae8122391c3e4d0b041a008",
+  "apiVersion": "67.0",
+  "classes": 21,
+  "zipEntries": 43,
+  "testClasses": 10,
+  "testMethods": 154,
+  "priorMethodsPreserved": 112,
+  "newMethods": 42,
+  "zipSha256": "4895d6ae9c98a6e60e10e63e9b6de40556a81092e7f60959482d8475f59a2b73",
+  "manifestSha256": "7526ac8689ae31c35783ea03be2eb2dfec18fea505e5eb770e0f2999b58633db",
+  "sourceMembersMatch": true,
+  "protectedFilesUnchanged": 260,
+  "specReview": "Approved",
+  "qualityReview": "Approved",
+  "nativeCompilation": "NotRun",
+  "behavioralRed": "NotRun",
+  "algorithms": "Fail-closed scaffolds only; confirmed save not implemented",
+  "analyzer": "Unavailable: previously observed missing Java; zero source files scanned",
+  "liveAuthorization": "New21-class/ten-test checkOnly scope requires approval under approved plan",
+  "proofScope": "Offline source bundle readiness only"
+}

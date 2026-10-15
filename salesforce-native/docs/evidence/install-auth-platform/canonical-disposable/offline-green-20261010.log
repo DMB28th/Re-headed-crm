@@ -1,0 +1,48 @@
+✔ accepts exact public metadata from injected response (0.755292ms)
+✔ rejects duplicated prefix in public resource (0.103541ms)
+✔ rejects metadata carrying actor identity (0.058792ms)
+✔ rejects insecure private expected Site context (0.164083ms)
+✔ accepts exact sibling challenge (0.070875ms)
+✔ rejects wrong-client challenge (0.053958ms)
+✔ requires empty notification response (0.03875ms)
+✔ accepts notification without response body (0.038125ms)
+✔ checks exact typed echo values (0.108583ms)
+✔ rejects false converted to string in echo (0.091042ms)
+✔ rejects extra echo fields (0.069917ms)
+✔ accepts empty text in full typed fixture (0.046958ms)
+✔ rejects mismatching error code (0.040833ms)
+✔ checks denial error body rather than status alone (0.042375ms)
+✔ sanitized receipt drops raw response and private context (0.06575ms)
+✔ unknown stage cannot manufacture pass (0.051708ms)
+✔ runner consumes only supplied request function and emits sanitized results (0.109083ms)
+✔ receipt rejects raw identity or URL fields (0.036583ms)
+✔ builder verifies exact deploy allowlist and deterministic bytes (92.065292ms)
+✔ source drift is rejected before archive creation (5.608792ms)
+✔ extra manifest components are rejected (5.318875ms)
+✔ rejects private output beside valid echo (0.08075ms)
+✔ accepts supported initialize response contract (0.044583ms)
+✔ rejects initialize protocol substitution (0.025083ms)
+✔ accepts exact fixed resource listing (0.032292ms)
+✔ accepts pinned HTML hash and restrictive CSP (0.626958ms)
+✔ rejects altered HTML bytes (0.027583ms)
+✔ rejects resource MIME drift (0.0225ms)
+✔ rejects nested path request before invoking supplied transport (0.091667ms)
+✔ destructive archive excludes page Site and app and has exactly four owned members (23.915083ms)
+✔ temporary set grants only API and ingress, never Use or object permissions (18.741167ms)
+✔ accepts exact two-tool app contract (0.126917ms)
+✔ rejects model-visible echo helper (0.095167ms)
+✔ rejects protocol response ID mismatch (0.024583ms)
+✔ accepts exact safe invalid-request code (0.036375ms)
+✔ rejects raw provider errors from contract receipt (0.037292ms)
+✔ receipt schema forbids properties outside stage status and evidence (0.095042ms)
+✔ live receipt can truthfully retain Unknown callback stage (0.401334ms)
+✔ live receipt rejects identity and callback URLs before serialization (0.041417ms)
+✔ live receipt rejects secret-bearing stage notes (0.0335ms)
+ℹ tests 40
+ℹ suites 0
+ℹ pass 40
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 184.655583

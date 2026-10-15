@@ -237,4 +237,192 @@ private class CardstackListViewActionTest {
             System.assertEquals(1, CardstackListViewAction.listView(new List<CardstackListViewAction.ListViewRequest>{req})[0].count, 'Saved My scope must survive a neutral display name.');
         }
     }
+    private class PolicyViews implements CardstackListCatalog.MetadataProvider {
+        public List<ListView> nativeViews(String objectApi) {
+            return new List<ListView>{
+                (ListView)JSON.deserialize('{"Id":"00B000000000001","Name":"Approved View","DeveloperName":"Approved_View"}', ListView.class),
+                (ListView)JSON.deserialize('{"Id":"00B000000000002","Name":"Hidden View","DeveloperName":"Hidden_View"}', ListView.class)
+            };
+        }
+    }
+    private static String listPolicy(Boolean adHoc) {
+        return '{"version":1,"allowAdHoc":'+String.valueOf(adHoc)+',"views":[{"viewId":"00B000000000001","enabled":true}],"customLists":[]}';
+    }
+    private static CardstackListViewAction.ListViewResponse requestPolicyView(String name, Boolean saveAs) {
+        CardstackListViewAction.ListViewRequest request = new CardstackListViewAction.ListViewRequest();
+        request.objectName = 'Opportunity'; request.viewName = name;
+        request.saveViewAs = saveAs ? 'Denied save' : null;
+        return CardstackListViewAction.listView(new List<CardstackListViewAction.ListViewRequest>{request})[0];
+    }
+    private static void assertDenied(CardstackListViewAction.ListViewResponse result) {
+        Assert.areEqual(0, result.count, 'Denied calls return zero CRM rows.');
+        Assert.areEqual(0, result.rows.size(), 'Denied calls contain no row payload.');
+        Assert.isTrue(result.summary.contains('not available in chat'), 'Denial is renderable.');
+        Assert.areEqual(0, [SELECT count() FROM Cardstack_Config__c WHERE Name='listview:Opportunity:deniedsave'], 'Denied calls cannot save filters.');
+    }
+    @IsTest static void draftCannotRestrictRuntime() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+            insert new Opportunity(Name='Legacy row', StageName='Prospecting', CloseDate=Date.today());
+            CardstackConfigService.saveDraft('exposures:Opportunity', listPolicy(false));
+            Test.startTest();
+            CardstackListViewAction.ListViewResponse result=requestPolicyView('Unknown legacy name', false);
+            Test.stopTest();
+            Assert.areEqual(1, result.count, 'Only published exposure policy governs execution.');
+        }
+    }
+    @IsTest static void publishedPolicyFiltersDiscoveryAndDirectExecution() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+            CardstackListCatalog.metadataProvider=new PolicyViews();
+            insert new Opportunity(Name='Approved row', StageName='Prospecting', CloseDate=Date.today());
+            CardstackConfigService.publishDraft(CardstackConfigService.saveDraft('exposures:Opportunity', listPolicy(false)));
+            CardstackListViewsAction.ListViewsRequest request=new CardstackListViewsAction.ListViewsRequest(); request.objectName='Opportunity';
+            Test.startTest();
+            CardstackListViewsAction.ListViewsResponse discovery=CardstackListViewsAction.listViews(new List<CardstackListViewsAction.ListViewsRequest>{request})[0];
+            CardstackListViewAction.ListViewResponse allowed=requestPolicyView('Approved_View', false);
+            CardstackListViewAction.ListViewResponse hidden=requestPolicyView('Hidden_View', true);
+            Test.stopTest();
+            Assert.areEqual(1, discovery.count, 'Discovery returns the allowed view only.');
+            Assert.areEqual('Approved View', discovery.views[0].name, 'Hidden metadata is excluded.');
+            Assert.areEqual(1, allowed.count, 'Allowed native view retains beta fallback.');
+            Assert.areEqual('Beta filtered list for "Approved View"; Salesforce saved-view filters, columns, and sort are not reproduced.', allowed.fallbackNote, 'Exact existing fallback note survives.');
+            assertDenied(hidden);
+        }
+    }
+    @IsTest static void hiddenNamesCannotReturnThroughFuzzyOrIdResolution() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+            CardstackListCatalog.metadataProvider=new PolicyViews();
+            CardstackConfigService.publishDraft(CardstackConfigService.saveDraft('exposures:Opportunity', listPolicy(false)));
+            Test.startTest();
+            assertDenied(requestPolicyView('Hidden', true));
+            assertDenied(requestPolicyView('00B000000000002', true));
+            assertDenied(requestPolicyView(CardstackConnectionTypes.normalizeId('00B000000000002'), true));
+            Test.stopTest();
+        }
+    }
+    @IsTest static void unknownNameDeniedEvenWhenAdHocAllowed() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+            CardstackListCatalog.metadataProvider=new PolicyViews();
+            insert new Opportunity(Name='Ad hoc row', StageName='Prospecting', CloseDate=Date.today());
+            CardstackConfigService.publishDraft(CardstackConfigService.saveDraft('exposures:Opportunity', listPolicy(true)));
+            Test.startTest();
+            assertDenied(requestPolicyView('Unknown named view', true));
+            Assert.areEqual(1, requestPolicyView(null, false).count, 'Explicit ad hoc permission allows unnamed filters.');
+            Test.stopTest();
+        }
+    }
+    @IsTest static void collisionRequiresUnambiguousAllowedTarget() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+            CardstackListCatalog.metadataProvider=new PolicyViews();
+            insert new Opportunity(Name='Saved only', StageName='Prospecting', CloseDate=Date.today());
+            insert new Cardstack_Config__c(Name='listview:Opportunity:approvedview',Is_Active__c=true,Value__c='{"displayName":"Approved View","query":"Saved only"}');
+            String policy=listPolicy(false).replace('"customLists":[]','"customLists":[{"key":"listview:Opportunity:approvedview","enabled":true}]');
+            CardstackConfigService.publishDraft(CardstackConfigService.saveDraft('exposures:Opportunity', policy));
+            Test.startTest();
+            assertDenied(requestPolicyView('Approved View', true));
+            Assert.areEqual(1, requestPolicyView('00B000000000001', false).count, 'Canonical native ID disambiguates.');
+            CardstackListViewAction.ListViewResponse saved=requestPolicyView('listview:Opportunity:approvedview', false);
+            Test.stopTest();
+            Assert.areEqual(1, saved.count, 'Full saved key uses the stored filters.');
+            Assert.isTrue(saved.viewName.contains('(saved view)'), 'Saved execution stays distinct from Salesforce fallback.');
+        }
+    }
+    @IsTest static void corruptUnknownOrUnreadableConfiguredPolicyDenies() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+            Cardstack_Config__c config=new Cardstack_Config__c(Name='exposures:Opportunity',Is_Active__c=true,Value__c='{'); insert config;
+            Test.startTest();
+            assertDenied(requestPolicyView(null, true));
+            config.Value__c='{"version":2}'; update config;
+            assertDenied(requestPolicyView(null, true));
+            Test.stopTest();
+        }
+    }
+    @IsTest static void connectedUserStillNeedsNativeAccess() {
+        User actor=CardstackConnectionTestFactory.namedUser();
+        CardstackConnectionTestFactory.assign(actor, 'Cardstack_User');
+        System.runAs(actor) {
+            Test.startTest();
+            CardstackListViewAction.ListViewResponse result=requestPolicyView('Approved View', false);
+            Test.stopTest();
+            Assert.areEqual(0, result.count, 'Native object access remains required.');
+            Assert.areEqual(0, result.rows.size(), 'No data flows through admin policy.');
+        }
+    }
+
+    private class UnreadableViews implements CardstackListCatalog.MetadataProvider {
+        public List<ListView> nativeViews(String objectApi) { throw new CardstackListExposurePolicy.PolicyException('Native metadata unreadable.'); }
+    }
+    private class NoVisibleViews implements CardstackListCatalog.MetadataProvider {
+        public List<ListView> nativeViews(String objectApi) { return new List<ListView>(); }
+    }
+    @IsTest static void nativeAuthorizationFailureCannotFallThroughToData() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+            CardstackConfigService.publishDraft(CardstackConfigService.saveDraft('exposures:Opportunity', listPolicy(false)));
+            CardstackListCatalog.metadataProvider=new UnreadableViews();
+            insert new Opportunity(Name='Must never return',StageName='Prospecting',CloseDate=Date.today());
+            Test.startTest();
+            assertDenied(requestPolicyView('00B000000000001', true));
+            Test.stopTest();
+        }
+    }
+    @IsTest static void allowedIdentityStillNeedsNativeVisibility() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+            CardstackConfigService.publishDraft(CardstackConfigService.saveDraft('exposures:Opportunity', listPolicy(false)));
+            CardstackListCatalog.metadataProvider=new NoVisibleViews();
+            Test.startTest();
+            assertDenied(requestPolicyView('00B000000000001', true));
+            Test.stopTest();
+        }
+    }
+    @IsTest static void policyKeepsMyOwnerScopeForCanonicalId() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+            CardstackListCatalog.metadataProvider=new MyViews();
+            User other=new User(Alias='cspmy',Email='other@example.invalid',Username='cardstack.policy.'+DateTime.now().getTime()+'@example.invalid',LastName='Other',ProfileId=UserInfo.getProfileId(),TimeZoneSidKey='America/New_York',LocaleSidKey='en_US',EmailEncodingKey='UTF-8',LanguageLocaleKey='en_US');
+            System.runAs(new User(Id=UserInfo.getUserId())) { insert other; }
+            insert new List<Opportunity>{new Opportunity(Name='Owned policy row',StageName='Prospecting',CloseDate=Date.today()),new Opportunity(Name='Other policy row',StageName='Prospecting',CloseDate=Date.today(),OwnerId=other.Id)};
+            CardstackConfigService.publishDraft(CardstackConfigService.saveDraft('exposures:Opportunity', listPolicy(false)));
+            Test.startTest();
+            CardstackListViewAction.ListViewResponse response=requestPolicyView('00B000000000001', false);
+            Test.stopTest();
+            Assert.areEqual(1, response.count, 'Canonical IDs preserve the current metadata My-owner restriction.');
+            Assert.areEqual('Owned policy row', response.rows[0].name, 'Other owner cannot enter fallback results.');
+        }
+    }
+    private class MyViews implements CardstackListCatalog.MetadataProvider {
+        public List<ListView> nativeViews(String objectApi) { return new List<ListView>{(ListView)JSON.deserialize('{"Id":"00B000000000001","Name":"My Opportunities","DeveloperName":"MyOpportunities"}',ListView.class)}; }
+    }
+
+    @IsTest static void ordinaryChatUserCannotRunExcludedView() {
+        User actor=CardstackConnectionTestFactory.namedUser();
+        actor.ProfileId=[SELECT Id FROM Profile WHERE Name='Standard User' AND UserLicense.Name='Salesforce' LIMIT 1].Id;
+        update actor;
+        CardstackConnectionTestFactory.assign(actor, 'Cardstack_User');
+        CardstackListCatalog.metadataProvider=new PolicyViews();
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+            CardstackConfigService.publishDraft(CardstackConfigService.saveDraft('exposures:Opportunity', listPolicy(false)));
+        }
+        System.runAs(actor) {
+            Test.startTest();
+            Assert.isTrue(Opportunity.SObjectType.getDescribe(SObjectDescribeOptions.DEFERRED).isAccessible(), 'Fixture needs native Opportunity read access.');
+            Assert.isFalse(FeatureManagement.checkPermission('Cardstack_Manage_Studio'), 'Chat fixture is an ordinary user.');
+            CardstackListExposurePolicy.Policy policy=CardstackListExposurePolicy.loadPublished('Opportunity');
+            CardstackListViewAction.ListViewResponse response=requestPolicyView('Hidden_View', true);
+            Test.stopTest();
+            Assert.areEqual('explicit', policy.mode, 'ReadWrite Config sharing permits the chat actor to read published policy.');
+            Assert.isFalse(CardstackListExposurePolicy.isAllowed(policy,'salesforce','00B000000000002'), 'Published policy excludes this view for the ordinary actor.');
+            assertDenied(response);
+        }
+    }
+
+    @IsTest static void recognizedLegacyPublishedPolicyKeepsFilteredFallback() {
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+            insert new Opportunity(Name='Legacy policy row',StageName='Prospecting',CloseDate=Date.today());
+            CardstackConfigService.publishDraft(CardstackConfigService.saveDraft('exposures:Opportunity','{"views":[],"customLists":[]}'));
+            Test.startTest();
+            CardstackListViewAction.ListViewResponse response=requestPolicyView('Unknown legacy name',false);
+            Test.stopTest();
+            Assert.areEqual(1,response.count,'Recognized legacy values retain the documented beta fallback.');
+            Assert.isTrue(response.fallbackNote.contains('Salesforce saved-view filters, columns, and sort are not reproduced.'),'Legacy behavior stays accurately labeled.');
+        }
+    }
+
 }

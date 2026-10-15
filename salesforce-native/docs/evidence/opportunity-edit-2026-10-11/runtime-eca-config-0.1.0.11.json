@@ -1,0 +1,77 @@
+{
+  "timestamp": "2026-10-12T23:39:42.112423+00:00",
+  "phase": "NATIVE_ECA_SETUP_COMPLETE",
+  "apps": [
+    {
+      "name": "CSQA95_ChatGPT",
+      "local": true,
+      "apiVersion": "67.0",
+      "nativeDeploySuccess": true,
+      "componentErrors": 0,
+      "independentNativeReadbackPass": true,
+      "full18OrgScopedIdentityMatched": true,
+      "scopes": [
+        "api",
+        "refresh_token"
+      ],
+      "pkceRequired": true,
+      "refreshRotation": true,
+      "publicSecretOptional": true,
+      "refreshSecretRequired": false,
+      "namedJwtIssuance": false,
+      "otherFlowsEnabled": false,
+      "publicClientIdCapturedPrivatelyOnly": true,
+      "secretCaptured": false,
+      "generatedPolicies": {
+        "isEnabled": true,
+        "isOauthPluginEnabled": true,
+        "permittedUsersPolicyType": "AllSelfAuthorized",
+        "ipRelaxationPolicyType": "Enforce",
+        "isClientCredentialsFlowEnabled": false,
+        "isGuestCodeCredFlowEnabled": false,
+        "isTokenExchangeFlowEnabled": false
+      },
+      "callbackResolution": "Actual current ChatGPT draft"
+    },
+    {
+      "name": "CSQA95_Claude",
+      "local": true,
+      "apiVersion": "67.0",
+      "nativeDeploySuccess": true,
+      "componentErrors": 0,
+      "independentNativeReadbackPass": true,
+      "full18OrgScopedIdentityMatched": true,
+      "scopes": [
+        "api",
+        "refresh_token"
+      ],
+      "pkceRequired": true,
+      "refreshRotation": true,
+      "publicSecretOptional": true,
+      "refreshSecretRequired": false,
+      "namedJwtIssuance": false,
+      "otherFlowsEnabled": false,
+      "publicClientIdCapturedPrivatelyOnly": true,
+      "secretCaptured": false,
+      "generatedPolicies": {
+        "isEnabled": true,
+        "isOauthPluginEnabled": true,
+        "permittedUsersPolicyType": "AllSelfAuthorized",
+        "ipRelaxationPolicyType": "Enforce",
+        "isClientCredentialsFlowEnabled": false,
+        "isGuestCodeCredFlowEnabled": false,
+        "isTokenExchangeFlowEnabled": false
+      },
+      "callbackResolution": "Actual current Claude form omits field; current UI-linked official docs confirmed hosted redirect"
+    }
+  ],
+  "actorAssignmentsChanged": false,
+  "studioChanged": false,
+  "hostSubmitted": false,
+  "deploymentAppOrExistingAppsChanged": false,
+  "testsRerun": false,
+  "actualClientConsentOrIframeProof": false,
+  "blankHostStudioSecretsRequired": true,
+  "globalMetadataCapture": "Only explicit in-memory allowlist persisted; consumerSecret and credential/token fields discarded before any output/write; prepared global input metadata contains no generated credential",
+  "privateFileModes": "dirs0700/files0600"
+}

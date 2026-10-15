@@ -1,0 +1,58 @@
+{
+  "observedAt": "2026-10-11T12:04:11.714615+00:00",
+  "orgAliasLabel": "cardstack-mcp-install-qa",
+  "packageVersion": "0.1.0.9",
+  "studio": {
+    "actualInstalledAdminGuide": "Rendered",
+    "instructionHistorySaved": "Pass revision 1",
+    "fullReloadPreservedHistory": "Pass",
+    "historyDoesNotVerifyConnection": "Pass; Needs verification",
+    "keyboardAndStaleConflict": "Pending"
+  },
+  "chatgpt": {
+    "connectionDraft": "Created owned QA plugin",
+    "exactCallback": "Matches actual draft privately",
+    "localApp": "Created",
+    "scopes": [
+      "api",
+      "refresh_token"
+    ],
+    "pkceRequired": true,
+    "refreshRotationRequired": true,
+    "namedUserJwt": false,
+    "secretOptional": true,
+    "refreshSecretRequired": false,
+    "tokenEndpointAuthMethod": "none",
+    "oidcEnabledInDraft": false,
+    "appPolicy": "All users can self-authorize; IP restrictions enforced; 30-day idle refresh; no policy reduction",
+    "setupSaved": "Pass through supported admin facade",
+    "humanHandoff": "Ordinary direct login and app consent completed by human",
+    "actualClientConsent": "Pass; owned QA plugin visible",
+    "actualIframe": "Rendered; host bridge ready; exact values accepted server-side but UI receipt rejected deadline precision mismatch"
+  },
+  "claude": {
+    "localApp": "Pending",
+    "actualClient": "Pending"
+  },
+  "denials": {
+    "fabricatedBearer": "401 with authentication challenge",
+    "ordinaryCliBearer": "Earlier REST used masked output/encrypted auth storage, not a valid bearer; not named-runtime evidence",
+    "ordinaryWithoutUse": "403 FORBIDDEN; owned Cardstack_User permission restored",
+    "privateSetupCheckCrud": "Both object queries denied INVALID_TYPE as ordinary user"
+  },
+  "ownedCleanup": "Pending after bounded QA; Site currently active for discovery/challenge only",
+  "sourceCorrections": {
+    "sitesRoute": "0d7d113, focused20/20, reviewPass",
+    "oauthManagerRoute": "bbfd6c7, focused21/21, reviewPass",
+    "installedVersionContainsFixes": false,
+    "deadlinePrecision": "d52ec65/report394cdb7; scopedreviewPass/Approve; actualApexRED1failure\u2192GREEN37/37Passed",
+    "correctedPackage": "Build submitted with actual code coverage; pending"
+  },
+  "ordinaryUser": {
+    "provisioned": "Yes; Standard User and Cardstack_User",
+    "provisionerAuth": "Initial create reported API disabled; subsequent web login/API now verified. Earlier token-placeholder interpretation corrected: CLI masks output, local AuthInfo encrypts credentials.",
+    "browserIdentity": "Exact owned ordinary actor/org verified privately through OAuth userinfo200",
+    "recovery": "Supported direct web login completed; authenticated CLI query also succeeds",
+    "ordinaryConsent": "Completed"
+  }
+}

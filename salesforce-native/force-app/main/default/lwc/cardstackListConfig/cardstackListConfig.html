@@ -1,0 +1,29 @@
+<template>
+    <section class="slds-m-top_small" aria-label="List exposure configuration">
+        <p>{modeMessage}</p>
+        <div class="slds-m-vertical_small status" aria-live="polite"><span>{workingStatus}</span><span>{savedStatus}</span><span>{liveStatus}</span></div>
+        <template if:true={loading}><lightning-spinner size="small" alternative-text="Reading list policy and current metadata"></lightning-spinner></template>
+        <template if:true={catalogError}><p role="alert" class="slds-text-color_error">{catalogError}</p></template>
+        <template if:true={error}><p role="alert" class="slds-text-color_error">{error}</p></template>
+        <template if:true={isLegacy}><lightning-button label="Start explicit list configuration" onclick={startMigration} disabled={migrationDisabled}></lightning-button></template>
+        <template if:true={hasPolicyChoices}>
+            <lightning-input type="search" label="Search lists" placeholder="Label, source or canonical target" value={search} onchange={handleSearch}></lightning-input>
+            <template for:each={rows} for:item="row">
+                <div key={row.uiKey} class="list-choice slds-p-vertical_small">
+                    <lightning-input type="checkbox" label={row.choiceLabel} checked={row.enabled} data-kind={row.kind} data-key={row.key} onchange={handleSelection} disabled={controlsDisabled}></lightning-input>
+                    <p class="slds-text-body_small slds-text-color_weak">{row.description}</p>
+                    <p class="slds-text-body_small">{row.availabilityLabel}</p>
+                </div>
+            </template>
+            <lightning-input type="checkbox" label="Allow unnamed filtered requests" checked={allowAdHoc} onchange={handleAdHoc} disabled={controlsDisabled}></lightning-input>
+            <p class="slds-text-body_small slds-text-color_weak">Allows requests without a named list. Unknown named lists remain denied. Salesforce sharing and field access still apply.</p>
+        </template>
+        <div class="slds-m-vertical_small buttons">
+            <lightning-button label="Save draft" variant="brand" onclick={save} disabled={saveDisabled}></lightning-button>
+            <lightning-button label="Review &amp; Publish" onclick={openPublish} disabled={reviewDisabled}></lightning-button>
+            <lightning-button label="Refresh saved state and choices" onclick={refresh} disabled={saving}></lightning-button>
+            <template if:true={saveUnknown}><lightning-button label="Check saved state" onclick={checkSavedState} disabled={checkingSavedState}></lightning-button></template>
+        </div>
+        <details><summary>Advanced: retained JSON inspection / export</summary><p class="slds-text-body_small">Copy this read-only saved value for inspection or export. Unrelated properties are retained and have no runtime meaning.</p><lightning-textarea label="Saved exposure JSON (read only)" value={retainedJson} read-only></lightning-textarea></details>
+    </section>
+</template>

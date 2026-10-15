@@ -1,0 +1,23 @@
+{
+  "sourceCommit": "281cef7e19c483d7c6efb2eb8416878845f4364d",
+  "apiVersion": "67.0",
+  "checkOnly": true,
+  "persisted": false,
+  "archiveSha256": "7b7f7396b3e31b7ec5da31e192565f38ed75177cb8a9a6dff53a92fb9f3fee58",
+  "status": "Failed",
+  "componentErrors": 12,
+  "testErrors": 0,
+  "testsCompleted": 0,
+  "expectedTests": 109,
+  "rootFinding": {
+    "component": "Cardstack_Connection_Check__c.Actor__c",
+    "problem": "User lookup cannot use cascade or restrict delete behavior."
+  },
+  "dependentFailures": 11,
+  "limits": [
+    "No Apex methods executed; no behavioral RED or runtime pass claimed.",
+    "No permission sets, schedules, Site, guest or OAuth definitions included.",
+    "No JWT setting changes or persistent deployment.",
+    "Source review could not verify Salesforce metadata semantics; actual API67 compiler exposed this incompatibility."
+  ]
+}

@@ -1,0 +1,132 @@
+{
+  "date": "2026-10-13",
+  "approval": "Exact bounded Contact live QA scope approved by user",
+  "deployment": {
+    "sourceHead": "81e45fa3e38fe1c0a8bdfd4e44fc5c8647f54531",
+    "persistentDeploymentStatus": "Succeeded",
+    "checkOnly": false,
+    "providerSuccess": true,
+    "componentProcessed": 25,
+    "componentTotal": 25,
+    "componentErrors": 0,
+    "regularMethodsPassed": 330,
+    "expectedRegularMethods": 330,
+    "expectedTestClasses": 18,
+    "methodInventoryExactlyOnce": true,
+    "setupFailures": 0,
+    "coverageWarnings": 0,
+    "productionClassCoverage": [
+      {
+        "className": "CardstackOpportunityEditRepository",
+        "coveragePercent": 92.527
+      },
+      {
+        "className": "CardstackOpportunityWriteService",
+        "coveragePercent": 94.118
+      },
+      {
+        "className": "CardstackRecordActionService",
+        "coveragePercent": 88.889
+      },
+      {
+        "className": "CardstackOpportunityEditService",
+        "coveragePercent": 88.85
+      },
+      {
+        "className": "CardstackConfigService",
+        "coveragePercent": 88.288
+      },
+      {
+        "className": "CardstackOpportunityMcpAdapter",
+        "coveragePercent": 93.004
+      },
+      {
+        "className": "CardstackRecordMcpAdapter",
+        "coveragePercent": 88.412
+      },
+      {
+        "className": "CardstackRecordScreenCapability",
+        "coveragePercent": 97.842
+      },
+      {
+        "className": "CardstackOpportunityEditTypes",
+        "coveragePercent": 91.549
+      },
+      {
+        "className": "CardstackStudioController",
+        "coveragePercent": 94.372
+      },
+      {
+        "className": "CardstackOpportunityWriteAudit",
+        "coveragePercent": 100.0
+      },
+      {
+        "className": "CardstackMcpDispatcher",
+        "coveragePercent": 92.174
+      }
+    ],
+    "independentRetrieveStatus": "Succeeded",
+    "targetMetadataCounts": {
+      "apex-source": 20,
+      "resource-source": 3,
+      "lwc-source": 2
+    },
+    "retrievedSourceFiles": 53,
+    "sourceAgreement": {
+      "byteExact": 18,
+      "onlyOneOmittedTerminalLF": 27,
+      "fullXmlTreeIdentical": 8,
+      "unexplainedDifference": 0
+    },
+    "all3ResourcePayloadsAnd3ResourceMetadataByteExact": true,
+    "beforeStateArchived": true,
+    "rootAcceptedProviderSerializationReconciliation": true,
+    "protected260Preserved": true,
+    "dirty5Preserved": true,
+    "contactPermissionFixturePolicyAuthHostMutationsByWorker": false,
+    "environment": "Installed beta0.1.0.11 plus reviewed QA source updates81e45fa",
+    "freshPackageInstallClaim": false,
+    "liveContactClientAcceptance": "NOT_RUN",
+    "verifiedUtc": "2026-10-13T10:48:04.696910+00:00"
+  },
+  "contactSetup": {
+    "status": "Complete",
+    "permissionSetApiName": "CSQA95Contact13",
+    "exactPS+twoAssignmentsVerified": true,
+    "effectiveAContactReadEdit": true,
+    "effectiveAContactCreateDelete": false,
+    "bothDescriptionOptOutReadEdit": true,
+    "postGrantNativeOptOutBoolean": true,
+    "singleSyntheticContactCreated": true,
+    "ownerMatchesExactA18": true,
+    "record18CapturedPrivately": true,
+    "safeValues": {
+      "LastName": "Cardstack QA Contact13",
+      "Description": "QA starting description",
+      "HasOptedOutOfEmail": false,
+      "Email": null,
+      "AccountId": null
+    },
+    "Name": "Cardstack QA Contact13",
+    "writeAuditBaselineCount": 0,
+    "confirmationBaselineCount": 0,
+    "policyPublished": false,
+    "hostActions": false,
+    "confirmedCrmSaveEffects": 0,
+    "localRetrievePathFailurePreserved": true,
+    "completedUtc": "2026-10-13T10:53:55.038975+00:00"
+  },
+  "actualClientStatus": "Pending stable QA browser; no Contact policy published or host journey attempted",
+  "browserObservations": {
+    "ChatGPT": "Existing owned app Refresh tools exposes generic app-only family",
+    "Claude": "Existing owned connector shows cardstack_record_open and generic app-only family, existing approval settings unchanged",
+    "Studio": "Contact unconfigured; local layout authoring begun, no draft staged or published"
+  },
+  "liveSaveEffects": {
+    "Contact": 0,
+    "priorOpportunity": 3,
+    "totalBudget": 8,
+    "ContactMaximum": 2
+  },
+  "cleanup": "Exact owned Contact setup retained for unfinished approved workflow; cleanup identities privately captured"
+}

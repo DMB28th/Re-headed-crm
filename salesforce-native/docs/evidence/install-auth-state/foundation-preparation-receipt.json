@@ -1,0 +1,104 @@
+{
+  "preparedAt": "2026-10-09T12:07:30.274444+00:00",
+  "apiVersion": "67.0",
+  "sourceArchiveSHA256": "1f88f989a21c1289197e86779a9f67640ee268b23033361c605a5e1d1d519319",
+  "zipSHA256": "759facd963b8a3e82494853831d5adc5eccb7048497af0b4cd80ca8bdb36564b",
+  "baselineSHA256": "3d0e454ecc644d6ff72236847520c4e7eeb1e896f76282e44baabc68046158a2",
+  "convertedFiles": 22,
+  "onlyPermissionSetDelta": "CardstackConnectionSetup class access added to Admin and User",
+  "otherBaselinePropertiesUnchanged": true,
+  "privateObjectUserCrudAdded": false,
+  "bootstrapCustomPermissionsUnchanged": true,
+  "newRestOrAuraEndpoint": false,
+  "persisted": false,
+  "files": [
+    {
+      "path": "classes/CardstackConnectionAccess.cls",
+      "sha256": "8203b09045c0cc788731dbf06e0b29721215a51e81254a8dfb8414ee6c6db823"
+    },
+    {
+      "path": "classes/CardstackConnectionAccess.cls-meta.xml",
+      "sha256": "17e31f2473b0c9f7048b434edab7d12261a9b8a0b9ede833cb9c3141eeeccb7b"
+    },
+    {
+      "path": "classes/CardstackConnectionContext.cls",
+      "sha256": "526974b98a310d12e8cdaa7a0c9bafb877bbda84bf1bbd57029f5ebc452eaf69"
+    },
+    {
+      "path": "classes/CardstackConnectionContext.cls-meta.xml",
+      "sha256": "17e31f2473b0c9f7048b434edab7d12261a9b8a0b9ede833cb9c3141eeeccb7b"
+    },
+    {
+      "path": "classes/CardstackConnectionContextTest.cls",
+      "sha256": "af301f3a1ee2b469b0c3c54478aee3e53d44b2102156448791307deb493f1a8c"
+    },
+    {
+      "path": "classes/CardstackConnectionContextTest.cls-meta.xml",
+      "sha256": "17e31f2473b0c9f7048b434edab7d12261a9b8a0b9ede833cb9c3141eeeccb7b"
+    },
+    {
+      "path": "classes/CardstackConnectionSetup.cls",
+      "sha256": "702ff7a4d4e2d22006c4c614f0c2fee70c3ada62c78a446cada03bf281887db6"
+    },
+    {
+      "path": "classes/CardstackConnectionSetup.cls-meta.xml",
+      "sha256": "17e31f2473b0c9f7048b434edab7d12261a9b8a0b9ede833cb9c3141eeeccb7b"
+    },
+    {
+      "path": "classes/CardstackConnectionSetupRepository.cls",
+      "sha256": "70f109efc87f8e2aa04db0c426027aad45d036b7f3d3890b730f4bd82c0cbddd"
+    },
+    {
+      "path": "classes/CardstackConnectionSetupRepository.cls-meta.xml",
+      "sha256": "17e31f2473b0c9f7048b434edab7d12261a9b8a0b9ede833cb9c3141eeeccb7b"
+    },
+    {
+      "path": "classes/CardstackConnectionSetupTest.cls",
+      "sha256": "6fce97a70240f2b6b1a2beab1e7189f4b6553a37fea0529d5f87a4d94c77ef03"
+    },
+    {
+      "path": "classes/CardstackConnectionSetupTest.cls-meta.xml",
+      "sha256": "17e31f2473b0c9f7048b434edab7d12261a9b8a0b9ede833cb9c3141eeeccb7b"
+    },
+    {
+      "path": "classes/CardstackConnectionTestFactory.cls",
+      "sha256": "8a3814d9bcd7b499db646ed1c1c1872b65e40d22d67db5a7be78b968d23a0bf4"
+    },
+    {
+      "path": "classes/CardstackConnectionTestFactory.cls-meta.xml",
+      "sha256": "17e31f2473b0c9f7048b434edab7d12261a9b8a0b9ede833cb9c3141eeeccb7b"
+    },
+    {
+      "path": "classes/CardstackConnectionTypes.cls",
+      "sha256": "339164ce84734a5e80fbc30cc7ef54828f52900238dd69bcbd5fa41d32331d74"
+    },
+    {
+      "path": "classes/CardstackConnectionTypes.cls-meta.xml",
+      "sha256": "17e31f2473b0c9f7048b434edab7d12261a9b8a0b9ede833cb9c3141eeeccb7b"
+    },
+    {
+      "path": "customPermissions/Cardstack_Manage_Connections.customPermission",
+      "sha256": "007a8e8c68d17085a8538b7ba5cd9e34e88e2a75bfb3cc7314a9e4c2efe642ce"
+    },
+    {
+      "path": "customPermissions/Cardstack_Use_Connections.customPermission",
+      "sha256": "256fb4198359cafea7cab69ffb70d65bdb9092f3e386133e80775045cfb40727"
+    },
+    {
+      "path": "objects/Cardstack_Connection_Setup__c.object",
+      "sha256": "958e7c24981e3177e8e68ac8e58e39224d298651e4ffd3c6fed931f35d4e54ff"
+    },
+    {
+      "path": "package.xml",
+      "sha256": "b5f6477372546f865e132cb34f9cb3d7506232453e897655a95c16f7809b71db"
+    },
+    {
+      "path": "permissionsets/Cardstack_Admin.permissionset",
+      "sha256": "9608e0d771e2ed7406d294155d72e4f8f92e51f715a8e15d110cf88ff8998b02"
+    },
+    {
+      "path": "permissionsets/Cardstack_User.permissionset",
+      "sha256": "635f10ddaa8f5ddcad5c30a55b195f6208d21defd1f11751ccf2a5103305d15e"
+    }
+  ]
+}

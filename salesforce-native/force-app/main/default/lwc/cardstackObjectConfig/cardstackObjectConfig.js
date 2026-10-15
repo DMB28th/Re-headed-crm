@@ -1,22 +1,27 @@
-import { LightningElement, track, wire } from 'lwc';
+import recordAuthoring from 'c/cardstackRecordAuthoring';
+import getRecordEditCapability from '@salesforce/apex/CardstackStudioController.getRecordEditCapability';
+import getPublishedFlowPlans from '@salesforce/apex/CardstackStudioController.getPublishedFlowPlans';
+import { LightningElement, api, track, wire } from 'lwc';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import getCrmObjects from '@salesforce/apex/CardstackStudioController.getCrmObjects';
 import getConfigValue from '@salesforce/apex/CardstackStudioController.getConfigValue';
-import getStagingInfo from '@salesforce/apex/CardstackStudioController.getStagingInfo';
-import saveDraft from '@salesforce/apex/CardstackStudioController.saveDraft';
+import getStagingInfoFresh from '@salesforce/apex/CardstackStudioController.getStagingInfoFresh';
 import getObjectFields from '@salesforce/apex/CardstackStudioController.getObjectFields';
+import getStudioFieldCatalog from '@salesforce/apex/CardstackStudioController.getStudioFieldCatalog';
+import DraftDialog from 'c/cardstackDraftDialog';
+import { draftState, readiness } from 'c/cardstackStudioModel';
+import saveDraft from '@salesforce/apex/CardstackStudioController.saveDraft';
 
 /**
  * cardstackObjectConfig — per-object Studio section.
  *
- * Object picker + audience picker, then five sub-tabs:
+ * Object picker with the default layout, then four sub-tabs:
  * - Layouts: VISUAL builder with Salesforce-style SECTIONS + Highlights Panel
  *   (section cards with 2-column field grids, inline label editing,
  *   move-fields-between-sections, live preview, validation, diff, JSON export)
  *   + staging.
- * - Lists: JSON editor + staging (unchanged).
+ * - Lists: declarative exposure editor with its own draft/leave boundary.
  * - Actions: visual toggles with icons/descriptions.
- * - Assignment: audience -> layout mapping (unchanged).
  * - Permissions: write policy editor (unchanged behavior, wired to builder model).
  *
  * Layout model (new shape):
@@ -26,11 +31,8 @@ import getObjectFields from '@salesforce/apex/CardstackStudioController.getObjec
  */
 export default class CardstackObjectConfig extends LightningElement {
     @track selectedObject = '';
-    @track audience = 'default';
     @track staging = {};
     @track draftValues = { lists: '' };
-    @track newAudience = '';
-    @track extraAudiences = [];
 
     // ----- Visual builder state (sections model) -----
     @track workingHighlights = [];   // [{ key, api, label, type, valid, rowClass }]
@@ -40,7 +42,6 @@ export default class CardstackObjectConfig extends LightningElement {
     @track workingPermissions = { writeEnabled: false, fieldDenylist: [] };
     @track hasDraft = false;
     @track fieldSearch = '';
-    @track previewAudience = 'default';
     @track previewHasConfig = true;
     @track showPreview = false;
     @track showJson = false;
@@ -49,6 +50,21 @@ export default class CardstackObjectConfig extends LightningElement {
     @track loading = false;
     @track objectSearch = '';
     @track objectDropdownOpen = false;
+    @track activeSubview = 'layouts';
+    @track saving = false;
+    @track saveUnknown = false;
+    @track saveError = '';
+    @track restrictionSearch = '';
+    savedLayoutJson;
+    savedListsJson;
+    _loadGeneration = 0;
+    _openGeneration = 0;
+    _refreshRequest = 0;
+    _refreshing = false;
+    _refreshKeys = new Set();
+    _pendingSave;
+    @track checkingSavedState = false;
+    _reconciliation;
     dragApi = null;
     dragKey = null;
     dragSectionKey = null;
@@ -58,11 +74,16 @@ export default class CardstackObjectConfig extends LightningElement {
     _previewSections = [];
 
     // ----- New-action form -----
-    @track newAction = { name: '', label: '', type: '', description: '', mappings: [] };
+    @track newAction = { name: '', label: '', type: '', description: '', enabled: true, mappings: [] };
+    @track _actionEdit = null;
     @track publishedFlows = [];
+    @track interpretedFlows = [];
+    @track interpretedFlowCatalogError = '';
+    @track interpretedFlowHasMore = false;
+    _flowCatalogGeneration = 0;
     @wire(getConfigValue, { key: 'flows' })
     wiredPublishedFlows({ data }) {
-        try { const parsed = data ? JSON.parse(data) : []; this.publishedFlows = Array.isArray(parsed) ? parsed : []; } catch (e) { this.publishedFlows = []; }
+        try { const parsed = data ? JSON.parse(data) : []; this.publishedFlows = Array.isArray(parsed) ? parsed : []; } catch { this.publishedFlows = []; }
     }
 
     wiredObjectsResult;
@@ -73,7 +94,6 @@ export default class CardstackObjectConfig extends LightningElement {
         this.wiredObjectsResult = result;
     }
 
-    @wire(getObjectFields, { objectApi: '$selectedObject' })
     wiredFields(result) {
         this.wiredFieldsResult = result;
         if (result.data) {
@@ -121,20 +141,106 @@ export default class CardstackObjectConfig extends LightningElement {
         this.objectDropdownOpen = true;
     }
 
-    handleObjectBlur() {
-        // Delay so a click on a dropdown item registers first.
-        setTimeout(() => { this.objectDropdownOpen = false; }, 200);
+    handleObjectBlur(event) {
+        if (event.relatedTarget?.closest('.obj-picker')) return;
+        this.objectDropdownOpen = false;
     }
 
-    handleObjectSelect(e) {
-        const api = e.currentTarget.dataset.value;
-        this.selectedObject = api;
+    handleObjectSelect(e) { return this.openObject(e.currentTarget.dataset.value); }
+
+    @api
+    async openObject(objectApi) {
+        if (!objectApi) return;
+        if (objectApi === this.selectedObject) { await this.refreshPending(); return; }
+        const generation = ++this._openGeneration;
+        if (!await this.requestLeave() || generation !== this._openGeneration) return;
+        this.resetWorkingState();
+        this.selectedObject = objectApi;
         this.objectSearch = '';
         this.objectDropdownOpen = false;
-        this.audience = 'default';
-        this.extraAudiences = [];
         this.fieldSearch = '';
-        this.loadStaging();
+        await Promise.all([this.loadStaging(), this.loadFieldCatalog(objectApi), this.loadRecordEditCapability(objectApi), this.loadInterpretedFlows(objectApi)]);
+    }
+
+    /** Publication/discard reconciles baselines without replacing unfinished inputs. */
+    @api
+    refreshPending() { return this.refresh([...this._refreshKeys]); }
+
+    @api
+    async refresh(keys = []) {
+        if (!this.selectedObject) return false;
+        if (keys.some(key => key.startsWith('flow-plan:'))) await this.loadInterpretedFlows(this.selectedObject);
+        const relevant = keys.filter(key => key === this.layoutKey || key === this.listsKey || key === 'flows');
+        if (!relevant.length) return false;
+        relevant.forEach(key => this._refreshKeys.add(key));
+        if (!this._refreshKeys.size || this.saving || this.checkingSavedState || this.saveUnknown || this._pendingSave || this.loading && !this._refreshing) return false;
+        const affected = [...this._refreshKeys];
+        const objectApi = this.selectedObject, generation = this._loadGeneration, request = ++this._refreshRequest;
+        const inputs = this.leaveInputSnapshot(), dirty = this.hasUnsavedWork;
+        const listsBefore = this.draftValues.lists, listsDirty = this.listsDirty;
+        const child = this.listEditor;
+        this._refreshing = true;
+        this.loading = true;
+        try {
+            const results = await Promise.all(affected.map(key => key === this.listsKey && child
+                ? child.refresh().then(() => undefined) : getStagingInfoFresh({key})));
+            if (generation !== this._loadGeneration || objectApi !== this.selectedObject || request !== this._refreshRequest) return false;
+            const preserveInputs = dirty || inputs !== this.leaveInputSnapshot();
+            affected.forEach((key, index) => {
+                const state = results[index];
+                if (key === this.layoutKey) {
+                    const raw = state.draft?.Draft_Value__c ?? state.liveValue;
+                    this.staging = {...this.staging, layout:state};
+                    this.savedLayoutJson = this.normalizedLayout(raw);
+                    this.liveLayout = this.parseLayoutOnly(state.liveValue);
+                    this.hasDraft = !!state.draft;
+                    if (!preserveInputs) { this.parseWorkingModel(raw); this.syncPreview(); }
+                } else if (key === this.listsKey && !child) {
+                    this.staging = {...this.staging, lists:state};
+                    this.savedListsJson = this.pretty(state.draft?.Draft_Value__c ?? state.liveValue ?? this.sampleLists());
+                    if (!listsDirty && listsBefore === this.draftValues.lists) this.draftValues = {lists:this.savedListsJson};
+                } else if (key === 'flows') this.wiredPublishedFlows({data:state.liveValue});
+            });
+            affected.forEach(key => this._refreshKeys.delete(key));
+            this.saveError = '';
+            return true;
+        } catch (error) {
+            if (generation === this._loadGeneration && objectApi === this.selectedObject && request === this._refreshRequest) this.saveError = 'Saved card state could not refresh. Working inputs retained. ' + this.msg(error);
+            return false;
+        } finally {
+            if (generation === this._loadGeneration && objectApi === this.selectedObject && request === this._refreshRequest) { this.loading = false; this._refreshing = false; }
+        }
+    }
+
+    recordEditCapability = null;
+    recordEditUnavailableReason = 'Native edit metadata has not loaded.';
+    _capabilityRequest = 0;
+    async loadRecordEditCapability(objectApi) {
+        const generation = this._loadGeneration, request = ++this._capabilityRequest;
+        this.recordEditCapability = null;
+        this.recordEditUnavailableReason = 'Loading native edit metadata…';
+        try {
+            const result = await getRecordEditCapability({objectApi});
+            if (objectApi !== this.selectedObject || generation !== this._loadGeneration || request !== this._capabilityRequest) return;
+            this.recordEditCapability = recordAuthoring.descriptor(result, objectApi);
+            this.recordEditUnavailableReason = result.eligible ? '' : `Native edit unavailable: ${result.exclusionReason}`;
+        } catch (error) {
+            if (objectApi === this.selectedObject && generation === this._loadGeneration && request === this._capabilityRequest) { this.recordEditCapability = null; this.recordEditUnavailableReason = 'Native edit metadata unavailable. ' + this.msg(error); }
+        }
+    }
+    get recordEditFieldNotices() { return (this.recordEditCapability?.fields || []).filter(field => !field.eligible).map(field => `${field.label} (${field.fieldApi}): ${field.exclusionReason}`); }
+    get recordEditNoticeRows() { return this.recordEditFieldNotices.map((message,index) => ({key:`native-exclusion-${index}`,message})); }
+
+    async loadFieldCatalog(objectApi) {
+        const generation = this._loadGeneration;
+        try {
+            const [catalog, constraints] = await Promise.all([getStudioFieldCatalog({objectApi}),getObjectFields({objectApi})]);
+            if (this.selectedObject !== objectApi || generation !== this._loadGeneration) return;
+            if (!Array.isArray(catalog)) throw new Error('Field metadata is unavailable.');
+            this.wiredFields({data:catalog.map(field => ({...constraints.find(info => info.api === field.api),...field}))});
+        } catch (error) {
+            if (this.selectedObject === objectApi && generation === this._loadGeneration) this.wiredFields({error});
+        }
     }
 
     handleObjectKeydown(e) {
@@ -149,15 +255,90 @@ export default class CardstackObjectConfig extends LightningElement {
         }
     }
 
-    handleClearObject() {
+    async handleClearObject() {
+        const generation = ++this._openGeneration;
+        if (!await this.requestLeave() || generation !== this._openGeneration) return;
+        this.resetWorkingState();
         this.selectedObject = '';
         this.objectSearch = '';
+    }
+
+    resetWorkingState() {
+        ++this._loadGeneration;
+        ++this._refreshRequest;
+        this._refreshKeys.clear();
+        this._refreshing = false;
+        this.loading = false;
+        this.staging = {};
+        this._actionTableOriginals.clear();
+        this.actionDraftValues = [];
+        this.savedLayoutJson = undefined;
+        this.savedListsJson = undefined;
         this.workingHighlights = [];
         this.workingSections = [];
+        this.workingActions = [];
+        this.workingPermissions = { writeEnabled: false, fieldDenylist: [] };
+        this.permissions = null;
+        this.denylistText = '';
+        this.draftValues = { lists: '' };
+        this.preservedLayout = {};
         this.targetSectionKey = '';
+        this.wiredFieldsResult = undefined;
+        this.recordEditCapability = null; this.recordEditUnavailableReason = 'Native edit metadata has not loaded.'; ++this._capabilityRequest;
+        this.cancelActionEdit();
         this._previewHighlights = [];
         this._previewSections = [];
+        this.saveError = '';
+        this.hasDraft = false;
     }
+
+    get leaveBusy() { return this.saving || this.checkingSavedState || this.saveUnknown || this.loading; }
+    get childLeaveReady() { const lists = this.listEditor; return !lists || lists.leaveReady === true; }
+    get leaveReady() { return !this.leaveBusy && !this.hasUnsavedWork && this.childLeaveReady; }
+    leaveInputSnapshot() {
+        return JSON.stringify([this.selectedObject, this._loadGeneration, this.buildLayoutJson(),
+            this.newAction, this.actionDraftValues, this.draftValues, this.denylistText, this.restrictionError]);
+    }
+
+    @api
+    async requestLeave() {
+        if (this.leaveBusy) return false;
+        // Resolve the child's native choice once. Later parent awaits only check
+        // current readiness; they never save or discard newer child inputs.
+        const lists = this.listEditor;
+        if (lists && (!lists.requestLeave || !await lists.requestLeave())) return false;
+        if (this.leaveBusy || !this.childLeaveReady) return false;
+        if (!this.hasUnsavedWork) return this.leaveReady;
+        const inputs = this.leaveInputSnapshot();
+        const choice = await DraftDialog.open({ size: 'small', label: 'Unsaved card changes', description: 'Save a draft, discard working changes, or stay in this editor.' });
+        if (this.leaveBusy || !this.childLeaveReady || inputs !== this.leaveInputSnapshot()) return false;
+        if (choice === 'discard') {
+            this.restoreSavedInputs();
+            return this.leaveReady;
+        }
+        if (choice !== 'save') return false;
+        if (this.hasNewActionInputs) {
+            await this.addAction();
+            if (this.leaveBusy || !this.childLeaveReady) return false;
+        }
+        if (this.hasNewActionInputs) return false;
+        if (this.isDirty && !await this.persistWorkingModel()) return false;
+        if (this.leaveBusy || !this.childLeaveReady) return false;
+        if (this.listsDirty && !await this.stageLists()) return false;
+        return this.leaveReady;
+    }
+
+    restoreSavedInputs() {
+        this.parseWorkingModel(this.savedLayoutJson ?? this.staging.layout?.draft?.Draft_Value__c ?? this.staging.layout?.liveValue);
+        this.draftValues = { lists: this.savedListsJson ?? this.pretty(this.staging.lists?.draft?.Draft_Value__c ?? this.staging.lists?.liveValue ?? this.sampleLists()) };
+        this.cancelActionEdit();
+        this.syncPreview();
+    }
+
+    get hasNewActionInputs() { return !!(this.newAction.name || this.newAction.label || this.newAction.type || this.newAction.description || this.newAction.mappings?.length); }
+    get listEditor() { return this.template?.querySelector('c-cardstack-list-config'); }
+    get listsDirty() { return !this.listEditor && !!this.selectedObject && this.draftValues.lists !== (this.savedListsJson ?? this.pretty(this.staging.lists?.draft?.Draft_Value__c ?? this.staging.lists?.liveValue ?? this.sampleLists())); }
+    get hasUnsavedWork() { return !!this.selectedObject && (this.isDirty || this.listsDirty || this.hasNewActionInputs || !!this.restrictionError); }
 
     // ---------- Pickers ----------
 
@@ -179,18 +360,8 @@ export default class CardstackObjectConfig extends LightningElement {
         return found?.label || this.selectedObject;
     }
 
-    get audienceOptions() {
-        const base = [{ label: 'Default (everyone)', value: 'default' }];
-        (this.extraAudiences || []).forEach(a => base.push({ label: a, value: a }));
-        return base;
-    }
-
-    get previewAudienceOptions() {
-        return this.audienceOptions;
-    }
-
     get layoutKey() {
-        return `layout:${this.selectedObject}:${this.audience}`;
+        return `layout:${this.selectedObject}:default`;
     }
 
     get listsKey() {
@@ -210,6 +381,9 @@ export default class CardstackObjectConfig extends LightningElement {
     get fieldsLoading() {
         return !this.wiredFieldsResult || this.wiredFieldsResult.error === undefined && !this.wiredFieldsResult.data;
     }
+
+    get fieldsLoadError() { return this.wiredFieldsResult?.error ? this.msg(this.wiredFieldsResult.error) : ''; }
+    refreshFieldCatalog() { return this.loadFieldCatalog(this.selectedObject); }
 
     typeCategory(type) {
         const t = (type || '').toUpperCase();
@@ -264,42 +438,61 @@ export default class CardstackObjectConfig extends LightningElement {
 
     async loadStaging() {
         if (!this.selectedObject) return;
+        const generation = ++this._loadGeneration;
+        const objectApi = this.selectedObject;
+        const before = this.buildLayoutJson();
+        const actionInputsBefore = JSON.stringify([this.newAction,this._actionEdit]);
+        const listsBefore = this.draftValues.lists;
+        const childOwnsLists = !!this.listEditor;
         this.loading = true;
+        this.saveError = '';
         try {
             const [layout, lists, flows] = await Promise.all([
-                getStagingInfo({ key: this.layoutKey }),
-                getStagingInfo({ key: this.listsKey }),
-                getStagingInfo({ key: 'flows' })
+                getStagingInfoFresh({ key: `layout:${objectApi}:default` }),
+                childOwnsLists ? Promise.resolve(undefined) : getStagingInfoFresh({ key: `exposures:${objectApi}` }),
+                getStagingInfoFresh({ key: 'flows' })
             ]);
+            if (generation !== this._loadGeneration || objectApi !== this.selectedObject) return false;
+            if (before !== this.buildLayoutJson() || actionInputsBefore !== JSON.stringify([this.newAction,this._actionEdit]) || !childOwnsLists && listsBefore !== this.draftValues.lists) {
+                this.saveError = 'Inputs changed during loading. Your working changes are retained; reload after saving or discarding them.';
+                return false;
+            }
             this.staging = { layout, lists };
             this.wiredPublishedFlows({ data: flows.liveValue });
             this.hasDraft = !!layout.draft;
             const workingJson = layout.draft?.Draft_Value__c ?? layout.liveValue;
             this.parseWorkingModel(workingJson);
+            this.savedLayoutJson = this.buildLayoutJson();
             this.liveLayout = this.parseLayoutOnly(layout.liveValue);
-            this.draftValues = {
-                lists: this.pretty(lists.draft?.Draft_Value__c ?? lists.liveValue ?? this.sampleLists())
-            };
-            this.buildAssignmentRows();
-            this.previewAudience = this.audience;
+            if (!childOwnsLists) {
+                this.savedListsJson = this.pretty(lists.draft?.Draft_Value__c ?? lists.liveValue ?? this.sampleLists());
+                this.draftValues = { lists: this.savedListsJson };
+            }
             this.syncPreview();
             this.previewHasConfig = true;
+            return true;
         } catch (e) {
-            this.toast('Error', this.msg(e), 'error');
+            if (generation === this._loadGeneration) { this.saveError = this.msg(e); this.toast('Could not load card', this.saveError, 'error'); }
+            return false;
         } finally {
-            this.loading = false;
+            if (generation === this._loadGeneration) this.loading = false;
         }
     }
 
     parseWorkingModel(jsonStr) {
+        this.cancelActionEdit();
+        this._actionTableOriginals.clear();
+        this.actionDraftValues = [];
         let cfg = {};
         try { cfg = JSON.parse(jsonStr || '{}'); } catch { /* fall through */ }
         this.preservedLayout = cfg;
-        this.workingActions = (cfg.actions || []).map((a, i) => this.normalizeAction(a, i));
+        this.workingActions = (Array.isArray(cfg.actions) ? cfg.actions.filter(a => a && typeof a === 'object') : []).map((a, i) => this.normalizeAction(a, i));
         this.workingPermissions = {
             writeEnabled: !!cfg.permissions?.writeEnabled,
-            fieldDenylist: [...(cfg.permissions?.fieldDenylist || [])]
+            fieldDenylist: Array.isArray(cfg.permissions?.fieldDenylist) ? cfg.permissions.fieldDenylist.filter(api => typeof api === 'string') : []
         };
+        this.retainedDenylist = [...this.workingPermissions.fieldDenylist];
+        this.restrictionError = '';
         this.denylistText = this.workingPermissions.fieldDenylist.join('\n');
         this.permissions = { writeEnabled: this.workingPermissions.writeEnabled };
 
@@ -323,25 +516,25 @@ export default class CardstackObjectConfig extends LightningElement {
         try { cfg = JSON.parse(jsonStr || '{}'); } catch { return { highlights: [], sections: [] }; }
         if (Array.isArray(cfg.sections) && cfg.sections.length) {
             return {
-                highlights: this.enrichHighlights(cfg.highlights || []),
-                sections: cfg.sections.map((s, i) => this.makeSection(
+                highlights: this.enrichHighlights(Array.isArray(cfg.highlights) ? cfg.highlights : []),
+                sections: cfg.sections.filter(s => s && typeof s === 'object').map((s, i) => this.makeSection(
                     s.label || `Section ${i + 1}`,
-                    this.enrichFields(s.fields || []), s.columns
+                    this.enrichFields(Array.isArray(s.fields) ? s.fields : []), s.columns
                 ))
             };
         }
         if (cfg.recordCard && Array.isArray(cfg.recordCard.sections) && cfg.recordCard.sections.length) {
             return {
                 highlights: [],
-                sections: cfg.recordCard.sections.map((s, i) => this.makeSection(
+                sections: cfg.recordCard.sections.filter(s => s && typeof s === 'object').map((s, i) => this.makeSection(
                     s.label || s.title || `Section ${i + 1}`,
-                    this.enrichFields(s.fields || []), s.columns
+                    this.enrichFields(Array.isArray(s.fields) ? s.fields : []), s.columns
                 ))
             };
         }
         const flat = this.enrichFields(this.extractFields(cfg));
         return {
-            highlights: this.enrichHighlights(cfg.highlights || []),
+            highlights: this.enrichHighlights(Array.isArray(cfg.highlights) ? cfg.highlights : []),
             sections: flat.length
                 ? [this.makeSection(`${this.objectShortLabel()} Information`, flat)]
                 : []
@@ -460,7 +653,18 @@ export default class CardstackObjectConfig extends LightningElement {
     }
 
     buildLayoutJson() {
-        const preserved = { ...(this.preservedLayout || {}) };
+        return this.serializeLayout(this.preservedLayout, this.workingHighlights, this.workingSections, this.workingActions, this.workingPermissions);
+    }
+
+    normalizedLayout(json) {
+        let cfg = {};
+        try { cfg = JSON.parse(json || '{}'); } catch { return json; }
+        const parsed = this.parseLayoutOnly(json);
+        return this.serializeLayout(cfg, parsed.highlights, parsed.sections, (Array.isArray(cfg.actions) ? cfg.actions : []).map((action, index) => this.normalizeAction(action, index)), { writeEnabled: !!cfg.permissions?.writeEnabled, fieldDenylist: Array.isArray(cfg.permissions?.fieldDenylist) ? cfg.permissions.fieldDenylist : [] });
+    }
+
+    serializeLayout(original, highlights, sections, actions, permissions) {
+        const preserved = { ...(original || {}) };
         // These known legacy shapes are replaced by the current sections model.
         delete preserved.fields;
         if (preserved.recordCard) {
@@ -470,12 +674,12 @@ export default class CardstackObjectConfig extends LightningElement {
         }
         return JSON.stringify({
             ...preserved,
-            name: this.audience,
-            highlights: this.workingHighlights.map(h => ({
+            name: 'default',
+            highlights: highlights.map(h => ({
                 api: h.api, label: h.label, type: h.type,
                 editable: !!h.editable, required: !!h.required, readOnly: !!h.readOnly
             })),
-            sections: this.workingSections.map(s => ({
+            sections: sections.map(s => ({
                 label: s.label,
                 columns: s.columns,
                 fields: s.fields.map(f => ({
@@ -483,14 +687,14 @@ export default class CardstackObjectConfig extends LightningElement {
                     editable: f.editable, required: !!f.required, readOnly: !!f.readOnly, column: f.column
                 }))
             })),
-            actions: this.workingActions.map(a => ({
+            actions: actions.map(a => ({
                 ...a, iconName: undefined, name: a.name, label: a.label, type: a.type,
                 description: a.description, enabled: a.enabled
             })),
             permissions: {
-                ...(this.preservedLayout?.permissions || {}),
-                writeEnabled: !!this.workingPermissions.writeEnabled,
-                fieldDenylist: [...this.workingPermissions.fieldDenylist]
+                ...(original?.permissions || {}),
+                writeEnabled: !!permissions.writeEnabled,
+                fieldDenylist: [...permissions.fieldDenylist]
             }
         }, null, 2);
     }
@@ -504,11 +708,6 @@ export default class CardstackObjectConfig extends LightningElement {
 
     // ---------- Builder interactions ----------
 
-    handleAudienceChange(e) {
-        this.audience = e.detail.value;
-        this.loadStaging();
-    }
-
     handleFieldSearch(e) {
         this.fieldSearch = e.target.value;
     }
@@ -516,7 +715,6 @@ export default class CardstackObjectConfig extends LightningElement {
     // ----- Highlights -----
 
     get highlightFieldOptions() {
-        const used = new Set(this.workingHighlights.map(h => (h.api || '').toUpperCase()));
         const data = this.wiredFieldsResult?.data || [];
         return data
             .filter(f => !this.usedApis.has((f.api || '').toUpperCase()))
@@ -856,7 +1054,7 @@ export default class CardstackObjectConfig extends LightningElement {
     }
 
     get cannotStage() {
-        return !this.canStage;
+        return !this.canStage || this.saveDisabled || !!this.restrictionError;
     }
 
     get diffToggleLabel() {
@@ -884,13 +1082,47 @@ export default class CardstackObjectConfig extends LightningElement {
     }
 
     get isDirty() {
-        const base = this.staging.layout?.draft?.Draft_Value__c ?? this.staging.layout?.liveValue;
-        const live = this.parseLayoutOnly(base);
-        if (!base && (this.totalFieldCount || this.workingHighlights.length)) return true;
-        try {
-            return this.canonicalLayout(this.workingHighlights, this.workingSections)
-                !== this.canonicalLayout(live.highlights, live.sections);
-        } catch { return true; }
+        if (!this.selectedObject) return false;
+        const baseline = this.savedLayoutJson ?? this.normalizedLayout(this.staging.layout?.draft?.Draft_Value__c ?? this.staging.layout?.liveValue);
+        return this.buildLayoutJson() !== baseline;
+    }
+
+    get editorState() {
+        return draftState({ workingJson: this.buildLayoutJson(), savedJson: this.staging.layout?.draft ? this.savedLayoutJson : null,
+            liveJson: this.staging.layout?.liveValue ? this.savedLayoutJson : null, busy: this.saving, error: this.saveError });
+    }
+    get workingStatusLabel() { return this.saveUnknown ? 'Save outcome unknown' : this.saving ? 'Saving…' : this.hasUnsavedWork ? 'Unsaved changes' : this.editorState.label; }
+    get savedStatusLabel() { return this.staging.layout?.draft ? 'Draft saved · Review & Publish to update chat' : 'No saved draft'; }
+    get liveStatusLabel() { return this.staging.layout?.liveValue ? 'Published card is live' : 'No published card'; }
+    get saveLabel() { return this.saving ? 'Saving…' : 'Save draft'; }
+    get saveDisabled() { return this.saving || this.checkingSavedState || this.saveUnknown || this.loading; }
+    get readinessItems() {
+        const layout = JSON.parse(this.buildLayoutJson());
+        if (this.preservedLayout?.permissions?.fieldDenylist != null && !Array.isArray(this.preservedLayout.permissions.fieldDenylist)) layout.permissions.fieldDenylist = this.preservedLayout.permissions.fieldDenylist;
+        if (Array.isArray(this.preservedLayout?.sections) && this.preservedLayout.sections.some(section => !section || !Array.isArray(section.fields))) layout.sections = this.preservedLayout.sections;
+        const errors = this.workingActions.flatMap(action => action.type === 'record-edit' ? this.recordActionErrors(action, true) : []);
+        return readiness({layout, fieldMetadata: this.wiredFieldsResult?.data, actionErrors: errors}).map(item => ({...item,
+            target: {...item.target, ...(item.target.tab === 'objects' ? {objectApi:this.selectedObject} : {})}}));
+    }
+    handleSubviewActive(event) { this.activeSubview = event.target.value; }
+    handleReadinessNavigate(event) {
+        const target = event.detail || {};
+        if (target.tab !== 'objects') { this.dispatchEvent(new CustomEvent('navigatetab', {detail:target,bubbles:true,composed:true})); return; }
+        if (target.action === 'save') { this.stageLayout(); return; }
+        this.openSubview(target.action);
+    }
+    @api
+    openSubview(action) { if (['fields','permissions','actions','lists'].includes(action)) this.activeSubview = action === 'fields' ? 'layouts' : action; }
+    openPublish() { this.dispatchEvent(new CustomEvent('navigatetab', {detail:{tab:'publish',draftId:this.staging.layout?.draft?.Id},bubbles:true,composed:true})); }
+
+    get relatedListDefinitions() {
+        const configuration = this.preservedLayout || {};
+        return Array.isArray(configuration.relatedLists) ? configuration.relatedLists
+            : !Object.prototype.hasOwnProperty.call(configuration,'relatedLists') && Array.isArray(configuration.recordCard?.relatedLists) ? configuration.recordCard.relatedLists : [];
+    }
+    handleRelatedChange(event) {
+        if (this.saveDisabled || !Array.isArray(event.detail?.value)) return;
+        this.preservedLayout = {...this.preservedLayout, relatedLists:event.detail.value};
     }
 
     // ---------- Diff ----------
@@ -943,32 +1175,9 @@ export default class CardstackObjectConfig extends LightningElement {
     // ---------- Preview ----------
 
     syncPreview() {
-        if (this.previewAudience === this.audience) {
-            this._previewHighlights = this.workingHighlights;
-            this._previewSections = this.workingSections;
-            this.previewHasConfig = true;
-        }
-    }
-
-    async handlePreviewAudienceChange(e) {
-        this.previewAudience = e.detail.value;
-        if (this.previewAudience === this.audience) {
-            this._previewHighlights = this.workingHighlights;
-            this._previewSections = this.workingSections;
-            this.previewHasConfig = true;
-            return;
-        }
-        try {
-            const key = `layout:${this.selectedObject}:${this.previewAudience}`;
-            const info = await getStagingInfo({ key });
-            const json = info.draft?.Draft_Value__c ?? info.liveValue;
-            this.previewHasConfig = !!json;
-            const parsed = this.parseLayoutOnly(json);
-            this._previewHighlights = parsed.highlights;
-            this._previewSections = parsed.sections;
-        } catch (err) {
-            this.toast('Error', this.msg(err), 'error');
-        }
+        this._previewHighlights = this.workingHighlights;
+        this._previewSections = this.workingSections;
+        this.previewHasConfig = true;
     }
 
     sampleValue(field) {
@@ -1026,6 +1235,9 @@ export default class CardstackObjectConfig extends LightningElement {
     // ---------- Stage / persist ----------
 
     async persistWorkingModel(successTitle) {
+        if (this.saveDisabled || this.restrictionError) return false;
+        const errors = this.workingActions.filter(action => action.type === 'record-edit').flatMap(action => this.recordActionErrors(action, true));
+        if (errors.length) { this.toast('Check record inputs', errors.join(' '), 'error'); return; }
         if (this.hasInvalidFields) {
             this.toast('Invalid fields', 'Remove or fix the highlighted fields before staging.', 'error');
             return;
@@ -1034,17 +1246,69 @@ export default class CardstackObjectConfig extends LightningElement {
             this.toast('Empty layout', 'Add at least one highlight or section field.', 'error');
             return;
         }
+        return this.saveCandidate(this.layoutKey, this.buildLayoutJson(), 'layout', successTitle);
+    }
+
+    async saveCandidate(key, value, surface, successTitle) {
+        if (this.saveDisabled) return false;
+        this.saving = true;
+        this.saveError = '';
+        const pending = { key, value, surface, objectApi: this.selectedObject, generation: this._loadGeneration };
+        this._pendingSave = pending;
+        let writeError;
+        try { await saveDraft({key, value}); }
+        catch (error) { writeError = error; }
         try {
-            await saveDraft({ key: this.layoutKey, value: this.buildLayoutJson() });
-            this.toast('Draft staged', successTitle || 'Layout draft saved. Publish it in the Publish Center.', 'success');
-            await this.loadStaging();
-        } catch (e) {
-            this.toast('Error', this.msg(e), 'error');
+            const confirmed = await this.reconcileSave(pending);
+            if (confirmed) this.toast('Draft saved', successTitle || 'Review & Publish to update the card in chat.', 'success');
+            else if (writeError && !this.saveUnknown) this.saveError = this.msg(writeError) + ' Your working inputs are retained.';
+            return confirmed;
+        } finally { this.saving = false; }
+    }
+
+    reconcileSave(pending = this._pendingSave) {
+        if (!pending || pending !== this._pendingSave) return Promise.resolve(false);
+        if (this._reconciliation?.pending === pending) return this._reconciliation.promise;
+        const entry = {pending};
+        this._reconciliation = entry;
+        this.checkingSavedState = true;
+        entry.promise = this.readSavedState(pending).finally(() => {
+            if (this._reconciliation === entry) { this._reconciliation = null; this.checkingSavedState = false; }
+        });
+        return entry.promise;
+    }
+    isCurrentSave(pending) { return pending === this._pendingSave && pending.generation === this._loadGeneration && pending.objectApi === this.selectedObject; }
+    async readSavedState(pending) {
+        try {
+            const state = await getStagingInfoFresh({key:pending.key});
+            if (!this.isCurrentSave(pending)) return false;
+            const raw = state.draft?.Draft_Value__c ?? state.liveValue;
+            const actual = pending.surface === 'layout' ? this.normalizedLayout(raw) : this.pretty(raw ?? this.sampleLists());
+            const expected = pending.surface === 'layout' ? this.normalizedLayout(pending.value) : this.pretty(pending.value);
+            this.staging = {...this.staging, [pending.surface]:state};
+            if (pending.surface === 'layout') { this.savedLayoutJson = actual; this.hasDraft = !!state.draft; this.liveLayout = this.parseLayoutOnly(state.liveValue); }
+            else this.savedListsJson = actual;
+            this.saveUnknown = false;
+            this._pendingSave = null;
+            const confirmed = !!state.draft && actual === expected;
+            this.saveError = confirmed ? '' : 'The saved draft does not match this submission. Your working inputs are retained. Review the current draft before retrying.';
+            if (confirmed) {
+                if (pending.surface === 'layout') this.commitActionTableEdits(pending.value);
+                this.notifyConfigChange(pending.key);
+            }
+            return confirmed;
+        } catch (error) {
+            if (!this.isCurrentSave(pending)) return false;
+            this.saveUnknown = true;
+            this.saveError = 'Save outcome unknown. Your inputs are retained. Check saved state before retrying or leaving. ' + this.msg(error);
+            return false;
         }
     }
 
+    checkSavedState() { return this.saving ? Promise.resolve(false) : this.reconcileSave(); }
+
     async stageLayout() {
-        await this.persistWorkingModel();
+        return this.persistWorkingModel();
     }
 
     async revertToLive() {
@@ -1068,7 +1332,7 @@ export default class CardstackObjectConfig extends LightningElement {
         return 'slds-badge';
     }
 
-    // ---------- Lists tab (unchanged) ----------
+    // ---------- Lists compatibility entry points (native child owns editing) ----------
 
     get listsStatusLabel() {
         const s = this.staging.lists;
@@ -1090,27 +1354,33 @@ export default class CardstackObjectConfig extends LightningElement {
     }
 
     async stageLists() {
+        if (this.listEditor) return this.listEditor.save();
         const value = this.draftValues.lists;
         try { JSON.parse(value || '{}'); }
         catch {
             this.toast('Invalid JSON', 'Lists draft is not valid JSON.', 'error');
             return;
         }
-        try {
-            await saveDraft({ key: this.listsKey, value });
-            this.toast('Draft staged', 'Lists draft saved. Publish it in the Publish Center.', 'success');
-            this.loadStaging();
-        } catch (e) {
-            this.toast('Error', this.msg(e), 'error');
-        }
+        return this.saveCandidate(this.listsKey, value, 'lists', 'Lists draft saved. Review & Publish to update chat.');
     }
 
+    _listsLoadGeneration = 0;
     async loadLiveLists() {
+        if (this.listEditor) return this.listEditor.refresh();
+        const objectApi = this.selectedObject;
+        const generation = this._loadGeneration;
+        const request = ++this._listsLoadGeneration;
+        const before = this.draftValues.lists;
+        const current = () => objectApi === this.selectedObject && generation === this._loadGeneration
+            && request === this._listsLoadGeneration && before === this.draftValues.lists;
         try {
-            const v = await getConfigValue({ key: this.listsKey });
-            this.draftValues = { ...this.draftValues, lists: this.pretty(v ?? this.sampleLists()) };
+            const state = await getStagingInfoFresh({key:`exposures:${objectApi}`});
+            if (!current()) return false;
+            this.draftValues = { ...this.draftValues, lists: this.pretty(state.liveValue ?? this.sampleLists()) };
+            return true;
         } catch (e) {
-            this.toast('Error', this.msg(e), 'error');
+            if (current()) this.toast('Error', this.msg(e), 'error');
+            return false;
         }
     }
 
@@ -1126,7 +1396,10 @@ export default class CardstackObjectConfig extends LightningElement {
         { label: 'Enabled', fieldName: 'enabled', type: 'boolean', editable: true },
         {
             type: 'action',
-            typeAttributes: { rowActions: [{ label: 'Remove', name: 'remove', iconName: 'utility:delete' }] }
+            typeAttributes: { rowActions: (row, done) => done([
+                ...(this.isEditableRecordAction(row) ? [{label:'Edit',name:'edit',iconName:'utility:edit'}] : []),
+                {label:'Remove',name:'remove',iconName:'utility:delete'}
+            ]) }
         }
     ];
 
@@ -1137,6 +1410,8 @@ export default class CardstackObjectConfig extends LightningElement {
     }
 
     normalizeAction(a, i) {
+        // Working edits must not mutate the retained historical mapping contract.
+        a = JSON.parse(JSON.stringify(a));
         const type = a.type || 'custom';
         return {
             ...a,
@@ -1169,46 +1444,147 @@ export default class CardstackObjectConfig extends LightningElement {
         return `${label} action`;
     }
 
-    async handleActionToggleSave(e) {
+    _actionTableOriginals = new Map();
+    handleActionDraftChange(e) {
         const updates = e.detail.draftValues;
         updates.forEach(u => {
             const a = this.workingActions.find(x => x.name === u.name);
-            if (a) a.enabled = u.enabled;
+            if (a) {
+                if (!this._actionTableOriginals.has(u.name)) this._actionTableOriginals.set(u.name, a.enabled);
+                a.enabled = u.enabled;
+            }
         });
         this.workingActions = [...this.workingActions];
+        this.actionDraftValues = updates;
+    }
+
+    async handleActionToggleSave(e) {
+        this.handleActionDraftChange(e);
+        await this.persistWorkingModel('Actions and current layout inputs saved together as a draft.');
+    }
+
+    handleActionDraftCancel() {
+        this.workingActions = this.workingActions.map(action => this._actionTableOriginals.has(action.name)
+            ? {...action,enabled:this._actionTableOriginals.get(action.name)} : action);
+        this._actionTableOriginals.clear();
         this.actionDraftValues = [];
-        await this.persistWorkingModel('Action toggles saved as a layout draft.');
+    }
+    commitActionTableEdits(submittedJson) {
+        const submitted = JSON.parse(submittedJson).actions || [];
+        for (const [name] of this._actionTableOriginals) {
+            const saved = submitted.find(action => action.name === name);
+            const current = this.workingActions.find(action => action.name === name);
+            if (!saved || !current || saved.enabled === current.enabled) this._actionTableOriginals.delete(name);
+            else this._actionTableOriginals.set(name, saved.enabled);
+        }
+        this.actionDraftValues = this.actionDraftValues.filter(action => this._actionTableOriginals.has(action.name));
     }
 
     handleNewActionInput(e) {
-        this.newAction = { ...this.newAction, [e.target.dataset.field]: e.target.value };
+        if (this.isEditingAction && !['label','description','enabled'].includes(e.target.dataset.field)) return;
+        this.newAction = { ...this.newAction, [e.target.dataset.field]: e.target.type === 'checkbox' ? e.target.checked : e.target.value };
     }
 
-    get actionTargetOptions() {
-        const options = this.selectedObject === 'Account' ? [{ label: 'Edit Account fields · in chat', value: 'record-edit' }] : [];
-        return options.concat(this.publishedFlows.map(f => ({ label: `${f.label || f.apiName} · opens Salesforce`, value: `flow:${f.apiName || f.flowApiName}` })));
+    get isEditingAction() { return !!this._actionEdit; }
+    get actionFormHeading() { return this.isEditingAction ? 'Edit action' : 'Add action'; }
+    get actionSubmitLabel() { return this.isEditingAction ? 'Update action' : 'Add action'; }
+    get actionNameLabel() { return this.isEditingAction ? 'Launch name' : 'Name (optional)'; }
+    isEditableRecordAction(action) {
+        // Policy failures may be repaired here. Historical mappings and Stage keep their own interpretation.
+        return action?.type === 'record-edit' && action.flowApiName == null && Array.isArray(action.mappings)
+            && action.mappings.length > 0 && action.mappings.every(mapping => mapping && mapping.source === 'current'
+                && mapping.sourceField == null && mapping.value == null)
+            && !(this.isOpportunityObject && action.mappings.some(mapping => mapping.fieldApi === 'StageName'));
     }
-    get actionTarget() { return this.newAction.type === 'flow' ? `flow:${this.newAction.flowApiName}` : this.newAction.type; }
-    get isGuidedAction() { return this.newAction.type === 'record-edit'; }
+    editAction(name) {
+        if (this.saveDisabled) return;
+        const action = this.workingActions.find(item => item.name === name);
+        if (!this.isEditableRecordAction(action)) { this.toast('Action unavailable', 'This action uses a retained mapping or specialized preset and cannot be changed in the generic editor.', 'info'); return; }
+        if (this.hasNewActionInputs) { this.toast('Finish action inputs', 'Update or cancel the current action inputs before editing another action.', 'info'); return; }
+        this._actionEdit = {objectApi:this.selectedObject,generation:this._loadGeneration,name:action.name,snapshot:JSON.stringify(action)};
+        this.newAction = JSON.parse(JSON.stringify(action));
+    }
+    cancelActionEdit() {
+        this._actionEdit = null;
+        this.newAction = {name:'',label:'',type:'',description:'',enabled:true,mappings:[]};
+    }
+
+    async loadInterpretedFlows(objectApi) {
+        const generation=++this._flowCatalogGeneration;
+        this.interpretedFlows=[];this.interpretedFlowCatalogError='';this.interpretedFlowHasMore=false;
+        try {
+            const result=await getPublishedFlowPlans({objectApi});
+            if(generation!==this._flowCatalogGeneration || objectApi!==this.selectedObject)return;
+            this.interpretedFlows=result.plans || [];this.interpretedFlowHasMore=!!result.hasMore;
+        } catch {
+            if(generation===this._flowCatalogGeneration)this.interpretedFlowCatalogError='Published in-chat Flow choices could not load. Existing action drafts are retained.';
+        }
+    }
+    get isInterpretedAction() { return this.newAction.type === 'screen-flow'; }
+
+    get actionTargetOptions() {
+        const options = this.recordEditCapability?.eligible ? [{label:`Edit ${this.selectedObjectLabel} fields · in chat`,value:'record-edit'}] : [];
+        if (this.isOpportunityObject) options.push({label:'Edit Opportunity Stage, Close date and Amount · in chat',value:'opportunity-stage'});
+        return options.concat(this.publishedFlows.map(flow => ({label:`${flow.label || flow.apiName} · opens Salesforce`,value:`flow:${flow.apiName || flow.flowApiName}`}))).concat(this.interpretedFlows.map(flow=>({label:`${flow.label || flow.apiName} · in-chat screens`,value:`screen-flow:${flow.apiName}`})));
+    }
+    get actionTarget() { return this.newAction.type === 'screen-flow' ? `screen-flow:${this.newAction.flowApiName}` : this.newAction.type === 'flow' ? `flow:${this.newAction.flowApiName}` : this.isOpportunityAction ? 'opportunity-stage' : this.newAction.type; }
+    get isGuidedAction() { return this.newAction.type === 'record-edit' && !this.isOpportunityAction; }
+    get isOpportunityAction() { return this.isOpportunityObject && this.newAction.type === 'record-edit' && Array.isArray(this.newAction.mappings) && this.newAction.mappings.some(mapping => mapping?.fieldApi === 'StageName'); }
+    get isOpportunityObject() { return this.selectedObject === 'Opportunity'; }
+    get opportunityPresetMappings() { return ['StageName','CloseDate','Amount'].map(fieldApi => ({fieldApi,source:'current'})); }
+    isUpdateable(field) { return field?.updateable === true || field?.updateable === 'true'; }
+    get opportunityAuthoringErrors() {
+        const errors = [];
+        if (!this.workingPermissions.writeEnabled) errors.push('Enable chat edits in Permissions before enabling this action.');
+        const fields = [...this.workingHighlights,...this.allWorkingFields];
+        const denied = new Set(this.workingPermissions.fieldDenylist.map(api => api.trim().toLowerCase()));
+        for (const api of ['StageName','CloseDate','Amount']) {
+            const exposed = fields.filter(field => field.api === api), native = this.fieldMap[api.toUpperCase()];
+            if (!exposed.length || exposed.some(field => !field.editable || field.readOnly) || denied.has(api.toLowerCase()) || !native || !this.isUpdateable(native)) errors.push(`${api}: expose the field in the layout and enable editing; Salesforce update access is required.`);
+        }
+        return errors;
+    }
+    get hasOpportunityAuthoringErrors() { return this.opportunityAuthoringErrors.length > 0; }
+    get opportunityErrorRows() { return this.opportunityAuthoringErrors.map((message,index) => ({key:`preset-error-${index}`,message})); }
+    opportunityPreviewLayout = {version:1,sections:[{id:'details',label:'Synthetic edit details',columns:2,fields:['StageName','CloseDate','Amount']}]};
+    isExactOpportunityPreset(action) { return action.flowApiName == null && Array.isArray(action.mappings) && action.mappings.length === 3 && action.mappings.every((mapping,index) => mapping && mapping.fieldApi === this.opportunityPresetMappings[index].fieldApi && mapping.source === 'current' && mapping.sourceField == null && mapping.value == null); }
+    recordActionErrors(action, preserveLegacy = false) {
+        // Existing Account mappings retain the native historical interpretation.
+        if (preserveLegacy && this.selectedObject === 'Account' && Array.isArray(action.mappings) && action.mappings.some(mapping => mapping?.source !== 'current' || mapping?.sourceField != null || mapping?.value != null) && this.preservedLayout.actions?.some(original => original?.name === action.name && original?.type === 'record-edit' && JSON.stringify(original.mappings) === JSON.stringify(action.mappings))) return [];
+        if (this.isOpportunityObject && Array.isArray(action.mappings) && action.mappings.some(mapping => mapping?.fieldApi === 'StageName')) {
+            if (!this.isExactOpportunityPreset(action)) return ['Use the fixed Stage, Close date and Amount current-value preset.'];
+            return action.enabled === false ? [] : this.opportunityAuthoringErrors;
+        }
+        return recordAuthoring.actionErrors(action,this.recordEditCapability,[...this.workingHighlights,...this.allWorkingFields],this.workingPermissions);
+    }
+    get recordAuthoringNotice() { return 'Inputs start from current record values. Drafts grant no execution rights; publish before launching in chat. Salesforce access remains required.'; }
+    get recordAuthoringErrors() { return this.isGuidedAction ? this.recordActionErrors(this.newAction) : []; }
+    get hasRecordAuthoringErrors() { return this.recordAuthoringErrors.length > 0; }
+    get recordErrorRows() { return this.recordAuthoringErrors.map((message,index) => ({key:`record-error-${index}`,message})); }
+    get recordPreviewFields() { return recordAuthoring.previewFields(this.newAction,this.recordEditCapability,[...this.workingHighlights,...this.allWorkingFields],this.workingPermissions); }
+    get recordPreviewLayout() { return recordAuthoring.previewLayout(this.newAction,this.workingHighlights,this.workingSections); }
+    get recordNativeKeyPrefix() { return this.recordEditCapability?.nativeKeyPrefix; }
     get isSalesforceAction() { return this.newAction.type === 'flow'; }
     handleActionTarget(e) {
+        if (this.isEditingAction) return;
         const value = e.detail.value;
-        this.newAction = { ...this.newAction, type: value.startsWith('flow:') ? 'flow' : value, flowApiName: value.startsWith('flow:') ? value.slice(5) : undefined, mappings: [] };
+        this.newAction = {...this.newAction,type:value.startsWith('screen-flow:') ? 'screen-flow' : value.startsWith('flow:') ? 'flow' : value === 'opportunity-stage' ? 'record-edit' : value,flowApiName:value.startsWith('screen-flow:') ? value.slice(12) : value.startsWith('flow:') ? value.slice(5) : undefined,mappings:value === 'opportunity-stage' ? this.opportunityPresetMappings : value === 'record-edit' ? this.editableActionFields.slice(0,20).map(field => ({fieldApi:field.value,source:'current'})) : []};
     }
-    get mappedSourceOptions() {
-        return [{ label: 'Current field value', value: 'current' }, { label: 'Another record field', value: 'field' }, { label: 'Constant', value: 'constant' }, { label: 'Ask the user', value: 'answer' }];
-    }
+    get mappedSourceOptions() { return [{label:'Current field value',value:'current'}]; }
     get exposedActionFields() {
         return [...this.workingHighlights, ...this.workingSections.flatMap(s => s.fields)].map(f => ({ label: f.label || f.api, value: f.api }));
     }
-    get editableActionFields() {
-        const fields = [...this.workingHighlights, ...this.workingSections.flatMap(s => s.fields)];
-        return fields.filter(f => f.editable && !f.readOnly && ['STRING', 'TEXTAREA', 'INTEGER'].includes(this.fieldMap[f.api.toUpperCase()]?.type?.toUpperCase())).map(f => ({ label: f.label || f.api, value: f.api }));
-    }
+    get editableActionFields() { return recordAuthoring.eligibleFields(this.recordEditCapability,[...this.workingHighlights,...this.allWorkingFields],this.workingPermissions); }
     get mappingRows() {
-        return (this.newAction.mappings || []).map((m, index) => ({ ...m, index, key: `mapping-${index}`, isField: m.source === 'field', isConstant: m.source === 'constant' }));
+        return (this.newAction.mappings || []).map((m, index) => ({ ...m, index, key: `mapping-${index}`, first:index === 0,last:index === this.newAction.mappings.length-1,isField: m.source === 'field', isConstant: m.source === 'constant' }));
     }
-    addMapping() { this.newAction = { ...this.newAction, mappings: [...(this.newAction.mappings || []), { fieldApi: '', source: 'current', value: '' }] }; }
+    moveMapping(e) {
+        const index = Number(e.currentTarget.dataset.index), to = index + (e.currentTarget.dataset.direction === 'up' ? -1 : 1);
+        const mappings = [...(this.newAction.mappings || [])];
+        if (!Number.isInteger(index) || index < 0 || index >= mappings.length || to < 0 || to >= mappings.length) return;
+        const [mapping] = mappings.splice(index,1); mappings.splice(to,0,mapping); this.newAction = {...this.newAction,mappings};
+    }
+    addMapping() { this.newAction = { ...this.newAction, mappings: [...(this.newAction.mappings || []), { fieldApi: '', source: 'current' }] }; }
     removeMapping(e) { this.newAction = { ...this.newAction, mappings: this.newAction.mappings.filter((m, i) => i !== Number(e.currentTarget.dataset.index)) }; }
     handleMapping(e) {
         const index = Number(e.target.dataset.index), field = e.target.dataset.field;
@@ -1216,31 +1592,34 @@ export default class CardstackObjectConfig extends LightningElement {
     }
 
     async addAction() {
-        if (this.workingActions.length >= 20) { this.toast('Action limit', 'A record card supports up to twenty actions. Remove an action before adding another.', 'error'); return; }
+        if (this.saveDisabled) return;
+        const edit = this._actionEdit;
+        const selected = edit && this.workingActions.find(action => action.name === edit.name);
+        if (edit && (edit.objectApi !== this.selectedObject || edit.generation !== this._loadGeneration || !selected
+            || JSON.stringify(selected) !== edit.snapshot || this.newAction.name !== edit.name || !this.isEditableRecordAction(this.newAction))) {
+            this.toast('Action changed', 'This action context has changed. Cancel and open its current action before updating.', 'error'); return;
+        }
+        if (!edit && this.workingActions.length >= 20) { this.toast('Action limit', 'A record card supports up to twenty actions. Remove an action before adding another.', 'error'); return; }
         const { name, label, type, description, mappings, flowApiName } = this.newAction;
         if (type === 'record-edit') {
-            const allowed = new Set(this.editableActionFields.map(f => f.value));
-            const exposed = new Set(this.exposedActionFields.map(f => f.value));
-            const targets = new Set((mappings || []).map(m => m.fieldApi));
-            if (!this.workingPermissions.writeEnabled || !mappings?.length || mappings.length > 20 || targets.size !== mappings.length || mappings.some(m => !allowed.has(m.fieldApi) || !['current', 'field', 'constant', 'answer'].includes(m.source) || m.source === 'field' && !exposed.has(m.sourceField) || m.source === 'constant' && m.value == null)) {
-                this.toast('Check inputs', 'Enable chat edits and choose one to twenty distinct editable fields with valid input mappings.', 'error'); return;
-            }
-        } else if (type !== 'flow' || !this.publishedFlows.some(f => (f.apiName || f.flowApiName) === flowApiName)) {
+            const errors = this.recordActionErrors(this.newAction);
+            if (errors.length) { this.toast('Check record inputs',errors.join(' '),'error'); return; }
+        } else if (!(type === 'flow' && this.publishedFlows.some(f => (f.apiName || f.flowApiName) === flowApiName) || type === 'screen-flow' && this.interpretedFlows.some(f => f.apiName === flowApiName && f.targetObjectApiName === this.selectedObject))) {
             this.toast('Choose a process', 'Choose a guided edit or a published Salesforce launch card.', 'error'); return;
         }
         if (!label?.trim()) {
             this.toast('Missing label', 'Give the action a label.', 'error');
             return;
         }
-        const actionName = (name?.trim() || label.trim()).toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-        if (!actionName || actionName.length > 80 || this.workingActions.some(a => a.name === actionName)) {
+        const actionName = edit ? edit.name : (name?.trim() || label.trim()).toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+        if (!actionName || actionName.length > 80 || !edit && this.workingActions.some(a => a.name === actionName)) {
             this.toast('Duplicate', 'An action with that name already exists.', 'error');
             return;
         }
-        this.workingActions = [...this.workingActions,
-            this.normalizeAction({ ...this.newAction, name: actionName, label: label.trim(), type, description: description?.trim(), enabled: true }, this.workingActions.length)];
-        this.newAction = { name: '', label: '', type: '', description: '', mappings: [] };
-        await this.persistWorkingModel('Action added as a layout draft.');
+        const updated = this.normalizeAction({...selected,...this.newAction,name:actionName,label:label.trim(),type,description:description?.trim(),enabled:this.newAction.enabled !== false},this.workingActions.length);
+        this.workingActions = edit ? this.workingActions.map(action => action.name === edit.name ? updated : action) : [...this.workingActions,updated];
+        this.cancelActionEdit();
+        await this.persistWorkingModel(edit ? 'Action updated as a layout draft.' : 'Action added as a layout draft.');
     }
 
     async removeAction(e) {
@@ -1252,56 +1631,11 @@ export default class CardstackObjectConfig extends LightningElement {
     handleActionRowAction(e) {
         const action = e.detail.action;
         const row = e.detail.row;
+        if (action.name === 'edit') { this.editAction(row.name); return; }
         if (action.name === 'remove') {
             this.workingActions = this.workingActions.filter(a => a.name !== row.name);
             this.persistWorkingModel('Action removed as a layout draft.');
         }
-    }
-
-    // ---------- Assignment tab (unchanged) ----------
-
-    assignmentColumns = [
-        { label: 'Audience', fieldName: 'audience' },
-        { label: 'Layout key', fieldName: 'layoutKey' },
-        { label: 'Status', fieldName: 'status' }
-    ];
-
-    @track assignmentRows = [];
-
-    buildAssignmentRows() {
-        const rows = [{
-            audience: 'default',
-            layoutKey: this.layoutKey,
-            status: this.staging.layout?.liveValue ? 'Published' : 'Not configured'
-        }];
-        (this.extraAudiences || []).forEach(a => {
-            rows.push({
-                audience: a,
-                layoutKey: `layout:${this.selectedObject}:${a}`,
-                status: 'Audience defined — configure its layout via the audience picker'
-            });
-        });
-        this.assignmentRows = rows;
-    }
-
-    handleNewAudienceInput(e) {
-        this.newAudience = e.target.value;
-    }
-
-    addAudience() {
-        const name = (this.newAudience || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-        if (!name) {
-            this.toast('Invalid name', 'Use letters, numbers, dashes.', 'error');
-            return;
-        }
-        if (name === 'default' || (this.extraAudiences || []).includes(name)) {
-            this.toast('Duplicate', 'That audience already exists.', 'error');
-            return;
-        }
-        this.extraAudiences = [...(this.extraAudiences || []), name];
-        this.newAudience = '';
-        this.buildAssignmentRows();
-        this.toast('Audience added', `Pick "${name}" in the audience picker to configure its layout.`, 'success');
     }
 
     // ---------- Permissions tab (wired to working model) ----------
@@ -1311,18 +1645,43 @@ export default class CardstackObjectConfig extends LightningElement {
 
     handleWriteToggle(e) {
         this.permissions = { ...this.permissions, writeEnabled: e.target.checked };
+        this.workingPermissions = { ...this.workingPermissions, writeEnabled: e.target.checked };
     }
 
+    @track restrictionError = '';
+    retainedDenylist = [];
     handleDenylistEdit(e) {
         this.denylistText = e.target.value;
+        const values = this.denylistText.split('\n').map(value => value.trim()).filter(Boolean);
+        const retained = new Set(this.retainedDenylist.map(value => value.toLowerCase()));
+        const invalid = values.filter(value => !retained.has(value.toLowerCase()) && (!/^[A-Za-z][A-Za-z0-9_]*$/.test(value) || !this.fieldMap[value.toUpperCase()]));
+        this.restrictionError = invalid.length ? 'Choose available field API names. Unavailable existing restrictions are retained until you remove them.' : '';
+        if (!invalid.length) this.workingPermissions = {...this.workingPermissions, fieldDenylist:[...new Set(values)]};
+    }
+    handleRestrictionSearch(e) { this.restrictionSearch = e.target.value; }
+    get restrictionOptions() {
+        const query = this.restrictionSearch.toLowerCase().trim();
+        const denied = new Set(this.workingPermissions.fieldDenylist.map(value => value.toLowerCase()));
+        return (this.wiredFieldsResult?.data || []).filter(field => !query || (field.label + ' ' + field.api).toLowerCase().includes(query)).map(field => ({...field,labelWithApi:`${field.label || field.api} (${field.api})`,restricted:denied.has(field.api.toLowerCase())}));
+    }
+    get retainedRestrictionRows() { return this.workingPermissions.fieldDenylist.filter(api => !this.fieldMap[api.toUpperCase()]).map(api => ({api})); }
+    toggleRestriction(e) {
+        const api = e.currentTarget.dataset.api;
+        if (!this.fieldMap[api.toUpperCase()] && !this.retainedDenylist.includes(api)) return;
+        const values = this.workingPermissions.fieldDenylist.filter(value => value.toLowerCase() !== api.toLowerCase());
+        if (e.target.checked) values.push(api);
+        this.workingPermissions = {...this.workingPermissions,fieldDenylist:values};
+        this.denylistText = values.join('\n');
+        this.restrictionError = '';
     }
 
     async stagePermissions() {
-        this.workingPermissions = {
-            writeEnabled: !!this.permissions?.writeEnabled,
-            fieldDenylist: this.denylistText.split('\n').map(s => s.trim()).filter(Boolean)
-        };
-        await this.persistWorkingModel('Permissions saved as a layout draft.');
+        if (this.restrictionError) { this.toast('Check restrictions', this.restrictionError, 'error'); return false; }
+        return this.persistWorkingModel('Permissions and current layout inputs saved together as a draft.');
+    }
+
+    notifyConfigChange(key) {
+        this.dispatchEvent(new CustomEvent('configchange', { detail: { keys: [key], operation: 'save' }, bubbles: true, composed: true }));
     }
 
     // ---------- Helpers ----------

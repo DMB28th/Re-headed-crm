@@ -1,0 +1,73 @@
+{
+  "date": "2026-10-14",
+  "scope": "ACTUAL_STUDIO_CLAUDE_CHATGPT_PLUS_NATIVE_READBACK",
+  "applicationCommit": "8f1b13836f11c80baa54fa0c5db0ebc2eb369162",
+  "persistentOrg": "cardstack-spike2",
+  "browser": "Codex in-app browser authorized while personal Chrome in use",
+  "chromeUntouched": true,
+  "newBrowserInstalled": false,
+  "newOrgOrConnection": false,
+  "packageSourceChanged": false,
+  "Claude": {
+    "openEditReviewConfirmReceiptRefresh": true,
+    "savedFieldCount": 8,
+    "nativeAuditDelta": 1,
+    "nativeReadback": true,
+    "integerValidationVisible": true,
+    "picklistCurrentSelectionPreserved": true,
+    "cancelBeforeAndAfterReviewZeroEffects": true
+  },
+  "ChatGPT": {
+    "openEditReviewConfirmReceiptRefresh": true,
+    "savedFieldCount": 8,
+    "nativeAuditDelta": 1,
+    "nativeReadback": true,
+    "nativeScaleValidationVisible": true,
+    "picklistCurrentSelectionPreserved": true,
+    "cancelZeroEffects": true,
+    "discoveryRefreshRequired": true,
+    "existingConnectionRetained": true
+  },
+  "Studio": {
+    "editCancelPreservedAction": true,
+    "updateDraftReviewPublish": true,
+    "exactCandidateNativeReadback": true,
+    "stableLaunchName": true,
+    "actionLabel": "Update lead details",
+    "mappedFields": [
+      "Company",
+      "Rating",
+      "LeadSource",
+      "Email",
+      "Website",
+      "AnnualRevenue",
+      "NumberOfEmployees",
+      "Phone",
+      "Description",
+      "LastName"
+    ],
+    "identityLayout": [
+      "Company",
+      "Description",
+      "LastName"
+    ],
+    "actualChatGPTTenFieldEditorObserved": true,
+    "configurationOnlyNoDeployment": true
+  },
+  "preservation": {
+    "status": "PASSED",
+    "originalConfigsUnchanged": 5,
+    "originalDraftsUnchanged": 5,
+    "pendingOwnedLeadDrafts": 0,
+    "packageSourceUnchanged": true
+  },
+  "limits": {
+    "lookup": "UNSUPPORTED_BACKEND_INCOMPLETE",
+    "liveRecordType": "MASTER_ONLY",
+    "hostLostResponseFault": "NOT_PROVED",
+    "delayedResultAfterRecordSwitch": "NOT_PROVED",
+    "freshInstall": "NOT_RUN",
+    "guiDiscardDialog": "NOT_PROVED_LOADING_OVERLAY",
+    "supersededOwnedDraftCleanup": "NATIVE_CONTROLLER_ROLLED_BACK_RETAINED_HISTORY"
+  }
+}

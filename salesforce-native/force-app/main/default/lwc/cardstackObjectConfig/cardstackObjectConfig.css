@@ -343,3 +343,9 @@
 .preview-cell { padding: 0.45rem 0; overflow-wrap: anywhere; }
 .preview-highlights { margin-top: 1rem; }
 @media (max-width: 760px) { .builder-toolbar { align-items: start; flex-direction: column; } .palette-header { grid-template-columns: 1fr; } .section-columns { width: 110px; } }
+
+.authoring-status { display: flex; flex-wrap: wrap; gap: .5rem 1rem; margin-bottom: .5rem; }
+.restriction-options { max-height: 16rem; overflow: auto; margin-top: .5rem; }
+.obj-option { width: 100%; text-align: left; border: 0; background: var(--slds-g-color-neutral-base-100, white); color: inherit; }
+.obj-option:focus-visible { outline: 2px solid var(--slds-g-color-brand-base-50, #0176d3); outline-offset: -2px; }
+@media (max-width: 700px) { .builder-toolbar { flex-wrap: wrap; } .toolbar-actions { flex-wrap: wrap; } }

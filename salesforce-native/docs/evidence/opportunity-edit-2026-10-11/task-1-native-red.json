@@ -1,0 +1,313 @@
+{
+  "attempts": [
+    {
+      "kind": "Opportunity Task1 native RED validation",
+      "sourceHead": "0b715e82896d6517e6cac1ec36deb8aa7122e652",
+      "bundleSha256": "6a69a37c77ae96cf52e18010f2be5bbc4394df8c342c8eb7a7bf951c433ab844",
+      "apiVersion": "67.0",
+      "checkOnly": true,
+      "done": true,
+      "status": "Failed",
+      "componentErrors": 2,
+      "testsCompleted": 0,
+      "testErrors": 0,
+      "behavioralRedEstablished": false,
+      "compileErrors": [
+        {
+          "class": "CardstackOpportunitySelectorTest",
+          "line": 7,
+          "reason": "Static SOQL references absent Opportunity.RecordTypeId field"
+        },
+        {
+          "class": "CardstackOpportunitySelectorTest",
+          "line": 17,
+          "reason": "Static field accessor RecordTypeId unavailable"
+        }
+      ],
+      "schemaBoundary": {
+        "recordTypeIdFieldPresent": false,
+        "recordTypeContexts": 1,
+        "allMaster": true
+      },
+      "deploymentJwtFinalOnVerified": true,
+      "persistedMetadata": false,
+      "businessCrmWriteInvoked": false,
+      "rawResultSha256": "91658bc8db798f3bd752ff3fe256440a69cd175942bd201c3dfec8c68742dd80",
+      "localCliAttemptBeforeSubmission": "--results-dir required --junit; local rejection created no job"
+    },
+    {
+      "sourceHead": "4d0cfe05fc2172a9fc91eebfbf7c998578e9d9d5",
+      "bundleSha256": "4c57b2e13060e8c574c687a90fc017942a7e865be82f1ce97310505967d4ef51",
+      "apiVersion": "67.0",
+      "done": true,
+      "checkOnly": true,
+      "status": "Failed",
+      "componentErrors": 0,
+      "testsRun": 51,
+      "assertionFailures": 49,
+      "successes": 2,
+      "behavioralRedEstablished": true,
+      "failures": [
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "ambiguousCalendarDateRejected",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: INVALID_DATE"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "blankAmountRejected",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: INVALID_AMOUNT"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "blankCalendarDateRejected",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: INVALID_DATE"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "calendarDateHasNoTimezone",
+          "message": "System.AssertException: Assertion Failed: Calendar date must produce exactly one change: Expected: 1, Actual: 0"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "canonicalizationDoesNotPerformDml",
+          "message": "System.AssertException: Assertion Failed: Read-only validation must still produce the reviewed patch: Expected: 1, Actual: 0"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "clearCannotCarryValue",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: INVALID_OPERATION"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "closeDateCannotBeCleared",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: CLEAR_NOT_ALLOWED"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "decimalZeroAndPrecisionStayExact",
+          "message": "System.AssertException: Assertion Failed: Exact amount must produce one patch entry: Expected: 1, Actual: 0"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "digestDoesNotDependOnInputOrder",
+          "message": "System.AssertException: Assertion Failed: Instance expected to be a non null value: Canonical patch must have a digest"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "duplicateAndUnknownFieldsRejected",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: DUPLICATE_FIELD"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "exactStageApiValueIsPreserved",
+          "message": "System.AssertException: Assertion Failed: Translated label must never be stored as API value: Expected: Negotiation_API, Actual: null"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "excessPrecisionRejectedWithoutTruncation",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: AMOUNT_PRECISION"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "excessScaleRejectedWithoutRounding",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: AMOUNT_SCALE"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "exponentAmountRejected",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: INVALID_AMOUNT"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "groupedAmountRejected",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: INVALID_AMOUNT"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "impossibleCalendarDateRejected",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: INVALID_DATE"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "inactiveStageCannotBeSelectedAsNewValue",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: INVALID_STAGE"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "missingContextFailsClosed",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: MISSING_STAGE_CONTEXT"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "missingCurrencyFailsClosed",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: MISSING_CURRENCY"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "missingStageRecordTypeContextFailsClosed",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: MISSING_STAGE_CONTEXT"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "negativeAmountIsNotSilentlyDenied",
+          "message": "System.AssertException: Assertion Failed: Signed plain decimal remains permitted: Expected: -25.50, Actual: null"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "nonFiniteAmountRejected",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: INVALID_AMOUNT"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "omittedFieldsNeverCreateEntries",
+          "message": "System.AssertException: Assertion Failed: Only the supplied field creates an entry: Expected: 1, Actual: 0"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "optionalClearProducesExplicitNull",
+          "message": "System.AssertException: Assertion Failed: Explicit clear creates one update: Expected: 1, Actual: 0"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "readOnlyFieldCannotChange",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: FIELD_NOT_EDITABLE"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "requiredAmountCannotBeCleared",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: CLEAR_NOT_ALLOWED"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "setCannotOmitValue",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: INVALID_OPERATION"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "stageCannotBeCleared",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: CLEAR_NOT_ALLOWED"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "stageLabelCannotReplaceApiValue",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: INVALID_STAGE"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "symbolAmountRejected",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: INVALID_AMOUNT"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "timestampRejectedAsCalendarDate",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: INVALID_DATE"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "unknownFieldRejected",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: UNKNOWN_FIELD"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "unknownOperationRejected",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: INVALID_OPERATION"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "whitespaceAmountRejected",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected rejection: INVALID_AMOUNT"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "zeroRemainsDecimal",
+          "message": "System.AssertException: Assertion Failed: Zero must remain an explicit change: Expected: 1, Actual: 0"
+        },
+        {
+          "class": "CardstackOpportunityEditTypesTest",
+          "method": "decimalLiteralSurvivesTransportToDomain",
+          "message": "System.AssertException: Assertion Failed: Transport must preserve exact decimal text: Expected: 12500.25, Actual: null"
+        },
+        {
+          "class": "CardstackOpportunitySelectorTest",
+          "method": "currencyContextUsesRecordCurrencyWhenAvailable",
+          "message": "System.AssertException: Assertion Failed: Instance expected to be a non null value: Editing requires a verified currency context in either org mode"
+        },
+        {
+          "class": "CardstackOpportunitySelectorTest",
+          "method": "lockedReadPreservesRecordValues",
+          "message": "System.AssertException: Assertion Failed: Instance expected to be a non null value: Locked freshness read must return the record"
+        },
+        {
+          "class": "CardstackOpportunitySelectorTest",
+          "method": "missingIdentityRejected",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected selector rejection: INVALID_RECORD"
+        },
+        {
+          "class": "CardstackOpportunitySelectorTest",
+          "method": "nonOpportunityIdentityRejected",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected selector rejection: UNSUPPORTED_OBJECT"
+        },
+        {
+          "class": "CardstackOpportunitySelectorTest",
+          "method": "readsExactRequiredValuesAndFreshness",
+          "message": "System.AssertException: Assertion Failed: Instance expected to be a non null value: Selector must return the authorized record"
+        },
+        {
+          "class": "CardstackOpportunitySelectorTest",
+          "method": "unknownRequiredFieldRejected",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected selector rejection: UNKNOWN_FIELD"
+        },
+        {
+          "class": "CardstackOpportunityStageProviderTest",
+          "method": "actualRecordTypeContextIsPreserved",
+          "message": "System.AssertException: Assertion Failed: Provider must preserve requested context rather than default it: Expected: [ID redacted], Actual: null"
+        },
+        {
+          "class": "CardstackOpportunityStageProviderTest",
+          "method": "choiceOrderAndLabelsDoNotChangeFingerprint",
+          "message": "System.AssertException: Assertion Failed: Instance expected to be a non null value: Fingerprint must bind actual context"
+        },
+        {
+          "class": "CardstackOpportunityStageProviderTest",
+          "method": "fixtureOptionSetsRemainDistinct",
+          "message": "System.AssertException: Assertion Failed: First fixture keeps its exact set: Expected: {Negotiation_API, Qualification_API}, Actual: {}"
+        },
+        {
+          "class": "CardstackOpportunityStageProviderTest",
+          "method": "missingContextFailsClosed",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected closed Stage capability: STAGE_CONTEXT_UNAVAILABLE"
+        },
+        {
+          "class": "CardstackOpportunityStageProviderTest",
+          "method": "missingRecordTypeFailsClosed",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected closed Stage capability: STAGE_CONTEXT_UNAVAILABLE"
+        },
+        {
+          "class": "CardstackOpportunityStageProviderTest",
+          "method": "stageValuesUseRecordTypeApiValues",
+          "message": "System.AssertException: Assertion Failed: Provider must retain exact API values: Expected: {Negotiation_API, Qualification_API}, Actual: {}"
+        },
+        {
+          "class": "CardstackOpportunityStageProviderTest",
+          "method": "wrongObjectFailsClosed",
+          "message": "System.AssertException: Assertion Failed: Assertion failed: Expected closed Stage capability: UNSUPPORTED_OBJECT"
+        }
+      ],
+      "successfulMethods": [
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "equivalentZeroCreatesNoChange"
+        },
+        {
+          "class": "CardstackOpportunityEditDomainTest",
+          "method": "inactiveCurrentStageCanOnlyBeKept"
+        }
+      ],
+      "deploymentJwtFinalOnVerified": true,
+      "persistedMetadata": false,
+      "businessCrmWriteInvoked": false,
+      "rawResultSha256": "977215ae59b4d0202697cca836e81839cc31a3959416ae41b4e2e4b44d2e50cd"
+    }
+  ]
+}

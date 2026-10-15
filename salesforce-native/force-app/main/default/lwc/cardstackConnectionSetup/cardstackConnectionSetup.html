@@ -1,0 +1,118 @@
+<template>
+    <section class="slds-box slds-m-bottom_medium slds-is-relative" aria-label="Guided MCP Apps connection setup">
+        <h2 class="slds-text-heading_small">MCP Apps connection setup</h2>
+        <p class="slds-text-body_small">Current evidence for this signed-in user. Each client and each user must sign in and verify independently.</p>
+        <ul class="slds-list_horizontal slds-has-dividers_left slds-m-vertical_small" aria-live="polite">
+            <template for:each={statuses} for:item="status"><li class="slds-item" key={status.client}><strong>{status.label}:</strong> {status.status}</li></template>
+        </ul>
+        <lightning-button label={toggleLabel} onclick={toggleGuide} aria-expanded={expanded}></lightning-button>
+        <lightning-combobox label="Connection client" value={client} options={clientOptions} onchange={switchClient} disabled={busy}></lightning-combobox>
+        <template if:true={busy}><lightning-spinner alternative-text="Checking connection setup" size="small"></lightning-spinner></template>
+        <template if:true={errorMessage}><p role="alert" class="slds-text-color_error slds-m-top_small">{errorMessage}</p></template>
+        <template if:true={denied}><a href="/lightning/setup/PermSets/home">Inspect assigned permissions in Salesforce Setup</a></template>
+        <template if:true={canRenderGuide}>
+            <nav aria-label="Setup stages" class="setup-stages slds-m-vertical_medium">
+                <template for:each={stageNavigation} for:item="stage"><lightning-button key={stage.key} label={stage.label} variant={stage.variant} aria-current={stage.current} data-stage={stage.key} onclick={selectStage}></lightning-button></template>
+            </nav>
+            <template if:true={currentRecovery}>
+                <aside class="slds-box slds-theme_shade slds-m-bottom_medium" aria-label="Current blocked stage" aria-live="polite">
+                    <strong>{currentRecovery.title} needs attention</strong><p>{currentRecovery.message}</p><a href={currentRecovery.href}>Inspect in Salesforce</a>
+                </aside>
+            </template>
+            <h3 class="slds-text-heading_small stage-heading" data-stage-heading tabindex="-1">{activeStage.title}</h3>
+            <p class="slds-m-bottom_small" aria-live="polite">Current result: <strong>{activeStage.status}</strong>. {activeStage.nextAction}</p>
+            <template if:true={isInstallationStage}>
+                <p>Confirm that Cardstack is installed and your user has Cardstack Admin access. Admin access passed for this request. Domain, Site and OAuth policy stay Unknown when Salesforce cannot expose those settings here.</p>
+                <a href="/lightning/setup/ImportedPackage/home">Open Installed Packages</a>
+            </template>
+            <template if:true={isSiteStage}>
+                <template if:true={isDirect}>
+                    <p>This saved connection uses the existing Salesforce org API endpoint. Inspect its saved enrollment and org domain. It requires a named Salesforce user with Cardstack User access; Site selection and guest ingress do not apply.</p>
+                    <p>Keep the existing connection and Salesforce authentication settings. The endpoint is registered by Cardstack and cannot be entered here. Changing transport requires an explicit administrator enrollment.</p>
+                </template>
+                <template if:true={isSiteTransport}>
+                <p>Prepare the public entry point. Inspect the org domain, active Site and exact path prefix. Permit only CardstackMcpIngress and the required constant landing page for guest ingress. Guest users must have no object permissions, renderer access, private services or configuration access.</p>
+                <a href="/lightning/setup/CustomDomain/home">Open Salesforce Sites</a>
+                <p class="slds-text-body_small slds-m-top_small">In Setup, search for Sites and open the Site label. Copy its Site record ID from the detail page URL; use the full 18-character ID. If Salesforce shows 15 characters, obtain the checksum18 ID through an approved Salesforce read before entering it. Copy the exact path prefix from the Site detail page. Studio cannot list or provision Sites here.</p>
+                <lightning-input label="Site ID (18 characters; leave blank to retain saved selection)" data-field="siteId" value={draft.siteId} onchange={changeField} maxlength="18" disabled={disabled}></lightning-input>
+                <p class="slds-text-body_small">Initial enablement requires a valid Site selection. The saved internal Site ID is intentionally not displayed.</p>
+                <lightning-input label="Site path prefix" data-field="sitePrefix" value={draft.sitePrefix} onchange={changeField} maxlength="80" disabled={disabled}></lightning-input>
+                <p class="slds-text-body_small">Canonical URLs may remain Unknown outside the selected Site context. Inspect them under Advanced and use independent authenticated verification; no endpoint can be entered here.</p>
+                </template>
+            </template>
+            <template if:true={isClientStage}>
+                <template if:true={isDirect}>
+                    <p>Inspect the existing Salesforce connection, public client ID and exact registered callback evidence. Preserve its current authentication settings. Enrollment records intent and routing; it does not attest OAuth audience or app identity.</p>
+                    <a href="/lightning/setup/ManageExternalClientApplication/home">Inspect existing External Client App</a>
+                </template>
+                <template if:true={isSiteTransport}>
+                <p>Prepare a dedicated Local External Client App for this client in this org. Use authorization code with a public client ID, blank secret, api and refresh_token scopes, required PKCE and refresh token rotation. Runtime token issuance must be opaque: JWT OFF. Assign authorized users explicitly.</p>
+                <p>Card Stack SFAPP is the separate deployment app. Its JWT must be restored ON after deployment work. Studio does not modify either app.</p>
+                <a href="/lightning/setup/ManageExternalClientApplication/home">Open External Client Apps</a>
+                <template if:true={isChatgpt}><p>ChatGPT: prepare its app, create a connection draft in ChatGPT, register the exact callback displayed by that connection, then complete OAuth. Never reuse a probe callback or assume a universal callback. Fresh connection setup remains a release verification gate.</p></template>
+                <template if:false={isChatgpt}><p>Claude: copy the callback shown by the current client guidance and register it exactly in its dedicated app. Historical proof used https://claude.ai/api/mcp/auth_callback; confirm it against the current client before saving.</p></template>
+                </template>
+                <lightning-input label="Public client ID" data-field="publicClientId" value={draft.publicClientId} onchange={changeField} maxlength="256" disabled={disabled}></lightning-input>
+                <lightning-textarea label="Exact registered callbacks (one HTTPS URL per line)" data-field="callbacks" value={callbacksText} onchange={changeField} maxlength="21000" disabled={disabled}></lightning-textarea>
+                <lightning-input type="checkbox" label="Enable this client configuration (intent only)" data-field="enabledIntent" checked={draft.enabledIntent} onchange={changeField} disabled={disabled}></lightning-input>
+                <p>Changes to client IDs, callbacks, transport enrollment or contracts require new diagnostic evidence. Disabling one client does not change the other or prove existing tokens were revoked.</p>
+            </template>
+            <template if:true={isVerifyStage}>
+                <p>Verify the connection in the actual client. Each user connects with their own Salesforce account and actual consent. Run the synthetic connection diagnostic, verify the seven exact values, repeat with empty text, and repeat after a full chat reload. Tools, HTML loading, bridge exchange and operator observation are separate evidence.</p>
+                <lightning-button label="Check current evidence" onclick={check} disabled={disabled}></lightning-button>
+                <lightning-input label="Successful diagnostic receipt reference to observe" value={receiptReference} onchange={changeReceipt} maxlength="70" pattern="check_[a-f0-9]{64}" disabled={disabled}></lightning-input>
+                <p>Use this only after you personally saw the actual form and receipt in that client. It records operator observation of an existing successful exchange.</p>
+                <lightning-button label="Record actual client UI observation" onclick={observe} disabled={disabled}></lightning-button>
+                <p aria-live="polite">{observationText}</p>
+            </template>
+            <template if:true={isNextGateStage}>
+                <p>Connection evidence does not establish CRM editing readiness. Governed Account review, confirm, save, independent read-back and refresh must pass separately in each client before migration. That gate is not available here.</p>
+                <lightning-button label="Open existing object configuration" variant="base" onclick={navigateToObjects}></lightning-button>
+            </template>
+            <div class="setup-actions slds-m-vertical_medium">
+                <lightning-button label="Save configuration and guide history" variant="brand" onclick={save} disabled={disabled}></lightning-button>
+                <lightning-button label="Next stage" onclick={nextStage} disabled={isLastStage}></lightning-button>
+            </div>
+            <p class="slds-text-body_small">Next stage changes the guide only. It does not save, authorize or verify anything. Draft inputs remain available when you return.</p>
+            <details class="slds-m-top_medium">
+                <summary class="slds-text-heading_small">Advanced</summary>
+                <details class="slds-m-top_small"><summary>Technical metadata and versions</summary>
+                    <ul><template for:each={versions} for:item="version"><li key={version.name}>{version.name}: {version.value}</li></template></ul>
+                    <template if:true={isDirect}><p>Transport: existing direct org API endpoint.</p></template>
+                    <p>Saved configuration revision: {view.revision}. Draft based on revision: {draft.expectedRevision}.</p>
+                    <p>Canonical resource URL, when available: <span>{view.resourceUrl}</span></p>
+                    <p>Canonical metadata URL, when available: <span>{view.metadataUrl}</span></p>
+                    <p>Canonical org issuer: <span>{view.issuer}</span></p>
+                    <template if:true={isSiteTransport}><p>Blank URLs mean Unknown outside the selected Site context. Use independent authenticated verification.</p></template>
+                    <template if:true={isDirect}><p>Direct transport uses the registered org API endpoint and canonical org issuer. Site metadata discovery does not apply.</p></template>
+                </details>
+                <details class="slds-m-top_small"><summary>Diagnostics and operator evidence</summary>
+                    <ul class="slds-has-dividers_bottom-space slds-m-top_small">
+                        <template for:each={evidence} for:item="check"><li key={check.key} class="slds-item"><strong>{check.stage}: {check.status}</strong><p>{check.source} · {check.time} · {check.errorCode}</p>
+                            <template if:true={check.showRecovery}><p>{check.recovery.message}</p><a href={check.recovery.href}>Inspect in Salesforce</a></template>
+                        </li></template>
+                    </ul>
+                </details>
+                <details class="slds-m-top_small"><summary>Instruction history and draft recovery</summary>
+                    <p>These checkboxes save instruction history only. They never verify a connection or hide current attention.</p>
+                    <template for:each={steps} for:item="step"><lightning-input key={step.key} type="checkbox" label={step.label} data-step={step.key} checked={step.done} onchange={changeStep} disabled={disabled}></lightning-input></template>
+                    <lightning-button label="Discard this draft and reload saved configuration" onclick={reload} disabled={disabled}></lightning-button>
+                </details>
+                <details class="slds-m-top_small"><summary>Safe support summary</summary>
+                    <lightning-button label="Export safe support summary" onclick={exportSafeSummary} disabled={disabled}></lightning-button>
+                    <template if:true={supportSummary}><lightning-textarea label="Safe support summary (copy to share)" value={supportSummary} read-only></lightning-textarea></template>
+                </details>
+                <details class="slds-m-top_small"><summary>Full recovery table and connected authorizations</summary>
+                    <div class="slds-scrollable_x"><table class="slds-table slds-table_cell-buffer slds-table_bordered">
+                        <caption class="slds-assistive-text">Connection recovery instructions</caption>
+                        <thead><tr><th scope="col">Symptom</th><th scope="col">Required action</th><th scope="col">Salesforce settings</th></tr></thead>
+                        <tbody><template for:each={recoveryRows} for:item="row"><tr key={row.key}><th scope="row">{row.symptom}</th><td class="slds-cell-wrap">{row.message}</td><td><a href={row.href}>Inspect in Salesforce</a></td></tr></template></tbody>
+                    </table></div>
+                    <p>Disconnect in the client and revoke the Salesforce authorization in your personal settings. Administrators can revoke the affected app access in Salesforce. Verify an existing-token request and refresh-token request are rejected; a Disabled label alone is not proof. If refresh fails, reconnect once and run fresh diagnostics. Never add guest data access to recover from a 401.</p>
+                    <a href="/lightning/settings/personal/Connections/home">Review personal connected authorizations</a>
+                </details>
+            </details>
+        </template>
+        <template if:false={canRenderGuide}><template if:false={denied}><lightning-button label="Reload setup" onclick={reload} disabled={busy}></lightning-button></template></template>
+    </section>
+</template>

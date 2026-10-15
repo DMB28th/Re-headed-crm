@@ -12,3 +12,7 @@
     color: #027e46;
     font-weight: 700;
 }
+
+.row-header { width: 100%; text-align: left; border: 0; color: inherit; background: transparent; font: inherit; flex-wrap: wrap; }
+.row-header:focus-visible { outline: 2px solid var(--slds-g-color-brand-base-50, #0176d3); }
+@media (max-width: 700px) { .row-header .slds-col { min-width: 8rem; flex: 1 1 auto; } }

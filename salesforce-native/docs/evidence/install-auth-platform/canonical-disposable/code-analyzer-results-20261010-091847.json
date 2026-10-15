@@ -1,0 +1,16 @@
+{
+  "runDir": "/Users/danielben-atar/.codex/worktrees/mcp-apps-delivery-proof/Re-headed-crm/",
+  "violationCounts": {
+    "total": 0,
+    "sev1": 0,
+    "sev2": 0,
+    "sev3": 0,
+    "sev4": 0,
+    "sev5": 0
+  },
+  "versions": {
+    "code-analyzer": "0.49.0",
+    "pmd": "0.43.0"
+  },
+  "violations": []
+}

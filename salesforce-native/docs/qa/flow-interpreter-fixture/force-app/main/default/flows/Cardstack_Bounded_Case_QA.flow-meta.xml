@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>67.0</apiVersion>
+    <description>Disposable Cardstack QA fixture. Bounded two-screen interpreter test; root deploy only.</description>
+    <interviewLabel>Cardstack bounded Case QA</interviewLabel>
+    <label>Cardstack bounded Case QA</label>
+    <processType>Flow</processType>
+    <recordUpdates>
+        <name>SaveCurrentCase</name><label>Save current Case</label><locationX>0</locationX><locationY>400</locationY>
+        <filterLogic>and</filterLogic>
+        <filters><field>Id</field><operator>EqualTo</operator><value><elementReference>recordId</elementReference></value></filters>
+        <inputAssignments><field>Subject</field><value><elementReference>ProposedSubject</elementReference></value></inputAssignments>
+        <inputAssignments><field>Description</field><value><elementReference>ProposedDescription</elementReference></value></inputAssignments>
+        <object>Case</object>
+    </recordUpdates>
+    <screens>
+        <name>ChooseSubject</name><label>Case subject</label><locationX>0</locationX><locationY>0</locationY>
+        <allowBack>true</allowBack><allowFinish>false</allowFinish><allowPause>false</allowPause>
+        <connector><targetReference>ChooseDescription</targetReference></connector>
+        <fields><name>ProposedSubject</name><dataType>String</dataType><fieldText>Subject</fieldText><fieldType>InputField</fieldType><isRequired>true</isRequired></fields>
+        <showFooter>true</showFooter><showHeader>true</showHeader>
+    </screens>
+    <screens>
+        <name>ChooseDescription</name><label>Case description</label><locationX>0</locationX><locationY>200</locationY>
+        <allowBack>true</allowBack><allowFinish>false</allowFinish><allowPause>false</allowPause>
+        <connector><targetReference>SaveCurrentCase</targetReference></connector>
+        <fields>
+            <name>DescriptionSection</name><fieldText>Details</fieldText><fieldType>RegionContainer</fieldType><regionContainerType>SectionWithHeader</regionContainerType>
+            <fields>
+                <name>DescriptionColumn</name><fieldType>Region</fieldType>
+                <fields><name>ProposedDescription</name><dataType>String</dataType><fieldText>Description</fieldText><fieldType>LargeTextArea</fieldType><isRequired>false</isRequired></fields>
+                <inputParameters><name>width</name><value><stringValue>12</stringValue></value></inputParameters>
+            </fields>
+        </fields>
+        <showFooter>true</showFooter><showHeader>true</showHeader>
+    </screens>
+    <start><locationX>50</locationX><locationY>0</locationY><connector><targetReference>ChooseSubject</targetReference></connector></start>
+    <status>Active</status>
+    <variables><name>recordId</name><dataType>String</dataType><isCollection>false</isCollection><isInput>true</isInput><isOutput>false</isOutput></variables>
+</Flow>

@@ -1,0 +1,26 @@
+{
+  "sourceHead": "8893ffbbeb2dd3076cf531aef8cbe154ef64d404",
+  "sourceTreeSha256": "dc5c239a39ceb9ac776f9015b85e62ab8809d2187808ecbe4c554b4f481ad967",
+  "apiVersion": "67.0",
+  "packageCoveragePercent": 89,
+  "packageCoveragePassed": true,
+  "installStatus": "SUCCESS",
+  "testLevel": "RunLocalTests",
+  "testJobStatus": "Completed",
+  "outcome": "Failed",
+  "testsRan": 535,
+  "passing": 497,
+  "failing": 38,
+  "detailedListedTests": 517,
+  "detailedOutcomes": {
+    "Pass": 482,
+    "Fail": 35
+  },
+  "observedDetailedFailureCode": "UNABLE_TO_LOCK_ROW",
+  "fullSuiteAccepted": false,
+  "includesReusableScreen": false,
+  "actualStageProvider": "NotRun",
+  "actualClaude": "NotRun",
+  "actualChatGPT": "NotRun",
+  "cleanup": "Deleted; independently verified in DevHub by created scratch-info checksum18 identity"
+}

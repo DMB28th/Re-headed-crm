@@ -1,7 +1,7 @@
 # Custom MCP Apps migration and interpreter carryover
 
 Date: October 8, 2026
-Status: Proposed for written review; no implementation or deployed cutover yet.
+Status: Approved by the user on October 8, 2026; no implementation or deployed cutover yet.
 User-selected direction: retire HXL, reuse the custom renderer and bounded earlier
 interpreter, keep the native Apex backend and Studio.
 

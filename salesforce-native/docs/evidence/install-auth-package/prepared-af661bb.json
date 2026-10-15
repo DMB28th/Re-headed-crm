@@ -1,0 +1,33 @@
+{
+  "sourceCommit": "af661bb175c162a8a5932f1ee6325a544a1c3bee",
+  "files": 241,
+  "coreOnly": true,
+  "apiVersion": "67.0",
+  "checkOnly": true,
+  "testLevel": "RunLocalTests",
+  "expectedSourceTests": 310,
+  "archiveSha256": "b86a6833806e63dd3b2521c1636f8ab4b3de030fc775016ce680c747e957ec01",
+  "sourceFiles": 241,
+  "metadataFiles": 205,
+  "classCount": 72,
+  "lwcBundles": 13,
+  "permissionSets": [
+    "Cardstack_Admin",
+    "Cardstack_User"
+  ],
+  "boundedCredentialPatternMatches": 0,
+  "classifiedPublicChallengeHeaderMatches": 2,
+  "nativeNodeTests": {
+    "passed": 122,
+    "failed": 0
+  },
+  "packageCreated": false,
+  "installed": false,
+  "validationStatus": "Prepared, not submitted",
+  "limits": [
+    "Two initial Bearer pattern matches are public WWW-Authenticate resource_metadata challenge labels, not credentials.",
+    "Source conversion and bounded scans do not prove package creation/install or universal absence of secrets.",
+    "Full Apex RunLocalTests and permission metadata compiler validation pending.",
+    "ActualStudio/two-client/lifecycle/second-org proof pending; no per-org runtime metadata in core."
+  ]
+}

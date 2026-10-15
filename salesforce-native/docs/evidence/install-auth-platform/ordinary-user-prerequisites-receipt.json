@@ -1,0 +1,11 @@
+{
+  "checkedAt": "2026-10-09T14:51:42.285Z",
+  "readOnly": true,
+  "minimumAccessSalesforceProfileFound": true,
+  "profileModifyAllData": false,
+  "profileViewAllData": false,
+  "profileApiEnabled": false,
+  "existingOperatorEmailAvailable": true,
+  "userCreated": false,
+  "emailSent": false
+}

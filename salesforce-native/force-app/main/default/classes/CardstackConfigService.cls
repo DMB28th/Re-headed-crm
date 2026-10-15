@@ -10,7 +10,7 @@
  *   layout:{ObjectApi}:{audience}   e.g. layout:Account:default
  *   exposures:{ObjectApi}           e.g. exposures:Account
  *   flows                           flow render-mode configs (JSON array)
- *   homecard                        home dashboard card config (JSON)
+ *   homecard                        retained retired configuration (read/history only)
  *   screens                         custom screen definitions (JSON array)
  *   connection                      org connection state (JSON)
  *
@@ -19,6 +19,35 @@
 public with sharing class CardstackConfigService {
 
     public class ConfigException extends Exception {}
+
+    /**
+     * @param key Stored configuration key.
+     * @return True only for the retired Home configuration.
+     */
+    public static Boolean isRetiredKey(String key) {
+        return key != null && key.equals('homecard');
+    }
+
+    /**
+     * @param key Stored configuration key.
+     * @return Whether the key participates in active Studio authoring and counts.
+     */
+    public static Boolean isSupportedStudioKey(String key) {
+        if (String.isBlank(key)) return false;
+        return key.equals('flows')
+            || Pattern.matches('flow-plan:[A-Za-z][A-Za-z0-9_]*:default', key)
+            || Pattern.matches('layout:[A-Za-z][A-Za-z0-9_]*:default', key)
+            || Pattern.matches('exposures:[A-Za-z][A-Za-z0-9_]*', key);
+    }
+
+    // Compatibility keys (including setup flags) remain usable. Only retired Home
+    // and unsupported audience layouts reject new authoring; old reads are intact.
+    private static void validateAuthoringKey(String key) {
+        if (isRetiredKey(key)) throw new ConfigException('RETIRED_CONFIGURATION');
+        if (key != null && key.startsWith('layout:') && !isSupportedStudioKey(key)) {
+            throw new ConfigException('UNSUPPORTED_CONFIGURATION');
+        }
+    }
 
     // ---------- Read ----------
 
@@ -90,11 +119,18 @@ public with sharing class CardstackConfigService {
         if (String.isBlank(key)) {
             throw new ConfigException('Config key is required.');
         }
+        validateAuthoringKey(key);
         if (!Schema.sObjectType.Cardstack_Config__c.isCreateable()
             || !Schema.sObjectType.Cardstack_Config_Draft__c.isCreateable()) {
             throw new ConfigException('Insufficient access to stage configuration changes.');
         }
 
+        // Candidate validation precedes every draft/config insertion; no draft grants rights.
+        CardstackOpportunityActionPolicy.validateLayout(key, draftValue);
+        CardstackRecordScreenCapability.validateLayout(key, draftValue);
+        CardstackRelatedListPolicy.validateLayout(key, draftValue);
+        CardstackFlowPublication.validateCandidate(key, draftValue);
+        CardstackListExposurePolicy.validateCandidate(key, draftValue);
         Cardstack_Config__c cfg = getOrCreateConfig(key);
 
         Cardstack_Config_Draft__c draft = new Cardstack_Config_Draft__c(
@@ -129,7 +165,7 @@ public with sharing class CardstackConfigService {
             throw new ConfigException('Insufficient access to publish configuration.');
         }
         Cardstack_Config_Draft__c draft = [
-            SELECT Id, Config__c, Draft_Value__c, Status__c
+            SELECT Id, Config__c, Config__r.Name, Draft_Value__c, Status__c
             FROM Cardstack_Config_Draft__c
             WHERE Id = :draftId
             WITH USER_MODE
@@ -139,28 +175,134 @@ public with sharing class CardstackConfigService {
             throw new ConfigException('Only drafts in Draft status can be published.');
         }
 
-        Cardstack_Config__c cfg = new Cardstack_Config__c(
-            Id = draft.Config__c,
-            Value__c = draft.Draft_Value__c,
-            Is_Active__c = true
-        );
-        SObjectAccessDecision cfgDecision = Security.stripInaccessible(
-            AccessType.UPDATABLE,
-            new List<Cardstack_Config__c>{ cfg }
-        );
-        update cfgDecision.getRecords();
+        validateAuthoringKey(draft.Config__r.Name);
 
-        draft.Status__c = 'Published';
-        SObjectAccessDecision draftDecision = Security.stripInaccessible(
-            AccessType.UPDATABLE,
-            new List<Cardstack_Config_Draft__c>{ draft }
-        );
-        update draftDecision.getRecords();
+        // Recheck the actual persisted candidate before either publication update.
+        CardstackOpportunityActionPolicy.validateLayout(draft.Config__r.Name, draft.Draft_Value__c);
+        CardstackRecordScreenCapability.validateLayout(draft.Config__r.Name, draft.Draft_Value__c);
+        CardstackRelatedListPolicy.validateLayout(draft.Config__r.Name, draft.Draft_Value__c);
+        CardstackFlowPublication.validateCandidate(draft.Config__r.Name, draft.Draft_Value__c);
+        CardstackListExposurePolicy.validateCandidate(draft.Config__r.Name, draft.Draft_Value__c);
+        // A linked plan policy rebind and the reviewed layout/draft mutation are one transaction.
+        Savepoint publicationCheckpoint = Database.setSavepoint();
+        try {
+            Cardstack_Config__c cfg = new Cardstack_Config__c(
+                Id = draft.Config__c,
+                Value__c = draft.Draft_Value__c,
+                Is_Active__c = true
+            );
+            SObjectAccessDecision cfgDecision = Security.stripInaccessible(
+                AccessType.UPDATABLE,
+                new List<Cardstack_Config__c>{ cfg }
+            );
+            update cfgDecision.getRecords();
 
-        CardstackAuditService.logAction(
-            'CONFIG_PUBLISH', 'cardstackStudio', String.valueOf(draft.Config__c),
-            'Published draft ' + draft.Id
-        );
+            draft.Status__c = 'Published';
+            SObjectAccessDecision draftDecision = Security.stripInaccessible(
+                AccessType.UPDATABLE,
+                new List<Cardstack_Config_Draft__c>{ draft }
+            );
+            update draftDecision.getRecords();
+
+            CardstackFlowPublication.rebindReferencedPlans(draft.Config__r.Name, draft.Draft_Value__c);
+
+            CardstackAuditService.logAction(
+                'CONFIG_PUBLISH', 'cardstackStudio', String.valueOf(draft.Config__c),
+                'Published draft ' + draft.Id
+            );
+        } catch (Exception failure) {
+            Database.rollback(publicationCheckpoint);
+            throw failure;
+        } finally {
+            Database.releaseSavepoint(publicationCheckpoint);
+        }
+    }
+
+    /**
+     * Loads fresh stored values for a supported Studio candidate. Digests bind
+     * raw text, including inactive retained values; display uses published values.
+     * @param draftId Exact candidate identity.
+     * @return Snapshot consumed by native publication review.
+     */
+    public static Map<String, Object> getDraftReview(Id draftId) {
+        if (draftId == null) throw new ConfigException('Draft Id is required.');
+        Cardstack_Config_Draft__c draft = [
+            SELECT Id, Config__c, Draft_Value__c, Status__c
+            FROM Cardstack_Config_Draft__c WHERE Id = :draftId WITH USER_MODE LIMIT 1
+        ];
+        Cardstack_Config__c config = [
+            SELECT Id, Name, Value__c, Is_Active__c
+            FROM Cardstack_Config__c WHERE Id = :draft.Config__c WITH USER_MODE LIMIT 1
+        ];
+        validateReviewKey(config.Name);
+        if (draft.Status__c != 'Draft') throw new ConfigException('STALE_REVIEW');
+        return new Map<String, Object>{
+            'draftId' => CardstackConnectionTypes.normalizeId(String.valueOf(draft.Id)),
+            'key' => config.Name,
+            'liveValue' => config.Is_Active__c ? config.Value__c : null,
+            'draftValue' => draft.Draft_Value__c,
+            'liveDigest' => storedDigest(config.Value__c),
+            'draftDigest' => storedDigest(draft.Draft_Value__c)
+        };
+    }
+
+    /**
+     * Publishes only the exact snapshot explicitly reviewed by the admin.
+     * Parent configuration is locked before the candidate, consistently with
+     * the existing publication mutation. Lookup alone never authorizes a write.
+     * @param draftId Reviewed candidate identity.
+     * @param expectedLiveDigest SHA-256 of the reviewed stored parent value.
+     * @param expectedDraftDigest SHA-256 of the reviewed stored candidate value.
+     */
+    public static void publishReviewedDraft(Id draftId, String expectedLiveDigest, String expectedDraftDigest) {
+        if (draftId == null) throw new ConfigException('Draft Id is required.');
+        Cardstack_Config_Draft__c locator = [
+            SELECT Config__c FROM Cardstack_Config_Draft__c
+            WHERE Id = :draftId WITH USER_MODE LIMIT 1
+        ];
+        Cardstack_Config__c config = [
+            SELECT Id, Name, Value__c, Is_Active__c FROM Cardstack_Config__c
+            WHERE Id = :locator.Config__c WITH USER_MODE LIMIT 1 FOR UPDATE
+        ];
+        Cardstack_Config_Draft__c draft = [
+            SELECT Id, Config__c, Draft_Value__c, Status__c FROM Cardstack_Config_Draft__c
+            WHERE Id = :draftId WITH USER_MODE LIMIT 1 FOR UPDATE
+        ];
+        // Fail closed if any required publication field cannot be written. Never
+        // silently strip the value or status from a reviewed publication.
+        if (!Schema.sObjectType.Cardstack_Config__c.isUpdateable()
+            || !Schema.sObjectType.Cardstack_Config_Draft__c.isUpdateable()
+            || !Schema.sObjectType.Cardstack_Config__c.fields.Value__c.isUpdateable()
+            || !Schema.sObjectType.Cardstack_Config__c.fields.Is_Active__c.isUpdateable()
+            || !Schema.sObjectType.Cardstack_Config_Draft__c.fields.Status__c.isUpdateable()) {
+            throw new ConfigException('Insufficient access to publish configuration.');
+        }
+        validateReviewKey(config.Name);
+        if (draft.Config__c != config.Id || draft.Status__c != 'Draft'
+            || !storedDigest(config.Value__c).equals(expectedLiveDigest)
+            || !storedDigest(draft.Draft_Value__c).equals(expectedDraftDigest)) {
+            throw new ConfigException('STALE_REVIEW');
+        }
+        // Existing publication rechecks both candidate validators under these
+        // locks. Roll back both mutations if a caught error reaches the controller.
+        Savepoint checkpoint = Database.setSavepoint();
+        try {
+            publishDraft(draft.Id);
+        } catch (Exception failure) {
+            Database.rollback(checkpoint);
+            throw failure;
+        }
+    }
+
+    private static void validateReviewKey(String key) {
+        validateAuthoringKey(key);
+        if (!isSupportedStudioKey(key)) throw new ConfigException('UNSUPPORTED_CONFIGURATION');
+    }
+
+    @TestVisible
+    private static String storedDigest(String rawStoredValue) {
+        return EncodingUtil.convertToHex(Crypto.generateDigest('SHA-256',
+            Blob.valueOf(JSON.serialize(new List<String>{rawStoredValue})))).toLowerCase();
     }
 
     /**
@@ -225,7 +367,53 @@ public with sharing class CardstackConfigService {
         ];
     }
 
+    /**
+     * Lists the active supported candidate window independently of retained history.
+     * @return Up to 200 newest Draft candidates for supported Studio keys.
+     */
+    public static List<Cardstack_Config_Draft__c> listSupportedDrafts() {
+        if (!Schema.sObjectType.Cardstack_Config_Draft__c.isAccessible()) {
+            throw new ConfigException('Insufficient access to configuration drafts.');
+        }
+        Set<Id> supportedConfigIds = supportedConfigurationIds();
+        if (supportedConfigIds.isEmpty()) return new List<Cardstack_Config_Draft__c>();
+        return [
+            SELECT Id, Name, Config__c, Config__r.Name, Draft_Value__c,
+                   Status__c, CreatedDate, CreatedBy.Name
+            FROM Cardstack_Config_Draft__c
+            WHERE Status__c = 'Draft' AND Config__c IN :supportedConfigIds
+            WITH USER_MODE
+            ORDER BY CreatedDate DESC, Id DESC
+            LIMIT 200
+        ];
+    }
+
+    /**
+     * Counts supported pending work without applying a tray/history window.
+     * @return Exact number of supported Draft candidates visible to this actor.
+     */
+    public static Integer countSupportedDrafts() {
+        if (!Schema.sObjectType.Cardstack_Config_Draft__c.isAccessible()) {
+            throw new ConfigException('Insufficient access to configuration drafts.');
+        }
+        Set<Id> supportedConfigIds = supportedConfigurationIds();
+        if (supportedConfigIds.isEmpty()) return 0;
+        return [
+            SELECT COUNT() FROM Cardstack_Config_Draft__c
+            WHERE Status__c = 'Draft' AND Config__c IN :supportedConfigIds
+            WITH USER_MODE
+        ];
+    }
+
     // ---------- Private ----------
+
+    private static Set<Id> supportedConfigurationIds() {
+        Set<Id> identities = new Set<Id>();
+        for (Cardstack_Config__c config : listConfigs()) {
+            if (isSupportedStudioKey(config.Name)) identities.add(config.Id);
+        }
+        return identities;
+    }
 
     private static Cardstack_Config__c getOrCreateConfig(String key) {
         List<Cardstack_Config__c> rows = [

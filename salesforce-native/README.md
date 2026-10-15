@@ -1,4 +1,6 @@
-# Cardstack native Salesforce beta
+# Cardstack Salesforce native workspace
+
+Current combined source is reconciled from `a9a304e`. Start with the [project documentation](docs/PROJECT_DOCUMENTATION_2026-10-14.md), [PRD and status matrix](docs/PRODUCT_OVERVIEW_2026-10-14.md), and [October 15 progress](docs/OVERNIGHT_PROGRESS_2026-10-15.md). The shared custom MCP App passed Case editing, explicit discovery, related navigation and controlled recovery checks in Claude and ChatGPT. Flow metadata authorization/identity verification has succeeded; acquisition/publication and interpreted host acceptance remain pending. Lookup remains unsupported. The beta-specific HXL sections below are historical compatibility information, not the current editor capability ceiling.
 
 `force-app/` is the authoritative deployable source. API version is **67.0**. Legacy Node/Railway applications are retired. The sibling `config/`, `audit/`, `admin-lwc/`, and `permissions/` exports are historical copies; their required metadata is consolidated in `force-app`. `compatibility/` contains retired types and spike widgets, excluded from current deployment.
 
@@ -28,6 +30,10 @@ The initial adapter supports up to 20 published editable Account text/integer fi
 ## Published record actions
 
 Objects → Actions now lets admins choose an in-chat Account edit process or a published Salesforce flow launch card. Guided inputs map starting values from current values, exposed record fields, constants, or user answers. The card binds the record ID; defaults become writes only after submitted answers, review, and exact confirmation. Disabled or invalid actions are omitted. Keep current after Back removes the prior answer. See [Record actions](docs/RECORD_ACTIONS.md).
+
+## Studio list configuration
+
+Record Cards → Lists provides searchable canonical choices for Salesforce fallback views and saved Cardstack filters, enabled selections, and Allow unnamed filtered requests. Working changes, saved drafts, and published policy are separate. Save draft → Review & Publish applies version-1 restrictions; empty selections deny all named lists, and unnamed requests default to disabled. Recognized legacy settings are visibly not enforced until explicit migration and publication. Unavailable selections and unknown properties are retained; saved filter records are untouched. See [Studio list exposure](docs/STUDIO_LIST_EXPOSURE.md) for migration, policy validation, and proof boundaries.
 
 ## Development deployment
 

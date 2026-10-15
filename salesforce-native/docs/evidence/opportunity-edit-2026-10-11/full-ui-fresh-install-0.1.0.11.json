@@ -1,0 +1,33 @@
+{
+  "packageCreation": "Success",
+  "unreleasedVersion": "0.1.0.11",
+  "packageAggregateCoveragePercent": 89,
+  "packageCoverageCheckPassed": true,
+  "install": "SUCCESS",
+  "installedClassSourceContentMatches": 93,
+  "providerSourceDifference": "one omitted terminal LF only",
+  "installedExecutableClasses": 44,
+  "expectedRegularMethods": 530,
+  "observedUniqueRegularMethods": 530,
+  "passingRegularMethods": 530,
+  "setupFailures": 0,
+  "classCommandExitZero": 44,
+  "regularMethodIdentityReconciled": true,
+  "studioRegularMethodsPassed": 34,
+  "newStudioMethodsIncluded": 13,
+  "finalSerialCommandReportedOrgWideCoverage": "89%",
+  "installedCoverageDistinctFromPackageCoverage": true,
+  "nativeCheckOnlyHistoricalCoverageFailurePreserved": true,
+  "SalesforceCrmLicenses": {
+    "total": 2,
+    "used": 1,
+    "available": 1
+  },
+  "rootCompatibilityRuling": "Keep admin active; exactly two ordinary identities, at most one ordinary actor active at any time. Owned A made inactive before B creation; actor/client QA serial; report inactive-side isolation limitation and no concurrent-active proof. No edition or extra-org change.",
+  "ownedOrgRetained": true,
+  "liveAcceptance": "NOT_RUN",
+  "sourceHead": "95acd7d7776625cb28496d5996db9404f449c4b0",
+  "apiVersion": "67.0",
+  "verifiedAtUtc": "2026-10-12T22:59:23.539916+00:00",
+  "evidenceLevel": "actual package creation, installation and native installed assertions; no actual-client or native Stage context proof"
+}

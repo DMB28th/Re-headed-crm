@@ -1,0 +1,26 @@
+{
+  "sourceCommit": "af661bb175c162a8a5932f1ee6325a544a1c3bee",
+  "apiVersion": "67.0",
+  "checkOnly": true,
+  "persisted": false,
+  "archiveSha256": "b86a6833806e63dd3b2521c1636f8ab4b3de030fc775016ce680c747e957ec01",
+  "testLevel": "RunLocalTests",
+  "status": "Succeeded",
+  "componentErrors": 0,
+  "testErrors": 0,
+  "passed": 190,
+  "failed": 0,
+  "sourceMethodsObserved": 145,
+  "sourceMethodsNotRun": 165,
+  "otherOrgLocalMethods": 45,
+  "permissionSetsCompiled": [
+    "Cardstack_Admin",
+    "Cardstack_User"
+  ],
+  "limits": [
+    "RunLocalTests omitted165 package-source methods; this is not complete310-source-suite proof.",
+    "A separate RunSpecifiedTests checkOnly using the exact same archive is running all310 source methods.",
+    "72Apexclasses/13LWC/2PSet source compiled; no live rendering, package creation/install or persisted settings.",
+    "ActualStudio/two-client/lifecycle/freshinstall remain release gates."
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "sourceCommit": "09d63be4f0f8b08ab772bb8ed5b36cb5d4fa7924",
+  "apiVersion": "67.0",
+  "checkOnly": true,
+  "persisted": false,
+  "archiveSha256": "dc659136d638c80e52b8d8f691056c030d6d4bff188c0b93d9ac4955298c59dc",
+  "resourceSha256": "f3d8ac827fbdd1c343b15b24df9a85d7e9960cd35fc21ae5af82bfdb06124b8d",
+  "status": "Succeeded",
+  "componentErrors": 0,
+  "testErrors": 0,
+  "expectedTests": 127,
+  "exactMethodSet": true,
+  "passed": 127,
+  "failed": 0,
+  "newIntegrationTests": 18,
+  "coverage": [
+    {
+      "class": "CardstackConnectionSetupRepository",
+      "covered": 125,
+      "locations": 131
+    },
+    {
+      "class": "CardstackConnectionContext",
+      "covered": 37,
+      "locations": 37
+    }
+  ],
+  "limits": [
+    "Platform Site getters are simulated only in guarded Apex test seams; no live Site deployment or UI acceptance claimed.",
+    "Unknown initial endpoint evidence cannot independently prove later historical domain change.",
+    "No permission sets, schedules, Site, guest or OAuth metadata included.",
+    "No persistent deployment or JWT setting changes.",
+    "Actual host/client lifecycle and fresh installation remain release gates."
+  ]
+}

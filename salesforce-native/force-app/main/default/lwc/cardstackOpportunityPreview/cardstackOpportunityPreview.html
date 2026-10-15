@@ -1,0 +1,8 @@
+<template>
+    <section class="slds-box slds-m-top_medium" aria-label="Synthetic record edit preview">
+        <h3 class="slds-text-heading_small">Synthetic edit preview</h3>
+        <p class="slds-text-color_weak slds-m-bottom_small">Sample values use the shared chat renderer. Review is available; Save is disabled. No Salesforce records are loaded or changed.</p>
+        <template if:true={errorMessage}><p role="alert" tabindex="-1" class="slds-text-color_error">{errorMessage}</p></template>
+        <template if:false={errorMessage}><iframe title="Synthetic record edit preview — Save disabled" src={resourceUrl} sandbox="allow-scripts" width="100%" height="620" onload={handleFrameLoad}></iframe></template>
+    </section>
+</template>

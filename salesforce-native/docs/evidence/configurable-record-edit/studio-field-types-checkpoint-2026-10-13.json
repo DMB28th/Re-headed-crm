@@ -1,0 +1,73 @@
+{
+  "applicationCommit": "8f1b13836f11c80baa54fa0c5db0ebc2eb369162",
+  "persistentOrg": "cardstack-spike2",
+  "apiVersion": "67.0",
+  "artifactSha256": "9b1d60ef15d710a5cfa4065e733521c6b4cfb9808aa25acd562cdf9534c4fc95",
+  "native": {
+    "passed": 808,
+    "expectedIdentities": 801,
+    "missingExpected": 0,
+    "orgExtras": 7,
+    "coveragePercent": 90.38,
+    "componentErrors": 0,
+    "testErrors": 0,
+    "coverageWarnings": 0
+  },
+  "readback": {
+    "status": "VERIFIED",
+    "expectedFiles": 329,
+    "exactOrNormalized": 320,
+    "unchangedExplainedNativeXmlDefaults": 9,
+    "unexplainedDifferences": 0,
+    "zipSha256": "9b1d60ef15d710a5cfa4065e733521c6b4cfb9808aa25acd562cdf9534c4fc95"
+  },
+  "rendererStudio": {
+    "passed": 435,
+    "uiBuildSource": "828da0115fb373920fc692295be9289795842a89"
+  },
+  "liveNativeApi": {
+    "passedChecks": 43,
+    "productSaveEffects": 1,
+    "auditDelta": 1,
+    "savedFields": [
+      "Company",
+      "LastName",
+      "Description",
+      "Rating",
+      "LeadSource",
+      "Email",
+      "Phone",
+      "Website",
+      "NumberOfEmployees",
+      "AnnualRevenue"
+    ],
+    "confirmResponseUnconsumed": true,
+    "hostNetworkLoss": false
+  },
+  "configOnlyMaintenance": {
+    "status": "PASSED",
+    "scope": "ACTUAL_NATIVE_HTTP_NOT_STUDIO_OR_HOST_UI",
+    "checks": [
+      "published_label_changed",
+      "same_generic_contract",
+      "configured_field_order_membership",
+      "same_review_lifecycle",
+      "cancelled",
+      "zero_save_audit_effects",
+      "native_record_unchanged"
+    ],
+    "configOnly": true,
+    "productSaveEffects": 0,
+    "nativeAuditDelta": 0
+  },
+  "originalConfigurationsPreserved": true,
+  "originalDraftsPreserved": true,
+  "actualExpansionScreens": {
+    "Studio": "BLOCKED_MAC_LOCKED",
+    "Claude": "NOT_RUN_MAC_LOCKED",
+    "ChatGPT": "NOT_RUN_MAC_LOCKED"
+  },
+  "liveRecordTypeScope": "MASTER_ONLY",
+  "lookupIntegrated": false,
+  "freshInstall": "NOT_RUN"
+}

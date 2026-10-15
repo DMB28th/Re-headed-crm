@@ -1,0 +1,62 @@
+{
+  "status": "Reviewed source-only RED bundle; awaiting new-scope user authorization",
+  "sourceHead": "2bc8b329214233e9fe90a7c627123071d94510fe",
+  "apiVersion": "67.0",
+  "targetAlias": "cardstack-spike2",
+  "checkOnlyProposed": true,
+  "zipSha256": "1e724bf067fbd72d51c948c99e61a7f539f7f08ea90a3683cda9bcc68569097a",
+  "manifestSha256": "995c268112bb93d86ffdfcadb555ddd5bdf291b8b29b165f2be4f891bd4abddc",
+  "classCount": 17,
+  "zipEntries": 35,
+  "classes": [
+    "CardstackOpportunityActionPolicy",
+    "CardstackOpportunityActionPolicyTest",
+    "CardstackOpportunityEditDomain",
+    "CardstackOpportunityEditDomainTest",
+    "CardstackOpportunityEditRepository",
+    "CardstackOpportunityEditRepositoryTest",
+    "CardstackOpportunityEditService",
+    "CardstackOpportunityEditServiceTest",
+    "CardstackOpportunityEditTestData",
+    "CardstackOpportunityEditTypes",
+    "CardstackOpportunityEditTypesTest",
+    "CardstackOpportunitySelector",
+    "CardstackOpportunitySelectorTest",
+    "CardstackOpportunityStageProvider",
+    "CardstackOpportunityStageProviderTest",
+    "CardstackRecordActionService",
+    "CardstackRecordActionServiceTest"
+  ],
+  "testClasses": [
+    "CardstackOpportunityActionPolicyTest",
+    "CardstackOpportunityEditDomainTest",
+    "CardstackOpportunityEditRepositoryTest",
+    "CardstackOpportunityEditServiceTest",
+    "CardstackOpportunityEditTypesTest",
+    "CardstackOpportunitySelectorTest",
+    "CardstackOpportunityStageProviderTest",
+    "CardstackRecordActionServiceTest"
+  ],
+  "proposedMethodCount": 111,
+  "nativeCompile": "Not run",
+  "nativeBehavioralRed": "Not run",
+  "metadataPersisted": false,
+  "reviews": {
+    "spec": "Approved after test fixes",
+    "quality": "Approved after test fixes"
+  },
+  "offlineVerification": {
+    "exactSourceArchiveMatch": true,
+    "api67Metadata": true,
+    "archiveIntegrity": true,
+    "preservationFiles": 260,
+    "preserved": true
+  },
+  "scope": "Existing-org checkOnly API67 and same-class/test-scope reruns after source fixes; rolled-back @IsTest fixtures. Conditional known deployment-auth procedure ends verified JWT ON. No persistent deploy, package creation, permission/object changes, live client QA or business-record writes.",
+  "remainingGates": [
+    "Native compile and intended assertion failures",
+    "Durable Task2 algorithms after observed behavioral RED",
+    "Static analyzer unavailable: Java absent",
+    "Real RecordUi execution, ordinary-user/two-sales-process and package proof"
+  ]
+}

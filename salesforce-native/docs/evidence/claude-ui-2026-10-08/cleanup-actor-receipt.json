@@ -1,0 +1,22 @@
+{
+  "checkedAt": "2026-10-08T20:38:21.450Z",
+  "siteInactive": true,
+  "guestObjectPermissionRows": 0,
+  "guestApexClassGrants": 0,
+  "guestPageGrants": 0,
+  "ownedTraceFlagsRemaining": 0,
+  "namedTraceEntries": 17,
+  "allNamedTraceActorsMatchConnectedUser": true,
+  "publicChecks": [
+    {
+      "path": "/ui-metadata",
+      "status": 401,
+      "customPointerAbsent": true
+    },
+    {
+      "path": "/ui-mcp",
+      "status": 401,
+      "customPointerAbsent": true
+    }
+  ]
+}

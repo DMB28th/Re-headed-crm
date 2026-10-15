@@ -1,0 +1,52 @@
+{
+  "checkedAt": "2026-10-09T11:10:30.930Z",
+  "phase": "red-r2",
+  "checkOnly": true,
+  "done": true,
+  "success": false,
+  "status": "Failed",
+  "componentErrors": 0,
+  "testErrors": 2,
+  "testsCompleted": 24,
+  "componentsTotal": 17,
+  "componentFailures": [],
+  "testFailures": [
+    {
+      "name": "CardstackConnectionSetupTest",
+      "method": "actualAdminAssignmentAllowsSetup",
+      "problem": "System.[redacted]: Assertion Failed: Admin custom permission"
+    },
+    {
+      "name": "CardstackConnectionSetupTest",
+      "method": "actualUserAssignmentAllowsOnlyInternalSnapshot",
+      "problem": "System.[redacted]: Assertion Failed: Named user permission"
+    }
+  ],
+  "coverage": [
+    {
+      "name": "CardstackConnectionSetupRepository",
+      "locations": 103,
+      "uncovered": 5
+    },
+    {
+      "name": "CardstackConnectionSetup",
+      "locations": 9,
+      "uncovered": 0
+    },
+    {
+      "name": "CardstackConnectionContext",
+      "locations": 35,
+      "uncovered": 8
+    },
+    {
+      "name": "CardstackConnectionAccess",
+      "locations": 6,
+      "uncovered": 0
+    },
+    {
+      "name": "CardstackConnectionTypes",
+      "locations": 59,
+      "uncovered": 6
+    }
+  ]
+}

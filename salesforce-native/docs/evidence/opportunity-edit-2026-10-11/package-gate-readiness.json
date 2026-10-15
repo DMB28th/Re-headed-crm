@@ -1,0 +1,34 @@
+{
+  "sourceHead": "0f1662f545a5d99b2fbffe32ffe4ccd609657de2",
+  "apiVersion": "67.0",
+  "packageSourceFiles": 283,
+  "apexClasses": 93,
+  "annotatedTestClassesIncludingFactories": 46,
+  "sourceTreeSha256": "3b500fc1316ed3e8f402dbfd0ce05c1f4327aaeb6cb8ae959f24e03b31a6bf7b",
+  "stagingInventory": "Historical inventory was captured before final unit rerun; its Pending nativeUnitAcceptance is superseded by task-4-native-unit-green.json",
+  "currentNativeAcceptance": {
+    "status": "Succeeded",
+    "compileErrors": 0,
+    "testsRun": 272,
+    "passed": 272,
+    "failures": 0,
+    "checkOnly": true,
+    "receipt": "task-4-native-unit-green.json"
+  },
+  "localChecks": {
+    "opportunityProtocolPassed": 7,
+    "diagnosticProtocolPassed": 22,
+    "packageStagePassed": 2
+  },
+  "scope": "One unreleased coverage-validated beta; one new1-day scratch install/full local Apex suite; delete only that owned scratch org",
+  "packageCreated": false,
+  "scratchOrgCreated": false,
+  "executionAuthorization": "Pending separate package-only approval",
+  "excluded": "Business CRM fixtures, OAuth/Site/client connections, live Stage/provider proof, production or existing-beta upgrade, promotion, cutover, push and merge",
+  "specReview": "Approved",
+  "qualityReview": "Approved",
+  "reviewReports": [
+    "package-gate-spec-review.md: Approved",
+    "package-gate-quality-review.md: Approved"
+  ]
+}

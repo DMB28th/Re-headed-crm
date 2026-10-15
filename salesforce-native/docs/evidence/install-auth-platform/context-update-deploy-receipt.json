@@ -1,0 +1,27 @@
+{
+  "checkedAt": "2026-10-08T21:19:21.380Z",
+  "mode": "update",
+  "success": true,
+  "done": true,
+  "status": "Succeeded",
+  "componentErrors": 0,
+  "componentsTotal": 2,
+  "testErrors": 0,
+  "testsCompleted": 14,
+  "coverage": [
+    {
+      "name": "CardstackPublicContextProbe",
+      "locations": 23,
+      "uncovered": 0
+    }
+  ],
+  "stages": {
+    "connectionCreated": true,
+    "opaquePreconditionPassed": true,
+    "baselineChecked": true,
+    "submissionStarted": true,
+    "enqueued": true,
+    "pollingStarted": true,
+    "terminalResultReceived": true
+  }
+}

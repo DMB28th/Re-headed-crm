@@ -1,0 +1,646 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-10-10T14:57:48.463Z",
+  "stage": "A",
+  "source": "actual API67 synthetic execution",
+  "deployment": {
+    "ownedDefinitions": 4,
+    "exactTestsPassed": 60,
+    "componentErrors": 0,
+    "testErrors": 0,
+    "deploySha256": "0254b198c7c303f699ff009ba8dea0d4e9dbca726cbfcae60f06e2b78a34baa2"
+  },
+  "protocol": {
+    "completeCoverage": true,
+    "allCasesPass": false,
+    "requiredCases": 84,
+    "counts": {
+      "Pass": 75,
+      "Fail": 2,
+      "Unknown": 7
+    },
+    "networkAttempts": 83,
+    "cases": [
+      {
+        "id": "claude.metadata",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.hostile-metadata",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.guest-mcp",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.hostile-challenge",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.public-tools-list",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.public-resources-read",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.fabricated-tools-list",
+        "status": "Unknown",
+        "code": "PROVIDER_DENIAL",
+        "attempts": 1
+      },
+      {
+        "id": "claude.fabricated-resources-read",
+        "status": "Unknown",
+        "code": "PROVIDER_DENIAL",
+        "attempts": 1
+      },
+      {
+        "id": "claude.negative-case",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.negative-nested",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.negative-unknown",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.negative-encoded",
+        "status": "Fail",
+        "code": "CONTRACT_MISMATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.negative-extra",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.negative-query",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.http-metadata",
+        "status": "Unknown",
+        "code": "PROVIDER_REDIRECT",
+        "attempts": 1
+      },
+      {
+        "id": "claude.non-site",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.method-get",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.method-delete",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.initialize-2025-06-18",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.initialize-2025-11-25",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.notification",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.ping",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.tools",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.resources",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.html",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.open",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.echo",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.empty-echo",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.invalid-json",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.batch",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.unknown-method",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.unknown-resource",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.repeat.initialize-2025-06-18",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.repeat.initialize-2025-11-25",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.repeat.notification",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.repeat.ping",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.repeat.tools",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.repeat.resources",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.repeat.html",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.repeat.open",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.repeat.echo",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "claude.repeat.empty-echo",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.metadata",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.hostile-metadata",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.guest-mcp",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.hostile-challenge",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.public-tools-list",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.public-resources-read",
+        "status": "Unknown",
+        "code": "CONTEXT_REJECTED",
+        "attempts": 0
+      },
+      {
+        "id": "chatgpt.fabricated-tools-list",
+        "status": "Unknown",
+        "code": "PROVIDER_DENIAL",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.fabricated-resources-read",
+        "status": "Unknown",
+        "code": "PROVIDER_DENIAL",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.negative-case",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.negative-nested",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.negative-unknown",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.negative-encoded",
+        "status": "Fail",
+        "code": "CONTRACT_MISMATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.negative-extra",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.negative-query",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.http-metadata",
+        "status": "Unknown",
+        "code": "PROVIDER_REDIRECT",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.non-site",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.method-get",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.method-delete",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.initialize-2025-06-18",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.initialize-2025-11-25",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.notification",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.ping",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.tools",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.resources",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.html",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.open",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.echo",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.empty-echo",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.invalid-json",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.batch",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.unknown-method",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.unknown-resource",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.repeat.initialize-2025-06-18",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.repeat.initialize-2025-11-25",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.repeat.notification",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.repeat.ping",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.repeat.tools",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.repeat.resources",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.repeat.html",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.repeat.open",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.repeat.echo",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.repeat.empty-echo",
+        "status": "Pass",
+        "code": "CONTRACT_MATCH",
+        "attempts": 1
+      }
+    ],
+    "limitations": [
+      "NETWORK_ABORT_UNVERIFIED",
+      "PROTOCOL_REPEAT_ONLY"
+    ]
+  },
+  "supplemental": {
+    "caseId": "chatgpt.public-resources-read",
+    "status": "Pass",
+    "attempts": 1,
+    "originalUnknownRetained": true
+  },
+  "encodedRouteDiagnosis": {
+    "actualContract": "Fail",
+    "expectedStatus": 404,
+    "actualStatus": "Unknown-not-captured",
+    "cause": "Unknown",
+    "extraDiagnosticHttpAttempts": 0
+  },
+  "clientInspection": {
+    "unsavedForm": true,
+    "callbackDisplayedBeforeCreation": true,
+    "callbackStoredPrivately": true,
+    "publicCandidateAuthMethod": "none",
+    "oidcEnabled": false,
+    "scopes": [
+      "api",
+      "refresh_token"
+    ],
+    "createdPlugin": false,
+    "createdEca": false,
+    "consentSubmitted": false,
+    "stageBAuthorized": false,
+    "globalDraftInventory": "Unknown",
+    "currentUnsavedFormRetained": "Unknown after browser connection loss",
+    "callbackMustBeReobservedBeforeStageB": true
+  },
+  "cleanup": {
+    "complete": true,
+    "siteInactive": {
+      "actualSavedUi": true,
+      "independentRestReadback": true,
+      "fullMetadataReadback": true
+    },
+    "fullMetadataReadback": "Pass",
+    "temporaryAssignmentRemaining": 0,
+    "temporaryGuestGrantsRemaining": 0,
+    "ownedDefinitionsRemaining": 0,
+    "deploymentJwtOn": true,
+    "pendingCleanupDeployment": false,
+    "cleanupJobSucceeded": true,
+    "componentErrors": 0,
+    "testErrors": 0,
+    "baselinePreserved": true,
+    "originalFourEcasPreserved": true,
+    "foundationPreserved": true,
+    "constantPagePreserved": true,
+    "originalGuestProfilePreserved": true,
+    "ownedIdsAndGlobalReferencesAbsent": true,
+    "singleCleanupSubmission": true,
+    "cleanupEnqueuedAt": "2026-10-10T14:55:55.209Z",
+    "jwtOffSavedAt": "2026-10-10T14:52:45.125Z",
+    "freshOpaqueManagedLoginAt": "2026-10-10T14:55:35.275Z",
+    "jwtOnSavedAt": "2026-10-10T14:56:14.942Z",
+    "finalCheckedAt": "2026-10-10T14:56:28.884Z",
+    "uiControl": "supported native Chrome controls"
+  },
+  "providerBlock": {
+    "operation": "Metadata.read",
+    "code": "REQUEST_LIMIT_EXCEEDED",
+    "dailyApiRequestsAvailableObserved": 9759,
+    "cause": "Unknown",
+    "cachedMetadataNotUsedToClaimCurrentProof": true,
+    "resolvedForCleanup": true,
+    "freshMetadataReadPassedAt": "2026-10-10T14:41:48Z"
+  },
+  "production": {
+    "task1Complete": false,
+    "task3Dispatched": false,
+    "released": false
+  },
+  "humanApproval": true,
+  "recoverySource": {
+    "commit": "896743e3efd65682c018a2c03c35afd38652aa5c",
+    "independentReview": "Approved",
+    "focusedTestsPassed": 8,
+    "controllerSuitePassed": 104,
+    "actualFreshFullReadback": "Pass",
+    "adoptionMarkerCreated": true,
+    "actualKnownRestorationReconciled": true
+  },
+  "cleanupHistory": {
+    "previousReceipt": {
+      "complete": false,
+      "siteInactive": {
+        "actualSavedUi": true,
+        "independentRestReadback": true
+      },
+      "fullMetadataReadback": "Unknown-provider-request-limit",
+      "temporaryAssignmentRemaining": 1,
+      "temporaryGuestGrantsRemaining": 2,
+      "ownedDefinitionsRemaining": 4,
+      "deploymentJwtOn": true,
+      "pendingCleanupDeployment": false,
+      "latestUiObservation": "2026-10-10T12:02:02.387Z",
+      "recoveryJournalUnchangedAfterBlockedAttempt": true,
+      "originalOwnedActivationResultClosed": true
+    },
+    "providerBlock": {
+      "operation": "Metadata.read",
+      "code": "REQUEST_LIMIT_EXCEEDED",
+      "dailyApiRequestsAvailableObserved": 9759,
+      "cause": "Unknown",
+      "cachedMetadataNotUsedToClaimCurrentProof": true,
+      "resolvedForCleanup": true,
+      "freshMetadataReadPassedAt": "2026-10-10T14:41:48Z"
+    }
+  }
+}

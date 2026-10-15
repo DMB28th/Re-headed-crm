@@ -1,0 +1,59 @@
+{
+  "sourceHead": "aa3e0c5a342dc423a8cd87d84a35c343a765c345",
+  "providerStatus": "Succeeded",
+  "checkOnly": true,
+  "providerSuccess": true,
+  "done": true,
+  "componentsProcessed": 8,
+  "componentsTotal": 8,
+  "componentErrors": 0,
+  "testClasses": 4,
+  "expectedRegularMethods": 98,
+  "regularPass": 98,
+  "regularFail": 0,
+  "methodIdentityExactlyOnce": true,
+  "setupFailures": 0,
+  "coverageWarnings": [],
+  "fourProductionClassCoverage": [
+    {
+      "className": "CardstackOpportunityMcpAdapter",
+      "totalLocations": 248,
+      "coveredLocations": 235,
+      "coveragePercent": 94.758
+    },
+    {
+      "className": "CardstackRecordMcpAdapter",
+      "totalLocations": 238,
+      "coveredLocations": 215,
+      "coveragePercent": 90.336
+    },
+    {
+      "className": "CardstackEditorUiResource",
+      "totalLocations": 30,
+      "coveredLocations": 28,
+      "coveragePercent": 93.333
+    },
+    {
+      "className": "CardstackMcpDispatcher",
+      "totalLocations": 120,
+      "coveredLocations": 113,
+      "coveragePercent": 94.167
+    }
+  ],
+  "archiveSha256": "62b2e23d8ebdaf73b7f562ef8f59072dfa5e1a4ec9197d50fb6b5efc1b801997",
+  "localTests": {
+    "pass": 209,
+    "fail": 0,
+    "skip": 0
+  },
+  "priorFailure": {
+    "sourceHead": "8ac080af70fe9ec1b2846aeae935bf47bc098319",
+    "compilerErrors": 10,
+    "testsExecuted": 0,
+    "retained": true
+  },
+  "persistentlyInstalled": false,
+  "actualHostResolution": "NOT_RUN",
+  "staticAnalysis": "UNAVAILABLE: missing Java runtime",
+  "independentPostcheck": "UNCHANGED: installed source/assets/LWC, Opportunity policy, retained Contact history; new helper classes absent"
+}

@@ -1,0 +1,56 @@
+{
+  "checkedAt": "2026-10-09T11:04:58.992Z",
+  "phase": "red",
+  "checkOnly": true,
+  "done": true,
+  "success": false,
+  "status": "Failed",
+  "componentErrors": 8,
+  "testErrors": 0,
+  "testsCompleted": 0,
+  "componentsTotal": 20,
+  "componentFailures": [
+    {
+      "name": "CardstackConnectionSetup",
+      "line": 44,
+      "problem": "Dependent class is invalid and needs recompilation:\n Class CardstackConnectionSetupRepository : Comparison arguments must be compatible types: String, System.StatusCode"
+    },
+    {
+      "name": "CardstackConnectionSetupRepository",
+      "line": 44,
+      "problem": "Comparison arguments must be compatible types: String, System.StatusCode"
+    },
+    {
+      "name": "CardstackConnectionSetupTest",
+      "line": 8,
+      "problem": "Method does not exist or incorrect signature: void getDescribe(Schema.SObjectDescribeOptions) from the type Schema.DescribeSObjectResult"
+    },
+    {
+      "name": "CardstackConnectionSetupTest",
+      "line": 132,
+      "problem": "Method does not exist or incorrect signature: void getDescribe(Schema.SObjectDescribeOptions) from the type Schema.DescribeSObjectResult"
+    },
+    {
+      "name": "CardstackConnectionSetupTest",
+      "line": 133,
+      "problem": "Method does not exist or incorrect signature: void getDescribe(Schema.SObjectDescribeOptions) from the type Schema.DescribeSObjectResult"
+    },
+    {
+      "name": "CardstackConnectionSetupTest",
+      "line": 134,
+      "problem": "Method does not exist or incorrect signature: void getDescribe(Schema.SObjectDescribeOptions) from the type Schema.DescribeSObjectResult"
+    },
+    {
+      "name": "Cardstack_Admin",
+      "line": 100,
+      "problem": "Error parsing file: Element classAccesses is duplicated at this location in type PermissionSet"
+    },
+    {
+      "name": "Cardstack_User",
+      "line": 42,
+      "problem": "Error parsing file: Element classAccesses is duplicated at this location in type PermissionSet"
+    }
+  ],
+  "testFailures": [],
+  "coverage": []
+}

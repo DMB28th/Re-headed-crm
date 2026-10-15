@@ -1,0 +1,23 @@
+{
+  "sourceHead": "a0f5beee934ba827bfaa0f1a974dbdaaa3512888",
+  "apiVersion": "67.0",
+  "compileErrors": 0,
+  "testsRun": 112,
+  "passed": 99,
+  "failed": 13,
+  "jsonMatchesAccepted": true,
+  "jsonEvidence": "First equality assertion passed; failure occurs at native field equality assertion",
+  "rowMatchesTagged": false,
+  "rowMinusTaggedMs": -777,
+  "rowMillisecond": 0,
+  "taggedMillisecond": 777,
+  "proof": "Native DateTime field removed the777ms preserved by tagged JSON; exactdeadlinecomparison rejected the state.",
+  "zipSha256": "5ff4527e566863849b3415a169b483a7849870223b1b63d00de4e04879b1531a",
+  "checkOnly": true,
+  "metadataPersisted": false,
+  "businessRecordsSaved": false,
+  "privateCaptureSha256": {
+    "native-task2-deadline-red.private.json": "3b9dfeb4476c14a6ab5844a593d80ce1a8d5a492add2e72ef126c936bac51ac3",
+    "native-task2-deadline-red-report-1.private.json": "6d582ed4c9f294fc26c5694a13215021596cd427891ba41b34b15fcd57efccfd"
+  }
+}

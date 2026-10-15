@@ -1,0 +1,37 @@
+{
+  "sourceCommit": "e5c49f35c2cd57aa5fd3779f8a24c2f3036daa34",
+  "apiVersion": "67.0",
+  "checkOnly": true,
+  "persisted": false,
+  "archiveSha256": "73b2448ff9a0106891bf04f177064c8c84b353c50905c2d08903b5a217ee606c",
+  "status": "Succeeded",
+  "componentErrors": 0,
+  "testErrors": 0,
+  "expectedTests": 166,
+  "exactMethodSet": true,
+  "passed": 166,
+  "failed": 0,
+  "coverage": [
+    {
+      "class": "CardstackConnectionSetupController",
+      "covered": 93,
+      "locations": 95
+    },
+    {
+      "class": "CardstackConnectionSetupRepository",
+      "covered": 146,
+      "locations": 153
+    },
+    {
+      "class": "CardstackStudioController",
+      "covered": 216,
+      "locations": 229
+    }
+  ],
+  "limits": [
+    "All three LWC bundles and selected Apex compiled in checkOnly; no live rendering or persistent deployment.",
+    "Includes JS recovery/status fixes and ten additional meaningful Studio tests.",
+    "No permission sets, Site, guest, OAuth or schedules included; later source permission ordering fix requires full-core compiler validation.",
+    "ActualStudio/client/lifecycle/freshinstallation remain release gates; no JWT setting changes."
+  ]
+}

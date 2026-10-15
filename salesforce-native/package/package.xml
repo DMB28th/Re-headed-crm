@@ -93,15 +93,16 @@
     <types>
         <members>cardstackAuditViewer</members>
         <members>cardstackConnections</members>
+        <members>cardstackConnectionSetup</members>
         <members>cardstackDashboard</members>
         <members>cardstackFlowConfig</members>
         <members>cardstackFlowWizard</members>
-        <members>cardstackHomeCardConfig</members>
         <members>cardstackObjectConfig</members>
         <members>cardstackLayoutField</members>
         <members>cardstackPublishCenter</members>
-        <members>cardstackSetupChecklist</members>
         <members>cardstackStudio</members>
+        <members>cardstackStudioKeys</members>
+        <members>cardstackStudioModel</members>
         <name>LightningComponentBundle</name>
     </types>
     <types>

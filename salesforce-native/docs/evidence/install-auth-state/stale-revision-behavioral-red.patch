@@ -1,0 +1,10 @@
+--- a/force-app/main/default/classes/CardstackConnectionSetupRepository.cls
++++ b/force-app/main/default/classes/CardstackConnectionSetupRepository.cls
+@@ -29,7 +29,6 @@
+         List<Cardstack_Connection_Setup__c> rows = [SELECT Id, Revision__c, Configuration__c, Configuration_Digest__c FROM Cardstack_Connection_Setup__c WHERE Client__c = :client WITH SYSTEM_MODE LIMIT 1 FOR UPDATE];
+         Cardstack_Connection_Setup__c row = rows.isEmpty() ? null : rows[0];
+         Integer revision = row == null ? 0 : row.Revision__c.intValue();
+-        if(input.expectedRevision != revision) throw new CardstackConnectionTypes.ConnectionException('STALE_SETUP');
+         String serialized = canonical(normalized);
+         if(serialized.length() > 32768) throw new CardstackConnectionTypes.ConnectionException('INVALID_SETUP');
+         String digest = EncodingUtil.convertToHex(Crypto.generateDigest('SHA-256', Blob.valueOf(serialized)));

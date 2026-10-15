@@ -1,0 +1,40 @@
+{
+  "sourceHead": "fcb2ec97d9af7de5660c908b10c875376a5df08e",
+  "apiVersion": "67.0",
+  "checkOnly": true,
+  "done": true,
+  "status": "Failed",
+  "compileErrorCount": 0,
+  "testsRun": 53,
+  "testFailures": 0,
+  "passed": 53,
+  "zipSha256": "efc341ba63c3c85c94a36fdc26cc839ed8efea4d73d3577e97c4e4557b949fec",
+  "privateCaptureSha256": "0be1149ffa6dc3a0fd9f5c830362f38392e507676d99e0c0457db2585576eaf2",
+  "coverage": [
+    {
+      "class": "CardstackOpportunityEditTypes",
+      "covered": 24,
+      "total": 34,
+      "percent": 70.588
+    },
+    {
+      "class": "CardstackOpportunityEditDomain",
+      "covered": 128,
+      "total": 142,
+      "percent": 90.141
+    },
+    {
+      "class": "CardstackOpportunityStageProvider",
+      "covered": 37,
+      "total": 59,
+      "percent": 62.712
+    },
+    {
+      "class": "CardstackOpportunitySelector",
+      "covered": 45,
+      "total": 52,
+      "percent": 86.538
+    }
+  ],
+  "jwt": "Last saved and verified ON before this checkOnly; no subsequent app mutations. Repeat UI observation unavailable because Mac locked."
+}

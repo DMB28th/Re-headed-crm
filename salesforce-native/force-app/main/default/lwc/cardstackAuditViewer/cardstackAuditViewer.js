@@ -42,6 +42,10 @@ export default class CardstackAuditViewer extends LightningElement {
     @wire(listAuditUsers)
     wiredUsers;
 
+    get loading() { return !this.wiredResult || (!this.wiredResult.data && !this.wiredResult.error); }
+    get loadError() { return this.wiredResult?.error ? this.wiredResult.error.body?.message || 'Could not load Activity. Refresh to retry.' : ''; }
+    actionLabel(action) { return ({read:'Read',write:'Record updated',create:'Record created',publish:'Configuration published',rollback:'Draft discarded',cancel:'Canceled',confirm:'Confirmed'})[action] || (action || 'Activity').replace(/[_-]/g,' '); }
+
     get limitInt() {
         return parseInt(this.limitSize, 10);
     }
@@ -63,6 +67,8 @@ export default class CardstackAuditViewer extends LightningElement {
         const ts = r.Timestamp__c ? new Date(r.Timestamp__c) : null;
         return {
             ...r,
+            actionLabel: this.actionLabel(r.Action__c),
+            expandLabel: `${this.expandedIds.has(r.Id) ? 'Collapse' : 'Expand'} ${this.actionLabel(r.Action__c)} ${r.Tool_Name__c || ''}`,
             userName: r.User__r?.Name || r.User__c || '',
             expanded: this.expandedIds.has(r.Id),
             expandIcon: this.expandedIds.has(r.Id) ? 'utility:chevrondown' : 'utility:chevronright',

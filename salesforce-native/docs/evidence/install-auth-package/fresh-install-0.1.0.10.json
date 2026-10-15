@@ -1,0 +1,29 @@
+{
+  "observedAt": "2026-10-11T12:11:11.166359+00:00",
+  "version": "0.1.0.10",
+  "sourceCommit": "394cdb7b409f022af510aa7704cbd5ac31e93470",
+  "sourceBase": "af661bb175c162a8a5932f1ee6325a544a1c3bee",
+  "changes": [
+    "Diagnostic deadline canonicalized to persisted whole seconds; strict UI equality preserved",
+    "Guided Sites link uses observed CustomDomain route",
+    "Guided OAuth manager link uses observed ManageExternalClientApplication route"
+  ],
+  "packageCreateStatus": "Success",
+  "actualPackageCoveragePercent": 88,
+  "coverageGatePassed": true,
+  "released": false,
+  "createdVersionRetainedForAudit": true,
+  "installTarget": "Same owned disposable QA scratch org only",
+  "installStatus": "SUCCESS",
+  "liveClientVerification": "Fresh ChatGPT diagnostic requested; Claude QA app ready and draft prepared",
+  "originalBetaModified": false,
+  "promotionPushMerge": false,
+  "coreFileCount": 239,
+  "coreManifestSha256": "787edfa078d03e02ce4c8ffb48af35454f0371fe0f2356273de3d6fe9708ffed",
+  "installedRunLocalTests": {
+    "outcome": "Passed",
+    "testsRan": 332,
+    "passed": 332,
+    "failed": 0
+  }
+}

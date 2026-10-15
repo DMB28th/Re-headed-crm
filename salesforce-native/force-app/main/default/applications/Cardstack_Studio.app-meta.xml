@@ -4,7 +4,7 @@
         <headerColor>#1B5BD7</headerColor>
         <shouldOverrideOrgTheme>false</shouldOverrideOrgTheme>
     </brand>
-    <description>Chat-powered CRM cards for Salesforce. Configure record layouts, flows, and the home card your team sees in Claude.</description>
+    <description>Native Cardstack administration: Overview, Setup, Record Cards, Flow Launch Cards, Review &amp; Publish, and Activity.</description>
     <formFactors>Large</formFactors>
     <isNavAutoTempTabsDisabled>false</isNavAutoTempTabsDisabled>
     <isNavPersonalizationDisabled>false</isNavPersonalizationDisabled>
@@ -12,6 +12,5 @@
     <label>Cardstack Studio</label>
     <navType>Standard</navType>
     <tabs>Cardstack_Studio</tabs>
-    <tabs>standard-home</tabs>
     <uiType>Lightning</uiType>
 </CustomApplication>

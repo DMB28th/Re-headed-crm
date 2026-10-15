@@ -1,0 +1,15 @@
+{
+  "checkedAt": "2026-10-10T09:41:36.011Z",
+  "success": true,
+  "exactHistoricalOrgOperatorMatches": true,
+  "operatorActive": true,
+  "operatorDirectUnmutedUseAssignment": true,
+  "siteInactive": true,
+  "sitePrefixMatches": true,
+  "guestClassPageCustomGrants": 0,
+  "guestObjectGrants": 0,
+  "baselineOtherGuestGrants": 1,
+  "constantPageHashMatches": true,
+  "existingEcaCount": 4,
+  "liveMutation": false
+}

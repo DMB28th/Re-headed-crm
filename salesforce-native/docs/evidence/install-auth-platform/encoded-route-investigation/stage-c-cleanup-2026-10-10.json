@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "stage": "C",
+  "liveExecution": true,
+  "approvedScope": "unchanged disposable fixture and four named GET route observations",
+  "deployment": {
+    "succeeded": true,
+    "exactSixtyTestsPassed": true,
+    "componentErrors": 0,
+    "testErrors": 0
+  },
+  "observations": {
+    "caseCount": 4,
+    "attemptsPerCase": 1,
+    "complete": true,
+    "allHttpStatuses": 405,
+    "allFixtureErrors": "method_not_allowed",
+    "normalizationLayer": "Unknown",
+    "originalStageAResultUnchanged": true
+  },
+  "cleanup": {
+    "knownJobSucceeded": true,
+    "ownedDefinitionsAbsent": true,
+    "globalOwnedReferencesAbsent": true,
+    "ownedAccessAbsent": true,
+    "siteInactive": true,
+    "fullOriginalBaselinePreserved": true,
+    "actualJwtOnVerified": true,
+    "metadataQueueClear": true
+  },
+  "preservation": {
+    "originalFourApps": true,
+    "originalTwoVisibleChatGPTEntries": true,
+    "existingClientRuntimeHealth": "Not retested",
+    "connectedUserIdentity": "Unknown",
+    "newOAuthApps": 0,
+    "newPlugins": 0,
+    "newConnections": 0,
+    "newConsent": 0,
+    "independentPriorConsentRevocation": "Unknown"
+  },
+  "scopeLimits": {
+    "encodedSeparators": "Not measured",
+    "rawHandlerUri": "Unknown",
+    "mainTask1Complete": false,
+    "task3Dispatched": false,
+    "release": false
+  }
+}

@@ -1,28 +1,26 @@
 <template>
-    <lightning-card title="Cardstack Studio" icon-name="standard:apps">
-        <p class="slds-p-horizontal_small slds-text-color_weak slds-m-bottom_small">
-            Configure record cards, lists, flows, and the home card your team sees in chat.
-            Changes are staged as drafts until published.
-        </p>
+    <div onconfigchange={handleConfigChange} onnavigatetab={handleNavigateTab}>
+        <template if:true={navigationError}><p role="alert" class="slds-text-color_error slds-p-around_small">{navigationError}</p></template>
+        <template for:each={publishedContexts} for:item="context"><c-cardstack-record-readiness key={context.draftId} published-context={context}></c-cardstack-record-readiness></template>
         <lightning-tabset variant="scoped" active-tab-value={activeTab}>
-            <lightning-tab label="Dashboard" value="dashboard" onactive={handleTabActive} icon-name="standard:dashboard">
-                <c-cardstack-dashboard onnavigatetab={handleNavigateTab}></c-cardstack-dashboard>
+            <lightning-tab label="Overview" value="overview" onactive={handleTabActive} icon-name="standard:dashboard">
+                <c-cardstack-dashboard></c-cardstack-dashboard>
             </lightning-tab>
-            <lightning-tab label="Objects" value="objects" onactive={handleTabActive} icon-name="standard:object">
+            <lightning-tab label="Setup" value="setup" onactive={handleTabActive} icon-name="utility:setup">
+                <c-cardstack-connection-setup></c-cardstack-connection-setup>
+            </lightning-tab>
+            <lightning-tab label="Record Cards" value="objects" onactive={handleTabActive} icon-name="standard:object">
                 <c-cardstack-object-config></c-cardstack-object-config>
             </lightning-tab>
-            <lightning-tab label="Flows" value="flows" onactive={handleTabActive} icon-name="standard:flow">
-                <c-cardstack-flow-config onnavigatetab={handleNavigateTab}></c-cardstack-flow-config>
+            <lightning-tab label="Flow Launch Cards" value="flows" onactive={handleTabActive} icon-name="standard:flow">
+                <c-cardstack-flow-config></c-cardstack-flow-config>
             </lightning-tab>
-            <lightning-tab label="Home Card" value="home" onactive={handleTabActive} icon-name="standard:home">
-                <c-cardstack-home-card-config></c-cardstack-home-card-config>
-            </lightning-tab>
-            <lightning-tab label="Audit Log" value="audit" onactive={handleTabActive} icon-name="standard:log_a_call">
-                <c-cardstack-audit-viewer></c-cardstack-audit-viewer>
-            </lightning-tab>
-            <lightning-tab label="Publish Center" value="publish" onactive={handleTabActive} icon-name="standard:publish">
+            <lightning-tab label={publishLabel} value="publish" onactive={handleTabActive} icon-name="standard:publish">
                 <c-cardstack-publish-center></c-cardstack-publish-center>
             </lightning-tab>
+            <lightning-tab label="Activity" value="audit" onactive={handleTabActive} icon-name="standard:log_a_call">
+                <c-cardstack-audit-viewer></c-cardstack-audit-viewer>
+            </lightning-tab>
         </lightning-tabset>
-    </lightning-card>
+    </div>
 </template>

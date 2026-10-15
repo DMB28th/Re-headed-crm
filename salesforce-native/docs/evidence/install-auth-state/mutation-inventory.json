@@ -1,0 +1,11 @@
+{
+  "checkOnly": true,
+  "persistentDeploymentPermitted": false,
+  "manifest": "package.xml",
+  "greenSourceZipSha256": "1f88f989a21c1289197e86779a9f67640ee268b23033361c605a5e1d1d519319",
+  "originalRepositorySha256": "70f109efc87f8e2aa04db0c426027aad45d036b7f3d3890b730f4bd82c0cbddd",
+  "mutatedRepositorySha256": "71c9e6e58fdef72411f0317a08176ef00970d585c44c5ad84b0e9527e6da2d6a",
+  "patchSha256": "8ff01c749491eeb7ed1c0338539e7db36fa5fd6262687fa6bab5caafeb040880",
+  "expectedFailure": "CardstackConnectionSetupTest.saveRejectsStaleRevision",
+  "scope": "Remove only expectedRevision rejection from extracted copy; not original TDD chronology"
+}

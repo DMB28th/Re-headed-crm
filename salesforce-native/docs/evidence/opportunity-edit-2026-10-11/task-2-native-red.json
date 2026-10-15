@@ -1,0 +1,225 @@
+{
+  "sourceHead": "2bc8b329214233e9fe90a7c627123071d94510fe",
+  "zipSha256": "1e724bf067fbd72d51c948c99e61a7f539f7f08ea90a3683cda9bcc68569097a",
+  "apiVersion": "67.0",
+  "cliExit": 0,
+  "errorName": null,
+  "status": "Failed",
+  "done": true,
+  "checkOnly": true,
+  "compileErrorCount": 0,
+  "testsRun": 111,
+  "testFailures": 31,
+  "passed": 80,
+  "failures": [
+    {
+      "class": "CardstackOpportunityActionPolicyTest",
+      "method": "disabledPublishedPolicyCannotAuthorizePreset",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityActionPolicyTest",
+      "method": "fixedPresetAcceptsOrderedCurrentMappings",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityActionPolicyTest",
+      "method": "fixedPresetRejectsConstantSource",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityActionPolicyTest",
+      "method": "fixedPresetRejectsMappingsOrExtraFields",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityActionPolicyTest",
+      "method": "fixedPresetRejectsUnusedMappingPayload",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityActionPolicyTest",
+      "method": "fixedPresetRejectsWrongOrder",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityActionPolicyTest",
+      "method": "readOnlyFieldCannotAuthorizePreset",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditRepositoryTest",
+      "method": "otherStateKindCannotResume",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditRepositoryTest",
+      "method": "ownedStateRoundTripsWithoutRawKey",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditRepositoryTest",
+      "method": "savedRevisionIsDurable",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditRepositoryTest",
+      "method": "stateExactUtf8BoundaryAccepted",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditRepositoryTest",
+      "method": "stateKindAndSizeRejected",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditRepositoryTest",
+      "method": "stateOverUtf8BoundaryRejected",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditRepositoryTest",
+      "method": "wrongClientCannotLockState",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "absoluteExpiryIsNotExtended",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "backAndCancelInvalidateGrant",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "changedReviewContextReturnsConflictWithoutGrant",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "completedNoOpResumeRetrievesReceiptAfterExpiry",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "draftActionCannotStart",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "expiredReviewReturnsExpiredWithoutGrant",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "invalidReviewHasNoGrant",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "noOpCompletesWithoutGrant",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "publishedPresetStartsThreeOrderedInputs",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "requestExactUtf8BoundaryAccepted",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "requestOverUtf8BoundaryRejected",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "reviewDoesNoCrmDml",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "reviewResumeReissuesSamePatchWithoutExtendingExpiry",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "rightsLossHidesReviewFields",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "wrongActorCannotResume",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackRecordActionServiceTest",
+      "method": "opportunityExtraMappingCannotResolve",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackRecordActionServiceTest",
+      "method": "opportunityFixedPublishedPresetResolves",
+      "type": "System.AssertException"
+    }
+  ],
+  "coverage": [
+    {
+      "class": "CardstackOpportunityEditTypes",
+      "covered": 31,
+      "total": 41,
+      "percent": 75.61
+    },
+    {
+      "class": "CardstackOpportunitySelector",
+      "covered": 45,
+      "total": 52,
+      "percent": 86.538
+    },
+    {
+      "class": "CardstackOpportunityStageProvider",
+      "covered": 57,
+      "total": 61,
+      "percent": 93.443
+    },
+    {
+      "class": "CardstackOpportunityActionPolicy",
+      "covered": 2,
+      "total": 2,
+      "percent": 100.0
+    },
+    {
+      "class": "CardstackOpportunityEditService",
+      "covered": 11,
+      "total": 13,
+      "percent": 84.615
+    },
+    {
+      "class": "CardstackOpportunityEditRepository",
+      "covered": 6,
+      "total": 9,
+      "percent": 66.667
+    },
+    {
+      "class": "CardstackOpportunityEditDomain",
+      "covered": 128,
+      "total": 142,
+      "percent": 90.141
+    }
+  ],
+  "proofScope": "Observed scaffold behavioral RED, not implemented flow acceptance",
+  "metadataPersisted": false,
+  "businessRecordsSaved": false,
+  "jwt": "Last saved/verified ON; no auth or app-setting changes were needed for this run",
+  "privateCaptureSha256": {
+    "native-task2-red-report-1.private.json": "8a22e9d917f40cc17011020f097c3cf12948f64ede65de25fd9facd8a5a1d8e2",
+    "native-task2-red.private.json": "2eb347589d0819e827d846250145a3dd23c46e3404f108123dbb1a509d713d93",
+    "native-task2-red-report-3.private.json": "127f4201178e8de20959f6d985654f6cef294c2e681dcd800266c7d1af704a81",
+    "native-task2-red-report-2.private.json": "3cde5767c71b45fc5c72cdebd63e8ba96029d4c85437cf6aa903a8a353675273"
+  }
+}

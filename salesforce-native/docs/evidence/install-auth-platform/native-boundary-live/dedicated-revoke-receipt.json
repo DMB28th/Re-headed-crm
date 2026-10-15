@@ -1,0 +1,9 @@
+{
+  "checkedAt": "2026-10-09T00:40:20.452Z",
+  "label": "dedicated",
+  "revoked": true,
+  "statuses": [
+    200
+  ],
+  "authorizationUrlRemoved": true
+}

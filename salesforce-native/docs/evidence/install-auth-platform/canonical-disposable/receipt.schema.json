@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Canonical synthetic offline contract receipt",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "liveExecution", "stages"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "liveExecution": {"const": false},
+    "stages": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["stage", "status", "evidence"],
+      "properties": {
+        "stage": {"enum": ["metadata", "challenge", "invalid-route", "missing-use", "method-denied", "notification", "initialize", "ping", "tools", "resources", "html", "open", "echo", "rpc-error"]},
+        "status": {"enum": ["Pass", "Fail", "Unknown"]},
+        "evidence": {"const": "injected-http-contract"}
+      }
+    }}
+  }
+}

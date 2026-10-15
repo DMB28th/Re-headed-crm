@@ -1,0 +1,19 @@
+{
+  "checkedAt": "2026-10-09T15:06:09.968Z",
+  "success": true,
+  "siteInactive": true,
+  "sitePrefixPinned": true,
+  "exactOriginsFrozenPrivately": true,
+  "guestClassPageGrants": 0,
+  "existingOtherGuestEntityGrants": 1,
+  "guestObjectGrants": 0,
+  "constantPageUnchanged": true,
+  "existingPermissionSetBaselinesCaptured": 2,
+  "proposedAccountCollision": false,
+  "activationRecipientExistingOperator": true,
+  "activationEmailsSent": 0,
+  "userCreated": false,
+  "appCreated": false,
+  "callback": "http://localhost:1717/OauthRedirect",
+  "appName": "Cardstack_Ordinary_User_Auth_QA"
+}

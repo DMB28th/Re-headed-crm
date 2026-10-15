@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-7hTr85JwY5G81F1g1Y4p1v4k6QtL/sYzgeJbiurIXjw='; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"><title>Cardstack Opportunity</title>
+<style>:root {
+  font-family: var(--font-sans, system-ui, sans-serif);
+  color: var(--color-text-primary, #202c3c);
+  background: var(--color-background-primary, #fff);
+  font-size: 14px;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  padding: var(--workspace-safe-top, 12px) var(--workspace-safe-right, 12px)
+    var(--workspace-safe-bottom, 12px) var(--workspace-safe-left, 12px);
+}
+main {
+  max-width: var(--workspace-max-width, 800px);
+  margin: auto;
+  min-width: 0;
+}
+.workspace {
+  display: flex;
+  flex-direction: column;
+  height: calc(
+    var(--workspace-height, 500px) - var(--workspace-safe-top, 12px) -
+      var(--workspace-safe-bottom, 12px)
+  );
+  min-height: 0;
+  border: 1px solid var(--color-border-primary, #d6dde5);
+  border-radius: var(--border-radius-md, 8px);
+  overflow: hidden;
+  background: var(--color-background-primary, #fff);
+}
+.workspace-header {
+  flex: none;
+  padding: 14px 18px 10px;
+  background: var(--color-background-secondary, #f6f8fa);
+  border-bottom: 1px solid var(--color-border-primary, #d6dde5);
+}
+.workspace-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 14px 18px;
+}
+.workspace-actions {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 18px;
+  border-top: 1px solid var(--color-border-primary, #d6dde5);
+  background: var(--color-background-primary, #fff);
+}
+.workspace-actions:empty {
+  display: none;
+}
+h1 {
+  font-size: 1.3rem;
+  margin: 2px 0 6px;
+  overflow-wrap: anywhere;
+}
+h2 {
+  font-size: 1.08rem;
+  margin: 0 0 14px;
+}
+h3 {
+  font-size: 0.95rem;
+  margin: 10px 0;
+}
+p {
+  line-height: 1.45;
+}
+.object-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.status {
+  margin: 4px 0 0;
+  color: var(--color-text-secondary, #536277);
+  font-size: 0.86rem;
+}
+fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0 0 18px;
+  min-width: 0;
+}
+legend {
+  font-weight: 600;
+  width: 100%;
+  padding: 7px 9px;
+  margin: 0 0 12px;
+  background: var(--color-background-secondary, #f6f8fa);
+  border-bottom: 1px solid var(--color-border-primary, #d6dde5);
+}
+.field-grid {
+  display: grid;
+  gap: 14px 18px;
+}
+.columns-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.columns-1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+.field {
+  min-width: 0;
+}
+label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+input:not([type="checkbox"]),
+select,
+textarea {
+  display: block;
+  width: 100%;
+  margin-top: 5px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-primary, #b9c2cc);
+  border-radius: 4px;
+  color: inherit;
+  background: var(--color-background-primary, #fff);
+  font: inherit;
+  min-height: 36px;
+}
+input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  vertical-align: middle;
+  accent-color: var(--color-text-info, #1559ad);
+}
+.clear {
+  font-weight: 400;
+  margin-top: 6px;
+  font-size: 0.8rem;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+button {
+  padding: 8px 13px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-text-inverse, #fff);
+  background: var(--color-text-info, #1559ad);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  min-height: 38px;
+}
+button[data-action="cancel"],
+button[data-action="back"],
+button[data-action="refresh"],
+button[data-action="resume"] {
+  background: var(--color-background-primary, #fff);
+  color: var(--color-text-primary, #202c3c);
+  border-color: var(--color-border-primary, #b9c2cc);
+}
+button[data-action="review"],
+button[data-action="confirm"] {
+  margin-left: auto;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+h2:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--color-text-info, #307ad2);
+  outline-offset: 2px;
+}
+.error {
+  color: var(--color-text-danger, #ae1e1e);
+  margin: 6px 0 0;
+  font-size: 0.85rem;
+}
+[aria-invalid="true"] {
+  border-color: var(--color-text-danger, #ae1e1e) !important;
+}
+small {
+  display: block;
+  margin-top: 5px;
+  color: var(--color-text-secondary, #536277);
+  overflow-wrap: anywhere;
+  font-size: 0.78rem;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+th,
+td {
+  text-align: left;
+  padding: 9px 6px;
+  border-bottom: 1px solid var(--color-border-primary, #d6dde5);
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+thead th {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary, #536277);
+}
+tbody th {
+  font-weight: 500;
+}
+dl {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) 2fr;
+  gap: 9px;
+  margin: 10px 0 16px;
+}
+dt {
+  color: var(--color-text-secondary, #536277);
+}
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.receipt {
+  padding: 12px;
+  border: 1px solid var(--color-border-primary, #d6dde5);
+  border-radius: 6px;
+}
+.receipt h3 {
+  margin-top: 0;
+}
+.receipt p {
+  margin: 6px 0;
+}
+summary {
+  cursor: pointer;
+  margin-top: 10px;
+  font-weight: 600;
+}
+.synthetic {
+  background: #fff1ce;
+  color: #513c00;
+  padding: 10px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+nav {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+nav label {
+  font-size: 12px;
+}
+.preview-tools {
+  max-width: 800px;
+  margin: auto;
+}
+.preview-tools select {
+  max-width: 320px;
+}
+:is(
+  [data-workspace-size="flow"] .workspace,
+  .workspace[data-chrome-fit="flow"]
+) {
+  height: auto;
+  overflow: visible;
+}
+:is([data-workspace-size="flow"] .workspace, .workspace[data-chrome-fit="flow"])
+  .workspace-actions {
+  order: -1;
+  border-top: 0;
+  border-bottom: 1px solid var(--color-border-primary, #d6dde5);
+}
+:is([data-workspace-size="flow"] .workspace, .workspace[data-chrome-fit="flow"])
+  .workspace-content {
+  overflow: visible;
+}
+@media (max-width: 520px) {
+  .columns-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .workspace-header,
+  .workspace-content {
+    padding: 12px;
+  }
+  .workspace-actions {
+    padding: 8px;
+    gap: 6px;
+  }
+  .workspace-actions button {
+    flex: 1 1 120px;
+  }
+  h1 {
+    font-size: 1.15rem;
+  }
+  th,
+  td {
+    padding: 8px 4px;
+  }
+  dl {
+    grid-template-columns: 1fr 1.5fr;
+  }
+}
+
+.delivery-qa {
+  border: 1px solid var(--color-border-primary, #d6dde5);
+  border-radius: 6px;
+  padding: 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+.delivery-qa summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.delivery-qa-controls,
+.delivery-qa form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.delivery-qa input {
+  flex: 1 1 190px;
+  min-width: 0;
+}
+.delivery-qa button,
+.delivery-qa select,
+.delivery-qa input {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+</style></head><body><main id="root"></main><script>(()=>{var Ht=Object.defineProperty;var mt=(e,t)=>{for(var r in t)Ht(e,r,{get:t[r],enumerable:!0})};var Ce=Object.freeze({STRING:{tag:"input",kind:"text"},TEXTAREA:{tag:"textarea",kind:"text"},EMAIL:{tag:"input",kind:"text"},PHONE:{tag:"input",kind:"text"},URL:{tag:"input",kind:"text"},BOOLEAN:{tag:"input",kind:"checkbox"},INTEGER:{tag:"input",kind:"integer"},DECIMAL:{tag:"input",kind:"decimal"},DOUBLE:{tag:"input",kind:"decimal"},CURRENCY:{tag:"input",kind:"decimal"},DATE:{tag:"input",kind:"date"},PICKLIST:{tag:"select",kind:"choice"}}),E=(e,t=256)=>typeof e=="string"&&e.length<=t,J=e=>e===null||E(e,4096);function ae(e){if(!Array.isArray(e)||e.length>100)throw Error("INVALID_FIELDS");let t=new Set;return e.map(r=>{if(!r||Object.keys(r).some(s=>!["fieldApi","label","value","dataType","required","canClear","choices","currencyCode","length","precision","scale"].includes(s))||!E(r.fieldApi,80)||!/^[A-Za-z][A-Za-z0-9_]*$/.test(r.fieldApi)||t.has(r.fieldApi)||!E(r.label)||!E(r.dataType,40)||!J(r.value))throw Error("INVALID_FIELDS");t.add(r.fieldApi);let n=r.choices??[],a=new Set;if(!Array.isArray(n)||n.length>500)throw Error("INVALID_CHOICES");let l=n.map(s=>{if(!s||Object.keys(s).some(o=>!["label","value"].includes(o))||!E(s.label)||!E(s.value,256)||!s.value||a.has(s.value))throw Error("INVALID_CHOICES");return a.add(s.value),{label:s.label,value:s.value}});if(r.currencyCode!=null&&!/^[A-Z]{3}$/.test(r.currencyCode))throw Error("INVALID_CURRENCY");for(let s of["length","precision","scale"])if(r[s]!=null&&(!Number.isSafeInteger(r[s])||r[s]<0||r[s]>131072))throw Error("INVALID_FIELDS");return{fieldApi:r.fieldApi,label:r.label,value:r.value,dataType:r.dataType.toUpperCase(),required:r.required===!0,canClear:r.canClear===!0,choices:l,currencyCode:r.currencyCode??null,...r.length==null?{}:{length:r.length},...r.precision==null?{}:{precision:r.precision},...r.scale==null?{}:{scale:r.scale}}})}function Ne(e){if(!/^\d{4}-\d{2}-\d{2}$/.test(e))return!1;let[t,r,n]=e.split("-").map(l=>parseInt(l,10)),a=t%4===0&&(t%100!==0||t%400===0);return t>=1&&r>=1&&r<=12&&n>=1&&n<=[31,a?29:28,31,30,31,30,31,31,30,31,30,31][r-1]}function Re(e,t){let r=de(e,t?.dataType);if(r===null)return null;let n=r.replace(/^-/,""),[a,l=""]=n.split("."),s=(a||"0").replace(/^0+/,""),o=l.replace(/0+$/,"");return t?.precision!=null&&(t.precision<1||t.scale==null||t.scale>t.precision||s.length>t.precision-t.scale||o.length>t.scale)||t?.dataType==="INTEGER"&&t.precision!=null&&(s.length>10||s.length===10&&s>(r.startsWith("-")?"2147483648":"2147483647"))?null:r}function de(e,t){if(!E(e,5463))return null;let r=Ce[typeof t=="string"?t.toUpperCase():""]?.kind;if(!(r==="integer"?/^-?(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(e):r==="decimal"&&(/^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/.test(e)||/^-?\.\d+$/.test(e))))return null;let s=e.replaceAll(",","").replace(/^(-?)\./,"$10.");return E(s,4096)?s:null}function ye(e,t){let r=de(t,e?.dataType);if(r===null)return t;let n=r.startsWith("-"),a=n?r.slice(1):r,[l,s]=a.split(".");return(n?"-":"")+l.replace(/\B(?=(\d{3})+(?!\d))/g,",")+(s===void 0?"":"."+s)}function rt(e,t={}){let r=[],n=[];for(let a of e){let l=Object.hasOwn(t,a.fieldApi)?t[a.fieldApi]:null;if(!l||l.operation==="keep")continue;let s;if(!Ce[a.dataType])s="This field type is unavailable for editing.";else if(l.operation==="clear")if(a.required||!a.canClear)s="This field cannot be cleared.";else{r.push({fieldApi:a.fieldApi,operation:"clear"});continue}else if(l.operation!=="set"||!E(l.value,["integer","decimal"].includes(Ce[a.dataType].kind)?5463:4096))s="Enter a supported value.";else{let o=l.value,b=Ce[a.dataType].kind;a.required&&o.trim()===""?s="Enter a value for this required field.":b==="integer"&&de(o,a.dataType)===null?s="Enter a whole number; commas must separate groups of three digits.":b==="decimal"&&de(o,a.dataType)===null?s="Enter an exact decimal; commas must group three digits. Exponents are not allowed. Use Clear to remove the value.":["integer","decimal"].includes(b)&&Re(o,a)===null?s="Enter a number within the native precision, scale and range.":["STRING","TEXTAREA","EMAIL","PHONE","URL"].includes(a.dataType)&&a.length!=null&&o.length>a.length?s="Enter text within the native field length.":b==="date"&&!Ne(o)?s="Enter a valid calendar date as YYYY-MM-DD.":b==="checkbox"&&!["true","false"].includes(o)?s="Choose true or false.":b==="choice"&&!a.choices.some(q=>q.value===o)?s="Choose an available option or keep the current value.":r.push({fieldApi:a.fieldApi,operation:"set",value:["integer","decimal"].includes(b)?de(o,a.dataType):o})}s&&n.push({fieldApi:a.fieldApi,code:"CLIENT_VALUE",message:s})}return{changes:r,errors:n}}function gt(e){return Object.fromEntries(ae(e).map(t=>{let r=Ce[t.dataType],n={operation:"keep"};return r&&t.value===null?t.canClear&&!t.required&&(n={operation:"clear"}):r&&(r.kind!=="choice"||t.choices.some(a=>a.value===t.value))&&(n={operation:"set",value:t.value}),[t.fieldApi,n]}))}var at={};mt(at,{key:()=>Ve,publicView:()=>Xt,recordId:()=>He});var Ge=["StageName","CloseDate","Amount"],Gt=["Editing","Review","Completed","Cancelled","Expired","Conflict","Rejected"],Ue=e=>e!==null&&typeof e=="object"&&!Array.isArray(e),nt=e=>Number.isSafeInteger(e)&&e>0,Ve=e=>typeof e=="string"&&/^[a-f0-9]{64}$/.test(e),it=e=>typeof e=="string"&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(e)&&Number.isFinite(Date.parse(e));function He(e){if(typeof e!="string"||!/^006[A-Za-z0-9]{15}$/.test(e))return!1;let t="ABCDEFGHIJKLMNOPQRSTUVWXYZ012345",r="";for(let n=0;n<15;n+=5){let a=0;for(let l=0;l<5;l++)/[A-Z]/.test(e[n+l])&&(a|=1<<l);r+=t[a]}return e.slice(15)===r}function Jt(e){if(!Array.isArray(e)||e.length>10)throw Error("INVALID_VIEW");return e.map(t=>{if(!Ue(t)||!E(t.message)||typeof t.code!="string"||!/^[A-Z_]{1,80}$/.test(t.code)||t.fieldApi!=null&&!Ge.includes(t.fieldApi))throw Error("INVALID_VIEW");return{fieldApi:t.fieldApi??null,code:t.code,message:t.message}})}function It(e){if(!Array.isArray(e)||e.length>3)throw Error("INVALID_VIEW");let t=new Set;return e.map(r=>{if(!Ue(r)||!Ge.includes(r.fieldApi)||t.has(r.fieldApi)||!E(r.label)||!J(r.beforeValue)||!J(r.afterValue))throw Error("INVALID_VIEW");return t.add(r.fieldApi),{fieldApi:r.fieldApi,label:r.label,beforeValue:r.beforeValue,afterValue:r.afterValue}})}function Xt(e){if(!Ue(e))throw Error("INVALID_VIEW");if(e.contractVersion==="opportunity-card/v1"){if(!He(e.recordId)||!E(e.recordName)||!Array.isArray(e.actions)||e.actions.length>50)throw Error("INVALID_CARD");let n=ae(e.fields);if(n.some(l=>!Ge.includes(l.fieldApi)))throw Error("INVALID_CARD");let a=e.actions.map(l=>{if(!Ue(l)||!/^[A-Za-z0-9_-]{1,80}$/.test(l.name)||!E(l.label)||l.type!=="record-edit")throw Error("INVALID_CARD");return{name:l.name,label:l.label}});return{status:"Card",recordId:e.recordId,recordName:e.recordName,fields:n,actions:a}}if(e.contractVersion!=="opportunity-edit/v1"||!Gt.includes(e.status))throw Error("INVALID_VIEW");let t=Jt(e.errors??[]),r={status:e.status,errors:t,fields:ae(e.fields??[]),diff:It(e.diff??[])};if(["Editing","Review","Completed"].includes(e.status)){if(!He(e.recordId)||!E(e.recordName)||!nt(e.revision))throw Error("INVALID_VIEW");Object.assign(r,{recordId:e.recordId,recordName:e.recordName,revision:e.revision})}else if(e.recordId!=null){if(!He(e.recordId)||!E(e.recordName)||!nt(e.revision))throw Error("INVALID_VIEW");Object.assign(r,{recordId:e.recordId,recordName:e.recordName,revision:e.revision})}if(e.status==="Editing"){if(!it(e.expiresAt)||r.fields.length!==3||r.fields.some((n,a)=>n.fieldApi!==Ge[a])||e.fields.some(n=>typeof n.required!="boolean"||typeof n.canClear!="boolean"))throw Error("INVALID_VIEW");r.expiresAt=e.expiresAt}if(e.status==="Review"){if(!it(e.expiresAt)||!nt(e.reviewRevision)||r.diff.length===0)throw Error("INVALID_VIEW");Object.assign(r,{expiresAt:e.expiresAt,reviewRevision:e.reviewRevision})}if(e.status==="Completed"){let n=e.receipt;if(!Ue(n)||!/^(receipt-[a-f0-9]{32})$/.test(n.reference)||!E(n.actorDisplayName)||!it(n.completedAt)||!["saved","noChanges"].includes(n.status))throw Error("INVALID_RECEIPT");let a=It(n.diff);if(n.status==="saved"&&a.length===0||n.status==="noChanges"&&a.length!==0)throw Error("INVALID_RECEIPT");r.receipt={reference:n.reference,actorDisplayName:n.actorDisplayName,completedAt:n.completedAt,status:n.status,diff:a}}return r}var ct={};mt(ct,{key:()=>tr,publicView:()=>Je,recordId:()=>ve});var Et=(e,t)=>e&&typeof e=="object"&&!Array.isArray(e)&&Object.keys(e).every(r=>t.includes(r));function ue(e,t){if(t==null)return[{id:"fields",label:"Details",columns:2,fields:e.map(s=>s.fieldApi)}];if(!Et(t,["version","sections"])||t.version!==1||!Array.isArray(t.sections)||t.sections.length>20)throw Error("INVALID_LAYOUT");let r=new Set(e.map(s=>s.fieldApi)),n=new Set,a=new Set,l=t.sections.map(s=>{if(!Et(s,["id","label","fields","columns"])||typeof s.id!="string"||!/^[A-Za-z][A-Za-z0-9_-]{0,79}$/.test(s.id)||a.has(s.id)||typeof s.label!="string"||s.label.length>256||![1,2].includes(s.columns)||!Array.isArray(s.fields)||s.fields.length===0)throw Error("INVALID_LAYOUT");a.add(s.id);for(let o of s.fields){if(!r.has(o)||n.has(o))throw Error("INVALID_LAYOUT");n.add(o)}return{id:s.id,label:s.label,columns:s.columns,fields:[...s.fields]}});if(n.size!==r.size)throw Error("INVALID_LAYOUT");return l}function Ct(e,t){if(t!=null)return{version:1,sections:ue(e,t)}}var er=["Editing","Review","Completed","Cancelled","Expired","Conflict","Rejected"],Ae=e=>e!==null&&typeof e=="object"&&!Array.isArray(e),st=e=>Number.isSafeInteger(e)&&e>0,tr=e=>typeof e=="string"&&/^[a-f0-9]{64}$/.test(e),ot=e=>typeof e=="string"&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(e)&&Number.isFinite(Date.parse(e));function ve(e){if(typeof e!="string"||!/^[A-Za-z0-9]{18}$/.test(e))return!1;let t="ABCDEFGHIJKLMNOPQRSTUVWXYZ012345",r="";for(let n=0;n<15;n+=5){let a=0;for(let l=0;l<5;l++)/[A-Z]/.test(e[n+l])&&(a|=1<<l);r+=t[a]}return e.slice(15)===r}var ke=e=>typeof e=="string"&&/^[A-Za-z][A-Za-z0-9_]{0,79}$/.test(e),rr=["STRING","TEXTAREA","BOOLEAN","INTEGER","DATE","DECIMAL","DOUBLE","CURRENCY","EMAIL","PHONE","URL","PICKLIST"];function lt(e,t){return t===null?e.dataType!=="BOOLEAN":e.dataType==="BOOLEAN"?["true","false"].includes(t):e.dataType==="DATE"?Ne(t):["INTEGER","DECIMAL","DOUBLE","CURRENCY"].includes(e.dataType)?/^-?(?:\d+)(?:\.\d+)?$/.test(t)&&Re(t,e)!==null:J(t)&&(!["EMAIL","PHONE","URL","PICKLIST"].includes(e.dataType)||t.length<=e.length)}function Nt(e){let t=ae(e);if(t.length<1||t.length>20||e.some(r=>typeof r.required!="boolean"||typeof r.canClear!="boolean"||!rr.includes(r.dataType)||!lt(r,r.value)||["INTEGER","DECIMAL","DOUBLE","CURRENCY"].includes(r.dataType)&&(!Number.isInteger(r.precision)||r.precision<1||r.precision>28||!Number.isInteger(r.scale)||r.scale<0||r.scale>r.precision)||r.dataType==="INTEGER"&&r.scale!==0||r.dataType==="CURRENCY"&&!/^[A-Z]{3}$/.test(r.currencyCode)||r.dataType==="BOOLEAN"&&(r.canClear||!["true","false"].includes(r.value))||r.required&&r.canClear||["EMAIL","PHONE","URL","PICKLIST"].includes(r.dataType)&&(!Number.isSafeInteger(r.length)||r.length<1||r.length>131072)||r.dataType==="PICKLIST"&&r.choices?.some(n=>n.value.length>r.length)||r.dataType!=="PICKLIST"&&(r.choices??[]).length))throw Error("INVALID_FIELDS");return t}function nr(e,t){if(!Array.isArray(e)||e.length>10)throw Error("INVALID_VIEW");return e.map(r=>{if(!Ae(r)||!E(r.message)||typeof r.code!="string"||!/^[A-Z_]{1,80}$/.test(r.code)||r.fieldApi!=null&&!t.includes(r.fieldApi))throw Error("INVALID_VIEW");return{fieldApi:r.fieldApi??null,code:r.code,message:r.message}})}function Rt(e,t,r=!1){if(!Array.isArray(e)||e.length>20)throw Error("INVALID_VIEW");let n=new Set;return e.map(a=>{if(!Ae(a)||!t.some(s=>s.fieldApi===a.fieldApi)||n.has(a.fieldApi)||!E(a.label)||!J(a.beforeValue)||!J(a.afterValue))throw Error("INVALID_VIEW");let l=t.find(s=>s.fieldApi===a.fieldApi);if(!lt(l,a.beforeValue)||!lt(l,a.afterValue)||!r&&l.dataType==="PICKLIST"&&a.afterValue!==null&&a.afterValue!==a.beforeValue&&!l.choices.some(s=>s.value===a.afterValue)||l.dataType==="BOOLEAN"&&![a.beforeValue,a.afterValue].every(s=>["true","false"].includes(s))||a.afterValue===null&&(!l.canClear||l.required))throw Error("INVALID_VIEW");return n.add(a.fieldApi),{fieldApi:a.fieldApi,label:a.label,beforeValue:a.beforeValue,afterValue:a.afterValue}})}function ir(e){if(!Ae(e)||!["Matches","Empty","Rejected"].includes(e.status)||!["hasMore","needsSelection","searchIndexMayLag"].every(n=>typeof e[n]=="boolean")||!["searchedObjects","unavailableObjects"].every(n=>Array.isArray(e[n])&&e[n].length<=12&&e[n].every(ke))||!Array.isArray(e.candidates)||e.candidates.length>10||e.status==="Matches"!=e.candidates.length>0||e.status==="Rejected"&&!/^[A-Z_]{1,80}$/.test(e.errorCode))throw Error("INVALID_DISCOVERY");let t=new Set,r=e.candidates.map(n=>{if(!Ae(n)||!ve(n.recordId)||!ke(n.objectApiName)||!E(n.objectLabel)||!E(n.recordName)||t.has(n.recordId)||!Array.isArray(n.context)||n.context.length>2)throw Error("INVALID_DISCOVERY");t.add(n.recordId);let a=n.context.map(l=>{if(!Ae(l)||!ke(l.fieldApi)||!E(l.label)||!J(l.value))throw Error("INVALID_DISCOVERY");return{fieldApi:l.fieldApi,label:l.label,value:l.value}});return{recordId:n.recordId,objectApiName:n.objectApiName,objectLabel:n.objectLabel,recordName:n.recordName,context:a}});return{status:"Discovery",searchStatus:e.status,candidates:r,hasMore:e.hasMore,needsSelection:e.needsSelection,searchIndexMayLag:e.searchIndexMayLag,searchedObjects:[...e.searchedObjects],unavailableObjects:[...e.unavailableObjects]}}function Je(e){if(!Ae(e))throw Error("INVALID_VIEW");if(e.contractVersion==="record-discovery/v1")return ir(e);if(e.contractVersion==="record-card/v1"){if(!ve(e.recordId)||!E(e.recordName)||!Array.isArray(e.actions)||e.actions.length>50||!ke(e.objectApiName))throw Error("INVALID_CARD");let s=Nt(e.fields),o=e.actions.map(b=>{if(!Ae(b)||!/^[A-Za-z0-9_-]{1,80}$/.test(b.name)||!E(b.label)||!["record-edit","screen-flow"].includes(b.type))throw Error("INVALID_CARD");return{name:b.name,label:b.label,...b.type==="screen-flow"?{type:b.type}:{}}});return{status:"Card",objectApiName:e.objectApiName,recordId:e.recordId,recordName:e.recordName,fields:s,layout:Ct(s,e.layout),actions:o}}if(e.contractVersion!=="record-edit/v1"||!er.includes(e.status))throw Error("INVALID_VIEW");let t=["Editing","Review","Completed"].includes(e.status)||e.recordId!=null;if(t&&!ke(e.objectApiName)||!t&&e.objectApiName!=null&&!ke(e.objectApiName))throw Error("INVALID_VIEW");let r=t?Nt(e.fields):ae(e.fields??[]);if(e.status==="Completed")for(let s of r)s.choices=[];let n=r.map(s=>s.fieldApi),a=nr(e.errors??[],n),l={status:e.status,errors:a,fields:r,layout:Ct(r,e.layout),diff:Rt(e.diff??[],r)};if(["Editing","Review","Completed"].includes(e.status)){if(!ve(e.recordId)||!E(e.recordName)||!st(e.revision))throw Error("INVALID_VIEW");Object.assign(l,{objectApiName:e.objectApiName,recordId:e.recordId,recordName:e.recordName,revision:e.revision})}else if(e.recordId!=null){if(!ve(e.recordId)||!E(e.recordName)||!st(e.revision))throw Error("INVALID_VIEW");Object.assign(l,{objectApiName:e.objectApiName,recordId:e.recordId,recordName:e.recordName,revision:e.revision})}if(e.status==="Editing"){if(!ot(e.expiresAt)||e.fields.some(s=>typeof s.required!="boolean"||typeof s.canClear!="boolean"))throw Error("INVALID_VIEW");l.expiresAt=e.expiresAt}if(e.status==="Review"){if(!ot(e.expiresAt)||!st(e.reviewRevision)||l.diff.length===0)throw Error("INVALID_VIEW");Object.assign(l,{expiresAt:e.expiresAt,reviewRevision:e.reviewRevision})}if(e.status==="Completed"){let s=e.receipt;if(!Ae(s)||!/^(receipt-[a-f0-9]{32})$/.test(s.reference)||!E(s.actorDisplayName)||!ot(s.completedAt)||!["saved","noChanges"].includes(s.status))throw Error("INVALID_RECEIPT");let o=Rt(s.diff,r,!0);if(s.status==="saved"&&o.length===0||s.status==="noChanges"&&o.length!==0)throw Error("INVALID_RECEIPT");l.receipt={reference:s.reference,actorDisplayName:s.actorDisplayName,completedAt:s.completedAt,status:s.status,diff:o}}return l}var Dt=(e,t,r)=>Object.freeze({publicView:e.publicView,recordId:e.recordId,privateMetaKey:r,tools:Object.freeze({open:`${t}_open`,...t==="cardstack_record"?{search:"cardstack_record_search",relatedDefinitions:"cardstack_record_related_definitions",relatedPage:"cardstack_record_related_page",relatedOpenChild:"cardstack_record_related_open_child",flowStart:"cardstack_record_flow_start",flowTransition:"cardstack_record_flow_transition"}:{},start:`${t}_edit_start`,transition:`${t}_edit_transition`,refresh:`${t}_refresh`})}),De=Dt(at,"cardstack_opportunity","cardstack/opportunityEdit"),$e=Dt(ct,"cardstack_record","cardstack/recordEdit");var Me=e=>e!==null&&typeof e=="object"&&!Array.isArray(e),ar=e=>typeof e=="string"&&/^[A-Za-z][A-Za-z0-9_]{0,79}$/.test(e),Tt=e=>typeof e=="string"&&/^[A-Za-z][A-Za-z0-9_-]{0,79}$/.test(e);function Z(){throw Error("INVALID_FLOW_VIEW")}function St(e){(!Me(e)||!E(e.label)||!Array.isArray(e.inputs)||e.inputs.length>20||!Array.isArray(e.sections)||e.sections.length>20||!Array.isArray(e.plainTextBlocks)||e.plainTextBlocks.length>40||!e.plainTextBlocks.every(o=>E(o,4096))||!["canNext","canBack","canCancel"].every(o=>typeof e[o]=="boolean"))&&Z(),e.needsAnswerRefresh!=null&&typeof e.needsAnswerRefresh!="boolean"&&Z();let t=new Map;for(let o of e.sections)(!Me(o)||!Tt(o.sectionId)||t.has(o.sectionId)||!E(o.label)||![1,2].includes(o.columns)||!Number.isSafeInteger(o.depth)||o.depth<1||o.depth>4||o.parentId!=null&&!Tt(o.parentId))&&Z(),t.set(o.sectionId,{...o,fields:[]});for(let o of t.values()){let b=o.parentId==null?null:t.get(o.parentId);(o.parentId!=null&&!b||b&&b.depth+1!==o.depth||!b&&o.depth!==1)&&Z()}let r=new Set,n={},a=[],l=e.inputs.map(o=>{(!Me(o)||!ar(o.inputId)||r.has(o.inputId)||!E(o.label)||!["String","Boolean","Integer","Decimal","Date"].includes(o.type)||typeof o.required!="boolean"||typeof o.allowClear!="boolean"||!Number.isSafeInteger(o.scale)||o.scale<0||o.scale>18||!Array.isArray(o.choices)||o.choices.length>100||new Set(o.choices).size!==o.choices.length||!o.choices.every(c=>typeof c=="string"&&c.length>0&&c.length<=256)||o.sectionId!=null&&!t.has(o.sectionId)||o.required&&o.allowClear)&&Z(),r.add(o.inputId),n[o.inputId]=o.type,o.sectionId==null?a.push(o.inputId):t.get(o.sectionId).fields.push(o.inputId);let b=o.value,q={String:"STRING",Boolean:"PICKLIST",Integer:"INTEGER",Decimal:"DECIMAL",Date:"DATE"}[o.type],ne=o.choices.map(c=>({value:c,label:c}));o.type==="Boolean"?(b!==null&&typeof b!="boolean"&&Z(),o.choices.length&&Z(),b=b===null?null:String(b),ne=[{value:"true",label:"Yes"},{value:"false",label:"No"}]):J(b)||Z(),ne.length&&(q="PICKLIST");let se={fieldApi:o.inputId,label:o.label,value:b,dataType:q,required:o.required,canClear:o.allowClear,choices:ne};return q==="PICKLIST"&&(se.length=256),["INTEGER","DECIMAL"].includes(q)&&(se.precision=28,se.scale=o.type==="Integer"?0:o.scale,b!==null&&Re(b,se)===null&&Z()),o.type==="Date"&&b!==null&&!Ne(b)&&Z(),q==="PICKLIST"&&b!==null&&!ne.some(c=>c.value===b)&&Z(),se}),s={version:1,sections:[...t.values()].filter(o=>o.fields.length).map(o=>({id:o.sectionId,label:o.label,columns:o.columns,fields:o.fields}))};return a.length&&s.sections.unshift({id:"FlowUngrouped",label:e.label,columns:1,fields:a}),ue(l,s),{fields:ae(l),layout:s,inputTypes:n,screen:{label:e.label,plainTextBlocks:[...e.plainTextBlocks],canNext:e.canNext,canBack:e.canBack,canCancel:e.canCancel,needsAnswerRefresh:e.needsAnswerRefresh??!1}}}function Lt(e){if((!Me(e)||e.contractVersion!=="screen-flow/v1")&&Z(),e.status==="Editing"){let n=St(e.screen);return{...Je({...e,contractVersion:"record-edit/v1",fields:n.fields.length?n.fields:[{fieldApi:"FlowDisplayOnly",label:"",value:null,dataType:"STRING",required:!1,canClear:!0,choices:[]}],layout:void 0}),...n,flow:!0}}let t=Je({...e,contractVersion:"record-edit/v1"}),r=e.status==="Review"?St(e.screen):null;return{...t,flow:!0,...r?{screen:r.screen}:{}}}function Vt(e,t){(!e.flow||e.status!=="Editing"||!Array.isArray(t)||t.length>20)&&Z();let r=new Set;return t.map(n=>{(!Me(n)||!Object.hasOwn(e.inputTypes,n.fieldApi)||r.has(n.fieldApi)||!["keep","set","clear"].includes(n.operation))&&Z(),r.add(n.fieldApi);let a={inputId:n.fieldApi,operation:n.operation};return n.operation==="set"&&((!J(n.value)||n.value===null)&&Z(),a.value=e.inputTypes[n.fieldApi]==="Boolean"?n.value==="true"?!0:n.value==="false"?!1:Z():n.value),a})}var Te=e=>e!==null&&typeof e=="object"&&!Array.isArray(e),Xe=e=>typeof e=="string"&&/^[A-Za-z][A-Za-z0-9_]{0,79}$/.test(e),sr=e=>typeof e=="string"&&/^[A-Za-z0-9_-]{1,80}$/.test(e),or=e=>typeof e=="string"&&/^[a-f0-9]{64}$/.test(e),lr=["STRING","TEXTAREA","BOOLEAN","INTEGER","DATE","DATETIME","TIME","DECIMAL","DOUBLE","CURRENCY","PERCENT","EMAIL","PHONE","URL","PICKLIST"],kt=["INTEGER","DECIMAL","DOUBLE","CURRENCY","PERCENT"];function F(){throw Error("INVALID_RELATED_PAGE")}function wt(e){return(!Te(e)||!ve(e.recordId)||!Xe(e.objectApiName)||!E(e.recordName))&&F(),{recordId:e.recordId,objectApiName:e.objectApiName,recordName:e.recordName}}function cr(e){(!Array.isArray(e)||e.length<1||e.length>8)&&F();let t=new Set;return e.map(r=>{(!Te(r)||!Xe(r.fieldApi)||r.fieldApi==="Id"||t.has(r.fieldApi)||!E(r.label)||!lr.includes(r.dataType))&&F(),t.add(r.fieldApi);let n={fieldApi:r.fieldApi,label:r.label,dataType:r.dataType};return kt.includes(r.dataType)&&((!Number.isSafeInteger(r.precision)||r.precision<1||r.precision>28||!Number.isSafeInteger(r.scale)||r.scale<0||r.scale>r.precision||r.dataType==="INTEGER"&&r.scale!==0)&&F(),n.precision=r.precision,n.scale=r.scale),n})}function _t(e){return(!Te(e)||!sr(e.listKey)||!Xe(e.relationship)||!Xe(e.childObjectApiName)||!E(e.label)||!or(e.definitionFingerprint))&&F(),{listKey:e.listKey,relationship:e.relationship,childObjectApiName:e.childObjectApiName,label:e.label,definitionFingerprint:e.definitionFingerprint,columns:cr(e.columns)}}function xt(e){(!Te(e)||e.contractVersion!=="record-related-definitions/v1"||!Array.isArray(e.lists)||e.lists.length>6)&&F();let t=new Set;return{contractVersion:e.contractVersion,parent:wt(e.parent),lists:e.lists.map(r=>{let n=_t(r);return(t.has(n.listKey)||!Number.isSafeInteger(r.pageSize)||r.pageSize<1||r.pageSize>50)&&F(),t.add(n.listKey),{...n,pageSize:r.pageSize}})}}function dr(e,t){J(t.value)||F(),t.value!==null&&(e.dataType==="BOOLEAN"&&!["true","false"].includes(t.value)&&F(),e.dataType==="DATE"&&!Ne(t.value)&&F(),e.dataType==="DATETIME"&&(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(t.value)||!Number.isFinite(Date.parse(t.value)))&&F(),e.dataType==="TIME"&&!/^\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z?$/.test(t.value)&&F(),kt.includes(e.dataType)&&(!/^-?\d+(?:\.\d+)?$/.test(t.value)||Re(t.value,{...e,dataType:e.dataType==="PERCENT"?"DECIMAL":e.dataType})===null)&&F())}function Ot(e){(!Te(e)||e.contractVersion!=="record-related-page/v1"||!Array.isArray(e.rows)||e.rows.length>50||typeof e.hasMore!="boolean")&&F();let t=_t(e),r=new Set,n=e.rows.map(a=>((!Te(a)||!ve(a.recordId)||r.has(a.recordId)||!E(a.recordName)||!Array.isArray(a.cells)||a.cells.length!==t.columns.length)&&F(),r.add(a.recordId),{recordId:a.recordId,recordName:a.recordName,cells:a.cells.map((l,s)=>{let o=t.columns[s];(!Te(l)||l.fieldApi!==o.fieldApi)&&F(),dr(o,l);let b={fieldApi:l.fieldApi,value:l.value};return o.dataType==="CURRENCY"&&(/^[A-Z]{3}$/.test(l.currencyCode)||F(),b.currencyCode=l.currencyCode),b})}));return e.hasMore&&n.length===0&&F(),{contractVersion:e.contractVersion,parent:wt(e.parent),...t,rows:n,hasMore:e.hasMore}}function ur(e,t,r){return e-t-r>=96}function dt(e,t){if(!t.isConnected)return;let r=e.defaultView.getComputedStyle(e.documentElement),n=parseFloat(r.getPropertyValue("--workspace-height"))||500,a=b=>{let q=r.getPropertyValue(`--workspace-safe-${b}`);return q.trim()?parseFloat(q):12},l=n-a("top")-a("bottom"),s=t.children[0].getBoundingClientRect().height,o=t.children[2].getBoundingClientRect().height;t.dataset.chromeFit=ur(l,s,o)?"bounded":"flow"}var jt=new WeakMap;function ut(e,t){if(e.nodeType!==t.nodeType||e.nodeName!==t.nodeName||t._fieldIdentity&&e._fieldIdentity!==t._fieldIdentity)return e.replaceWith(t),t;if(e.nodeType===3)return e.textContent=t.textContent,e;for(let l of[...e.attributes])!t.hasAttribute(l.name)&&!(e.nodeName==="DETAILS"&&l.name==="open")&&e.removeAttribute(l.name);for(let l of[...t.attributes])e.setAttribute(l.name,l.value);if(e.matches("[data-field], [data-clear]"))return e;let r=l=>l.nodeType===1?l.getAttribute("data-field-box")||l.getAttribute("data-section"):null,n=[...e.childNodes],a=new Set;for(let[l,s]of[...t.childNodes].entries()){let o=r(s),b=o?n.find(ne=>r(ne)===o):n[l],q;b&&!a.has(b)?(a.add(b),q=ut(b,s)):q=s,e.childNodes[l]!==q&&e.insertBefore(q,e.childNodes[l]||null)}for(let l of n)a.has(l)||l.remove();return e}function qt(e,t,r={}){let n=e.ownerDocument,a=jt.get(e);a||(a={callbacks:{},phase:null,key:null,fields:new Map},jt.set(e,a)),a.callbacks=r,r=new Proxy({},{get:(d,m)=>a.callbacks[m]});let l=t.workspaceKey!=null&&a.key===t.workspaceKey&&a.phase===t.status,o=l&&t.status==="Editing"?a.fields:new Map,b=new Map,q=ae(t.fields||[]),ne=Object.fromEntries(q.map(d=>[d.fieldApi,{dataType:d.dataType}])),se=d=>Object.hasOwn(ne,d)?ne[d]:Object.hasOwn(t.fieldTypes||{},d)?t.fieldTypes[d]:null,c=(d,m,i={})=>{let v=n.createElement(d);m!=null&&(v.textContent=m);for(let[g,S]of Object.entries(i))v.setAttribute(g,String(S));return v},A=n.createDocumentFragment(),ze=c("p",t.message||t.status,{role:"status","aria-live":"polite","data-state":t.busyStatus||t.status,class:"status"}),Se=t.currentCard||t,Oe=c("header",null,{class:"record-header"});Oe.append(c("small",Se.objectApiName||"",{class:"object-label"}),c("h1",Se.recordName||"Cardstack"),ze),A.append(Oe),t.synthetic&&A.prepend(c("p",t.synthetic,{class:"synthetic"}));let je=c("h2",{Editing:"Edit details",Review:"Review changes",Completed:"Completion receipt"}[t.status]||t.objectApiName||"Record workspace",{tabindex:"-1"});A.append(je);let L=(d,m,i=!1)=>{let v=c("button",m,{type:"button","data-action":d});return v.disabled=i,v.addEventListener("click",()=>{!v.disabled&&e.contains(v)&&r[d]?.()}),v},le=d=>d===null?"Cleared":d===""?"Empty text":d;function fe(d,m){let i=c("table"),v=c("tr");for(let T of["Field","Before","After"])v.append(c("th",T,{scope:"col"}));let g=c("thead");g.append(v),i.append(g);let S=c("tbody");for(let T of d){let y=c("tr");y.append(c("th",T.label,{scope:"row"}),c("td",le(ye(se(T.fieldApi),T.beforeValue))),c("td",le(ye(se(T.fieldApi),T.afterValue)))),S.append(y)}i.append(S),m.append(i)}function ce(d,m){let i=ue(d.fields||[],d.layout);for(let v of i){let g=c("section",null,{class:"record-section"});g.append(c("h3",v.label));let S=c("dl");for(let T of v.fields){let y=d.fields.find(x=>x.fieldApi===T);S.append(c("dt",y.label),c("dd",`${y.currencyCode?y.currencyCode+" ":""}${le(ye(y,y.value))}`))}g.append(S),m.append(g)}}if(t.status==="Discovery"){A.append(c("p",t.searchStatus==="Empty"?"No matching records.":t.searchStatus==="Rejected"?"Search is unavailable. Try a known Salesforce ID.":"Select the record you intend to open.")),t.hasMore&&A.append(c("p","More matches exist. Narrow your search.")),t.unavailableObjects.length&&A.append(c("p","Some configured objects are unavailable to search.")),t.searchIndexMayLag&&A.append(c("p","Recent record changes may take time to appear in search."));for(let g of t.candidates){let S=c("section",null,{class:"field-box"});S.append(c("h3",g.recordName),c("p",g.objectLabel),c("small",g.recordId));for(let y of g.context)S.append(c("p",`${y.label}: ${y.value??"Empty"}`));let T=c("button","Open record",{type:"button","data-candidate":g.recordId,"aria-label":`Open ${g.objectLabel} ${g.recordName}`});T.disabled=!t.ready,T.addEventListener("click",()=>{!T.disabled&&e.contains(T)&&r.choose?.(g.recordId)}),S.append(T),A.append(S)}let d=c("form"),m=c("label","Find a record",{for:"record-query"}),i=c("input",null,{id:"record-query",type:"search",maxlength:"160",required:"","data-search-query":""}),v=c("button","Search",{type:"submit"});v.disabled=!t.ready,d.append(m,i,v),d.addEventListener("submit",g=>{g.preventDefault(),t.ready&&e.contains(d)&&r.search?.(i.value)}),A.append(d)}if(t.status==="Card"){if(ce(t,A),t.breadcrumb){let m=L("parent",`Back to ${t.breadcrumb.recordName}`,!t.ready);m.setAttribute("data-parent-record",t.breadcrumb.recordId),A.append(m)}if(t.supportsRelated&&A.append(L("related","Related records",!t.ready)),t.related){let m=c("section",null,{"data-related":""});m.append(c("h2","Related records")),t.related.error&&m.append(c("p",t.related.error,{role:"alert"})),!t.related.lists.length&&!t.related.error&&m.append(c("p","No related lists are configured."));for(let i of t.related.lists){let v=c("section");v.append(c("h3",i.label));let g=c("button","Read / refresh list",{type:"button","data-related-list":i.listKey});g.disabled=!t.ready||t.relatedPending?.includes(i.listKey),g.addEventListener("click",()=>{!g.disabled&&e.contains(g)&&r.relatedPage?.(i.listKey)}),v.append(g),t.relatedPending?.includes(i.listKey)&&v.append(c("p","Reading related records\u2026",{"data-related-loading":i.listKey,role:"status"}));let S=t.related.pages[i.listKey];if(S){S.rows.length||v.append(c("p","No related records."));let T=c("table",null,{"data-related-rows":i.listKey}),y=c("tr");y.append(c("th","Record",{scope:"col"}));for(let O of S.columns)y.append(c("th",O.label,{scope:"col"}));let x=c("thead");x.append(y),T.append(x);let te=c("tbody");for(let O of S.rows){let k=c("tr"),N=c("th",null,{scope:"row"}),w=c("button",O.recordName,{type:"button","data-related-child":O.recordId});w.disabled=!t.ready,w.addEventListener("click",()=>{!w.disabled&&e.contains(w)&&r.relatedChild?.(i.listKey,O.recordId)}),N.append(w),k.append(N),O.cells.forEach((X,D)=>k.append(c("td",ye({...S.columns[D],currencyCode:X.currencyCode},X.value)??"Empty"))),te.append(k)}if(T.append(te),v.append(T),S.hasMore){let O=c("button","Next page",{type:"button","data-related-next":i.listKey});O.disabled=!t.ready||t.relatedPending?.includes(i.listKey),O.addEventListener("click",()=>{!O.disabled&&e.contains(O)&&r.relatedPage?.(i.listKey,!0)}),v.append(O)}}m.append(v)}A.append(m)}let d=c("div",null,{class:"actions"});for(let m of t.actions||[]){let i=L("start",m.label,!t.ready);i.addEventListener("click",()=>{!i.disabled&&e.contains(i)&&r.launch?.(m.name)}),d.append(i)}t.actions?.length||A.append(c("p","No published edit action is available for this record.")),A.append(d,L("refresh","Refresh card",!t.ready))}let qe=()=>({});if(t.status==="Editing"){if(t.flow&&t.screen){A.append(c("h3",t.screen.label));for(let y of t.screen.plainTextBlocks)A.append(c("p",y))}let d=q,m=ue(d,t.layout),i=c("form");i.noValidate=!0;let v=[];for(let y of m){let x=c("fieldset",null,{"data-section":y.id}),te=c("legend",y.label);x.append(te);let O=c("div",null,{class:`field-grid columns-${y.columns}`});x.append(O);for(let k of y.fields){let N=d.find(U=>U.fieldApi===k),w=Ce[N.dataType],X=c("div",null,{class:"field","data-field-box":k}),D=c("label",`${N.label}${N.currencyCode?" ("+N.currencyCode+")":""}${N.required?" *":""}`,{for:"field-"+k});if(X.append(D),!w){X.append(c("p",`${le(N.value)} \u2014 Editing unavailable for this field type.`)),O.append(X);continue}let I=c(w.tag,null,{id:"field-"+k,"data-field":k}),B=t.drafts?.[k],Q=!1;I.addEventListener("input",()=>Q=!0),I.addEventListener("change",()=>Q=!0);let me=B?.operation==="set"?B.value:N.value;if(I.disabled=!t.editable,I.setAttribute("aria-required",String(N.required)),w.kind==="choice"){let U=c("option","Keep the current record value");if(U.value="",I.append(U),N.value&&!N.choices.some(oe=>oe.value===N.value)){let oe=c("option",`Starting value: ${N.value} (unavailable for selection)`);oe.value=N.value,oe.disabled=!0,I.append(oe)}for(let oe of N.choices){let Ze=c("option",oe.label);Ze.value=oe.value,I.append(Ze)}I.value=B?.operation==="set"?B.value:B?.operation==="clear"?"":N.value??""}else w.kind==="checkbox"?(I.type="checkbox",I.checked=me==="true"):(w.tag==="input"&&(I.type=w.kind==="date"?"date":"text"),I.value=ye(N,me)??"",w.kind==="date"&&(I.min="0001-01-01",I.max="9999-12-31"),["integer","decimal"].includes(w.kind)&&I.addEventListener("blur",()=>{de(I.value,N.dataType)!==null&&(I.value=ye(N,I.value))}),["integer","decimal"].includes(w.kind)&&(I.inputMode=w.kind==="integer"?"numeric":"decimal"),w.tag==="textarea"&&(I.rows=3),I.maxLength=["integer","decimal"].includes(w.kind)?5463:4096);let pe=c("small",`Starting value: ${le(ye(N,N.value))}`);X.append(I,pe);let G=null;if(N.canClear&&!N.required){let U=c("label",null,{class:"clear"});G=c("input",null,{"data-clear":k,type:"checkbox"}),G.checked=B?.operation==="clear",G.disabled=!t.editable,U.append(G,n.createTextNode("Clear value")),X.append(U),G.addEventListener("change",()=>{I.disabled=G.checked||!a.editable}),G.checked&&(I.disabled=!0)}let Le=(t.errors||[]).find(U=>U.fieldApi===k);if(Le){let U=c("p",Le.message,{id:"error-"+k,class:"error"});X.append(U),I.setAttribute("aria-invalid","true"),I.setAttribute("aria-describedby","error-"+k)}let tt=w.kind==="choice"?I.value:w.kind==="checkbox"?me==="true"?"true":"false":de(me,N.dataType)??me??"",re=()=>{if(G?.checked)return[k,{operation:"clear"}];let U=w.kind==="checkbox"?String(I.checked):de(I.value,N.dataType)??I.value;return B?.operation==="set"&&U===B.value?[k,{operation:"set",value:U}]:U===tt&&!(Q&&w.kind==="checkbox"&&N.value===null)||w.kind==="choice"&&U===""?[k,{operation:"keep"}]:[k,{operation:"set",value:U}]},Ke=JSON.stringify([N.fieldApi,N.dataType,N.value,N.required,N.canClear,N.choices.map(U=>U.value)]);X._fieldIdentity=Ke;let ge=o.get(k),Pe=ge?.fingerprint===Ke?ge.reader:re;b.set(k,{fingerprint:Ke,reader:Pe}),v.push(Pe),O.append(X)}i.append(x)}qe=()=>Object.fromEntries(v.map(y=>y()));let g=c("div",null,{class:"actions"}),S=c("button",t.flow?"Next":"Review changes",{type:"button","data-action":"review"});S.disabled=!t.editable||t.flow&&!t.screen.canNext,g.append(L("cancel","Cancel",!t.editable||t.flow&&!t.screen.canCancel)),t.flow&&t.screen.canBack&&g.append(L("back","Back",!t.editable)),g.append(S),i.append(g);let T=()=>{a.editable&&e.contains(i)&&r.review?.(a.readDraft())};if(S.addEventListener("click",()=>{e.contains(S)&&a.editable&&r.review?.(a.readDraft())}),i.addEventListener("keydown",y=>{let x=y.target;y.key!=="Enter"||y.defaultPrevented||y.isComposing||y.repeat||y.altKey||y.ctrlKey||y.metaKey||y.shiftKey||x?.tagName!=="INPUT"||x.type!=="text"||x.disabled||(y.preventDefault(),T())}),t.flow&&t.screen.needsAnswerRefresh){let y=x=>{a.editable&&x.target?.matches("[data-field], [data-clear]")&&e.contains(i)&&r.answer?.(a.readDraft(),x.target.getAttribute("data-field")||x.target.getAttribute("data-clear"))};i.addEventListener("change",y),i.addEventListener("focusout",y)}i.addEventListener("submit",y=>y.preventDefault()),A.append(i)}for(let d of(t.errors||[]).filter(m=>!m.fieldApi))A.append(c("p",d.message,{class:"error"}));if(t.status==="Review"){if(t.layout&&q.length)for(let m of ue(q,t.layout)){let i=m.fields.flatMap(v=>(t.diff||[]).filter(g=>g.fieldApi===v));i.length&&(A.append(c("h3",m.label)),fe(i,A))}else fe(t.diff||[],A);A.append(c("p","Salesforce validates business rules when you save."));let d=c("div",null,{class:"actions"});d.append(...t.busyStatus==="Saving"?[]:[L("cancel","Cancel",!t.ready)],L("back",t.flow?"Back to screen":"Back to edit",!t.ready||t.flow&&!t.screen?.canBack),L("confirm",t.saveDisabled?"Save disabled in Studio preview":"Confirm and save",!t.canConfirm||t.saveDisabled)),A.append(d)}if(t.receipt){let d=c("section",null,{"data-receipt":"",class:"receipt"});d.append(c("h3",t.receipt.status==="noChanges"?"No changes were needed":"Reviewed changes saved"),c("p",`${t.receipt.actorDisplayName} \xB7 ${t.receipt.completedAt}`),c("small",`Receipt ${t.receipt.reference}`));let m=c("details");m.append(c("summary","View saved changes"));let i=t.layout&&q.length?ue(q,t.layout).flatMap(v=>v.fields.flatMap(g=>(t.receipt.diff||[]).filter(S=>S.fieldApi===g))):t.receipt.diff||[];fe(i,m),d.append(m),A.append(d)}if(t.status==="Completed"&&A.append(L("refresh",t.refreshing?"Refreshing\u2026":"Refresh current record",!t.ready||t.refreshing)),t.currentCard){let d=c("section",null,{"data-current-card":""});d.append(c("h3","Current record \xB7 fresh read")),ce(t.currentCard,d),A.append(d)}["Unknown","Recoverable","Saving"].includes(t.busyStatus||t.status)&&A.append(L("resume","Check save status",!t.ready)),["Cancelled","Expired","Conflict","Rejected"].includes(t.status)&&A.append(L("refresh","Refresh card",!t.ready));let _=e.querySelector(".workspace");if(!_){_=c("section",null,{class:"workspace"}),_.append(c("div",null,{class:"workspace-header"}),c("div",null,{class:"workspace-content"}),c("footer",null,{class:"workspace-actions"})),e.replaceChildren(_);let d=n.defaultView.ResizeObserver;if(d){let m=new d(()=>{if(!_.isConnected){m.disconnect();return}dt(n,_)});m.observe(_.children[0]),m.observe(_.children[2])}}let V=_.children[0],K=_.children[1],ie=_.children[2],C=A.querySelector("header");V.firstChild?ut(V.firstChild,C):V.append(C),C.parentNode!==V&&C.remove();let ee=A.querySelector(".actions");ee&&ee.remove();let P=[...A.querySelectorAll("button[data-action=refresh], button[data-action=resume]")];for(let d of P)d.remove();if(l){let d=c("div",null,{class:"workspace-content"});d.append(A),ut(K,d);let m=[...K.querySelectorAll("[data-clear]")];for(let i of m)i.disabled=!t.editable,K.querySelector(`[data-field="${i.dataset.clear}"]`).disabled=i.checked||!t.editable}else K.replaceChildren(A),K.scrollTop=0;ie.replaceChildren(...ee?[...ee.childNodes]:[],...P),_.setAttribute("aria-busy",String(!!t.busyStatus||!!t.refreshing)),dt(n,_),a.editable=!!t.editable,a.readDraft=qe,a.fields=b,a.phase=t.status,a.key=t.workspaceKey;let H=(d,m=!1)=>{if(d.focus({preventScroll:!0}),m){let i=d.getBoundingClientRect(),v=K.getBoundingClientRect();i.top<v.top?K.scrollTop+=i.top-v.top-8:i.bottom>v.bottom&&(K.scrollTop+=i.bottom-v.bottom+8)}};if(t.focusError){let d=e.querySelector("[aria-invalid=true]");H(d||K.querySelector("h2"),!!d)}else t.focusHeading&&(K.scrollTop=0,H(K.querySelector("h2")));return{readDraft:qe}}function fr(e,t,r,{now:n=()=>Date.now(),setInterval:a=globalThis.setInterval,clearInterval:l=globalThis.clearInterval,hostStyles:s=()=>{},deliveryQaEnabled:o=!1}={}){let ne=()=>{},{recordId:se}=r,c=r,A=r.tools,ze=r.privateMetaKey;function Se(u){c=u,A=u.tools,ze=u.privateMetaKey}function Oe(u,f=c){let h=f.tools.flowStart&&u?.contractVersion==="screen-flow/v1"?Lt(u):f.publicView(u);return f===De&&h.recordId?{...h,objectApiName:"Opportunity"}:h}let je=u=>Oe(u),L=!1,le=!1,fe=null,ce=null,qe=t.querySelector("#root"),_=!1,V=!1,K=0,ie=0,C=null,ee=null,P=null,H=null,d=!1,m=0,i={status:"Waiting"},v={},g={},S=null,T=null,y=null,x=null,te=new Map,O=new Set,k=new Map,N=0,w=new Set,X={Waiting:"Waiting for the host and current record.",Card:"Record snapshot. Refresh for current values.",Discovery:"Choose a record to open. Refine your search if needed.",Editing:"Enter changes, then review the exact server diff.",Review:"Review the server changes before confirming.",Preparing:"Preparing server review\u2026",Pending:"Checking the latest server state\u2026",Refreshing:"Reading the current Salesforce record\u2026",Saving:"Saving the reviewed changes. Check status if the response is interrupted.",Completed:"Completion receipt. Refresh to read the current record.",Unknown:"Save or request status unknown. Check the latest server state before retrying.",Recoverable:"Host supplied an interaction. Check its latest server state before continuing.",Unavailable:"This interaction cannot be recovered without host-provided private state. Reopen the card; a prior save may have completed.",Cancelled:"Edit cancelled.",Expired:"Edit expired. Refresh before starting again.",Conflict:"The record or edit context changed. Refresh and start a new edit.",Rejected:"Editing unavailable. Refresh or reconnect before continuing.",Disconnected:"Host disconnected. Reopen the app and check server status."};function D(u={}){let f=_&&!V&&!d;qt(qe,{...i,workspaceKey:m,busyStatus:d?S:null,drafts:v,fieldTypes:g,ready:f,supportsRelated:!!A.relatedDefinitions,related:y,relatedPending:[...O],breadcrumb:x,deliveryQa:void 0,qaReady:_&&!V&&!d,qaCanOpen:_&&!V&&!d&&["Card","Waiting","Discovery","Rejected"].includes(i.status),editable:f&&i.status==="Editing",canConfirm:f&&i.status==="Review"&&!!H&&!!P&&Date.parse(i.expiresAt)>n(),message:!d&&i.flow&&i.status==="Editing"?"Complete this screen, then choose Next.":X[d?S:i.status],...u},{launch:Wt,choose:Ft,search:Bt,related:U,relatedPage:oe,relatedChild:Ze,parent:Mt,"qa-discard":()=>{},"qa-hold":()=>{},"qa-release":()=>{},"qa-reset":()=>{},qaOpen:Ke,review:zt,answer:Qt,confirm:()=>Ie("confirm"),back:()=>Ie("back"),cancel:()=>Ie("cancel"),resume:()=>Ie("resume"),refresh:Zt})}function I(){m++,P&&w.add(P),P=null,L=!1,fe=null,ce=null,H=null,v={},g={}}function B(u=null){K++,ie++,d=!1,I(),C=u,Se(r),ee=null,T=null,y=null,x=null,te.clear(),O.clear(),k.clear(),i={status:"Waiting"}}function Q(){d=!1,H=null,i={...i,status:P?"Unknown":"Unavailable",errors:[],diff:[],receipt:null,currentCard:null},D({focusHeading:!0})}function me(u="Completion is known. Current record refresh failed; retry refresh."){d=!1,i={...i,status:"Completed",refreshing:!1},D({message:u})}function pe(){d=!1,I(),i={status:"Unavailable"},D()}function G(){if(!(V||d&&S==="Saving"||["Saving","Unknown","Completed","Recoverable"].includes(i.status))&&i.expiresAt&&Date.parse(i.expiresAt)<=n()){if(d){Q();return}H=null,i={status:"Expired",recordId:C},D()}}function Le(u,{host:f=!1,operation:h=null,expectedKey:R=null}={}){let p;try{p=je(u?.structuredContent)}catch{return f?pe():Q(),!1}if(p.status==="Discovery")return I(),C=null,ee=null,T=p,i=p,D({focusHeading:!0}),!0;if(C&&p.recordId&&C!==p.recordId||ee&&p.objectApiName&&ee!==p.objectApiName)return!1;if(p.objectApiName&&(ee=p.objectApiName),P&&["Editing","Review","Completed"].includes(p.status)&&L!==!!p.flow)return Q(),!1;let j=p.flow?"cardstack/flowEdit":ze,$=u?._meta?.[j],M=JSON.stringify(p);if([P,H,$?.interactionKey,$?.reviewGrant].filter(Ve).some(z=>M.includes(z)))return f?pe():Q(),!1;if(p.status==="Rejected"&&p.errors.some(z=>z.code==="OUTCOME_UNAVAILABLE")||u?.isError&&!["Editing","Rejected","Conflict","Expired"].includes(p.status))return Q(),!1;if(p.status==="Card")return C=p.recordId,i.status==="Completed"&&!f?(Object.keys(g).length||(g=Object.fromEntries(p.fields.map(z=>[z.fieldApi,{dataType:z.dataType}]))),i={...i,currentCard:p,refreshing:!1},D(),!0):(I(),y=null,te.clear(),g=Object.fromEntries(p.fields.map(z=>[z.fieldApi,{dataType:z.dataType}])),i=p,D(),!0);if(["Rejected","Conflict"].includes(p.status))return I(),i={status:p.status,errors:p.errors},D({focusHeading:!0}),!0;let W=u?._meta?.[j],Y=W?.interactionKey;if(["Editing","Review","Completed"].includes(p.status)&&(!Ve(Y)||w.has(Y)||R&&Y!==R||p.status==="Review"&&!Ve(W.reviewGrant)||p.status!=="Review"&&W.reviewGrant!=null))return f?pe():Q(),!1;if(L=!!p.flow,Y&&Y!==P&&(g={},m++),p.fields.length&&(g=Object.fromEntries(p.fields.map(z=>[z.fieldApi,{dataType:z.dataType}]))),f)return p.status==="Completed"?(P=Y,C=p.recordId,H=null,i=p,D({focusHeading:!0}),!0):Ve(Y)?(P=Y,C=p.recordId,H=null,i={status:"Recoverable",recordName:p.recordName,objectApiName:p.objectApiName,revision:p.revision,flow:p.flow},D(),!0):(pe(),!1);if(C=p.recordId||C,P=Y||P,H=p.status==="Review"?W.reviewGrant:null,["Cancelled","Expired"].includes(p.status)&&I(),p.status==="Editing"&&h==="start"&&(v={}),p.status==="Editing"&&(h==="resume"||h==="back"&&(p.flow||Object.keys(v).length===0))&&(v=p.flow?{}:gt(p.fields),p.flow&&(ce=null)),p.flow&&p.status==="Editing"&&h==="answer"){let z=new Set(p.fields.map(Ee=>Ee.fieldApi));v=Object.fromEntries(Object.entries(v).filter(([Ee])=>z.has(Ee))),ce=null}let he=i.status;return i=p,D({focusHeading:p.status!==he,focusError:p.errors.length>0}),G(),!0}async function tt(u,f){if(V||!_||i.status!=="Card"||O.has(f.listKey))return;let h=K,R=ie,p=C,j=++N;k.set(f.listKey,j),O.add(f.listKey),D();let $=()=>!V&&h===K&&R===ie&&p===C&&i.status==="Card"&&k.get(f.listKey)===j;try{let M=await e.callServerTool({name:u,arguments:f},{timeout:15e3,maxTotalTimeout:15e3,resetTimeoutOnProgress:!1});if(!$())return;O.delete(f.listKey),Pe(M,"relatedPage",f)}catch{if(!$())return;O.delete(f.listKey),ge()}finally{k.get(f.listKey)===j&&(k.delete(f.listKey),O.delete(f.listKey))}}async function re(u,f,h){if(h==="relatedPage")return tt(u,f);if(d||V||!_)return;let R=K,p=++ie,j=C,$=P;d=!0,S=h==="confirm"?"Saving":h==="review"?"Preparing":h==="refresh"?"Refreshing":"Pending",h==="refresh"&&i.status==="Completed"&&(i={...i,refreshing:!0}),D();try{let M=await e.callServerTool({name:u,arguments:f},{timeout:15e3,maxTotalTimeout:15e3,resetTimeoutOnProgress:!1});if(V||R!==K||p!==ie||j!==C||$!==P)return;if(d=!1,h==="relatedDefinitions"||h==="relatedPage"){Pe(M,h,f);return}if(h==="relatedChild"||h==="parent"||h==="qaOpen"){let W=h==="relatedChild"?f.childId:f.recordId,Y,he;try{let Ee=M?.structuredContent;if(Ee?.contractVersion==="opportunity-card/v1")he=De;else if(Ee?.contractVersion==="record-card/v1")he=$e;else throw Error("UNSUPPORTED_CARD_FAMILY");Y=Oe(Ee,he)}catch{Y=null}if(M?.isError||Y?.status!=="Card"||Y.recordId!==W){h==="qaOpen"?(i={status:"Rejected",errors:[]},D({message:"Record could not be opened through the selected native family."})):ge();return}let z=h==="relatedChild"?{recordId:C,recordName:i.recordName,family:c===De?"opportunity":"record"}:null;B(W),Se(he),x=z,Le(M);return}if(h==="open"&&(M?.isError||M?.structuredContent?.contractVersion!=="record-card/v1")){let W=T;B(),T=W,i=W||{status:"Unavailable"},D({message:"This record could not be opened. Search again or choose another record."});return}if(h==="refresh"&&i.receipt){let W;try{W=je(M?.structuredContent)}catch{W=null}if(!(W?.status==="Rejected"&&!W.errors.some(he=>he.code==="OUTCOME_UNAVAILABLE"))&&(M?.isError||W?.status!=="Card"||W.recordId!==C)){i={...i,status:"Completed",refreshing:!1},D({message:"Completion is known. Current record refresh failed; retry refresh."});return}}!Le(M,{operation:h,expectedKey:h==="start"?null:$})&&C===j&&i.status!=="Unknown"&&i.status!=="Unavailable"&&Q()}catch{if(V||R!==K||p!==ie||j!==C||$!==P)return;if(d=!1,h==="refresh"&&i.receipt)i={...i,status:"Completed",refreshing:!1},D({message:"Completion is known. Current record refresh failed; retry refresh."});else if(h.startsWith("related")||h==="parent")ge();else if(h==="open"&&T){let M=T;B(),T=M,i=M,D({message:"Open response unavailable. Search again or choose a record."})}else Q()}}function Ke(u,f="record"){}function ge(){d=!1,te.clear(),x=null,y={...y||{lists:[]},pages:{},error:"Related records unavailable. Retry or refresh the record."},D()}function Pe(u,f,h){try{if(u?.isError)throw Error("RELATED_UNAVAILABLE");if(f==="relatedDefinitions"){let $=xt(u.structuredContent);if($.parent.recordId!==C||$.parent.objectApiName!==ee)throw Error("RELATED_UNAVAILABLE");te.clear(),y={...$,pages:{}},D();return}let R=Ot(u.structuredContent),p=y?.lists.find($=>$.listKey===h.listKey),j=u?._meta?.["cardstack/related"];if(!p||R.parent.recordId!==C||R.parent.objectApiName!==ee||R.listKey!==h.listKey||R.definitionFingerprint!==p.definitionFingerprint||JSON.stringify(R.columns)!==JSON.stringify(p.columns)||R.rows.length>p.pageSize||!j||j.parentId!==C||j.listKey!==h.listKey||j.definitionFingerprint!==R.definitionFingerprint||R.hasMore&&(typeof j.nextCursor!="string"||!j.nextCursor||j.nextCursor.length>2048)||!R.hasMore&&j.nextCursor!=null)throw Error("RELATED_UNAVAILABLE");te.set(h.listKey,R.hasMore?j.nextCursor:null),y={...y,error:null,pages:{...y.pages,[h.listKey]:R}},D()}catch{ge()}}function U(){i.status!=="Card"||!A.relatedDefinitions||!C||re(A.relatedDefinitions,{parentId:C},"relatedDefinitions")}function oe(u,f=!1){if(i.status!=="Card"||!y?.lists.some(R=>R.listKey===u))return;let h=f?te.get(u):null;f&&!h||re(A.relatedPage,{parentId:C,listKey:u,...h?{cursor:h}:{}},"relatedPage")}function Ze(u,f){i.status!=="Card"||!y?.pages[u]?.rows.some(h=>h.recordId===f)||re(A.relatedOpenChild,{parentId:C,listKey:u,childId:f},"relatedChild")}function Mt(){if(i.status!=="Card"||!x||!A.open)return;let u=x.family==="opportunity"?De:$e;re(u.tools.open,{recordId:x.recordId},"parent")}function Ft(u){if(i.status!=="Discovery"||d||!T?.candidates.some(h=>h.recordId===u))return;let f=T;B(u),T=f,i=f,re(A.open,{recordId:u},"open")}function Bt(u,f){!A.search||d||typeof u!="string"||!u.trim()||u.length>160||(B(),re(A.search,{query:u,...f?{objectApiName:f}:{}},"search"))}function Wt(u){if(i.status!=="Card"||!i.actions.some(h=>h.name===u)||!C||d)return;v={},L=i.actions.find(h=>h.name===u).type==="screen-flow",re(L?A.flowStart:A.start,{recordId:C,actionName:u},"start")}function bt(u){return u.filter(f=>f.operation!=="set"||i.fields.find(h=>h.fieldApi===f.fieldApi)?.value!==f.value)}function Qt(u,f){if(!L||i.status!=="Editing"||!i.screen?.needsAnswerRefresh||d||!i.fields.some(R=>R.fieldApi===f)||(fe={drafts:u,inputId:f},le))return;le=!0;let h=K;Promise.resolve().then(()=>{if(le=!1,h!==K||d||V||i.status!=="Editing")return;let R=fe;fe=null;let p=rt(i.fields.filter(M=>M.fieldApi===R.inputId),R.drafts);if(p.errors.length){i={...i,errors:p.errors},D();return}let j=bt(p.changes),$=JSON.stringify(j);!j.length||$===ce||(ce=$,v=R.drafts,Ie("answer",j))})}function zt(u){if(i.status!=="Editing"||d||(G(),i.status!=="Editing"))return;v=u;let f=rt(i.fields,v);if(f.errors.length){i={...i,errors:f.errors},D({focusError:!0});return}if(L&&i.screen?.needsAnswerRefresh){let h=bt(f.changes);if(h.length){ce=JSON.stringify(h),Ie("answer",h);return}}Ie(L?"next":"review",f.changes)}function Ie(u,f){if(V||d||!_||!P||(G(),!(u==="resume"?["Unknown","Recoverable"]:u==="confirm"?["Review"]:u==="back"?L?["Editing","Review"]:["Review"]:u==="cancel"?["Editing","Review"]:["Editing"]).includes(i.status))||L&&(u==="next"&&!i.screen?.canNext||u==="back"&&!i.screen?.canBack||u==="cancel"&&i.screen&&!i.screen.canCancel))return;let R={interactionKey:P,operation:u};if((u!=="resume"||L)&&(R.expectedRevision=i.revision),u==="review"&&(R.changes=f),L&&["next","answer"].includes(u)&&(R.answers=Vt(i,f)),u==="confirm"){if(!H||Date.parse(i.expiresAt)<=n())return;R.reviewRevision=i.reviewRevision,R.reviewGrant=H}H=null,re(L?A.flowTransition:A.transition,R,u)}function Zt(){!C||d||!_||V||re(A.refresh,{recordId:C},"refresh")}function Ye(){V||(V=!0,_=!1,K++,ie++,d=!1,I(),l(Yt),ne(),i={status:"Disconnected"},D())}e.ontoolinput=({arguments:u})=>{V||(A.search&&typeof u?.query=="string"?(B(),D()):u?.recordId&&(B(se(u.recordId)?u.recordId:null),D()))},e.ontoolresult=u=>{if(V)return;let f=u?.structuredContent;if(!(typeof f?.contractVersion=="string"&&f.contractVersion.startsWith("record-related-"))&&!(C&&f?.recordId&&f.recordId!==C)){if(P){let h;if(u?.isError)try{h=je(f)}catch{h=null}if(!["Rejected","Conflict"].includes(h?.status)||h.errors.some(R=>R.code==="OUTCOME_UNAVAILABLE"))return}d&&!u?.isError||(K++,ie++,d=!1,Le(u,{host:!0}))}},e.onhostcontextchanged=u=>{V||(s(u),D())},e.onclose=Ye,e.onerror=()=>{V||(ie++,i.receipt?me():Q())},e.onteardown=async()=>(Ye(),{});let Yt=a(G,1e3);return D(),Promise.resolve().then(()=>e.connect(void 0,{timeout:15e3,maxTotalTimeout:15e3,resetTimeoutOnProgress:!1})).then(()=>{V||(_=!0,s(e.getHostContext?.()||{}),D(),G())}).catch(Ye),{disconnect:Ye}}function Kt(e,t,r){return fr(e,t,De,r)}var Wr=document.querySelector("#root"),we=["006000000000001AAA","006000000000002AAA"],Be=new Map(we.map((e,t)=>[e,{recordId:e,recordName:`Synthetic deal ${t+1}`,values:{StageName:"Discovery",CloseDate:"2026-11-30",Amount:"10000"}}])),be=we[0],We=null,ft=!1,pt=!1,ht=!1,Ut=0,Qe=document.createElement("div");Qe.className="preview-tools";var yt=document.createElement("p");yt.className="synthetic";yt.textContent="Synthetic transport demo \xB7 local renderer evidence only \xB7 no Salesforce, host client or CRM writes";Qe.append(yt);var xe=document.createElement("p");xe.setAttribute("data-demo-evidence","");Qe.append(xe);function At(){xe.textContent=`Synthetic fixture effects: ${Ut}. Actual Salesforce writes: none. Actual ChatGPT / Claude evidence: none.`}var $t=document.createElement("nav");Qe.append($t);for(let[e,t]of[["Reset synthetic card",()=>{We=null,be=we[0],_e.ontoolinput({arguments:{recordId:be}}),_e.ontoolresult(et())}],["Drop next save response",()=>{ft=!0,At(),xe.textContent+=" Next synthetic save commits locally and loses its response."}],["Delay next review",()=>{pt=!0,xe.textContent+=" Next review delayed 2 seconds; switch record now."}],["Switch synthetic record",()=>{be=be===we[0]?we[1]:we[0],We=null,_e.ontoolinput({arguments:{recordId:be}}),_e.ontoolresult(et())}],["Reject next review value",()=>{ht=!0,xe.textContent+=" Next synthetic review returns a field error."}]]){let r=document.createElement("button");r.type="button",r.textContent=e,r.addEventListener("click",t),$t.append(r)}document.body.prepend(Qe);var vt=e=>[{fieldApi:"StageName",label:"Stage",value:e.values.StageName,dataType:"PICKLIST",required:!0,canClear:!1,choices:[{label:"Discovery",value:"Discovery"},{label:"Closed won",value:"Closed Won"}]},{fieldApi:"CloseDate",label:"Close date",value:e.values.CloseDate,dataType:"DATE",required:!0,canClear:!1,choices:[]},{fieldApi:"Amount",label:"Amount",value:e.values.Amount,dataType:"CURRENCY",currencyCode:"USD",required:!1,canClear:!0,choices:[]}];function et(){let e=Be.get(be);return{content:[],structuredContent:{contractVersion:"opportunity-card/v1",recordId:e.recordId,recordName:e.recordName,fields:vt(e),actions:[{name:"editDeal",label:"Edit synthetic opportunity",type:"record-edit"}]}}}function pr(){return new Date().toISOString().replace(/\.\d{3}Z$/,"Z")}function Fe(e){let t=Be.get(e.recordId);return{content:[],structuredContent:{contractVersion:"opportunity-edit/v1",status:e.status,recordId:t.recordId,recordName:t.recordName,revision:e.revision,reviewRevision:e.reviewRevision,expiresAt:e.expiresAt,fields:e.status==="Editing"?vt({...t,values:e.answers}):[],diff:e.status==="Review"?e.diff:[],errors:e.errors||[],receipt:e.receipt||null},_meta:{"cardstack/opportunityEdit":{interactionKey:e.key,reviewGrant:e.status==="Review"?e.grant:null}}}}function Pt(e,t){e.status="Completed",e.revision++,e.receipt={reference:"receipt-"+crypto.randomUUID().replaceAll("-",""),actorDisplayName:"Synthetic actor",completedAt:pr(),status:t,diff:t==="saved"?structuredClone(e.diff):[]}}var _e={connect:()=>Promise.resolve(),callServerTool:async({name:e,arguments:t})=>{if(e==="cardstack_opportunity_refresh")return et();if(e==="cardstack_opportunity_edit_start"){let n=Be.get(be);return We={key:crypto.randomUUID().replaceAll("-","")+crypto.randomUUID().replaceAll("-",""),recordId:be,revision:1,reviewRevision:0,status:"Editing",expiresAt:new Date(Date.now()+9e5).toISOString().replace(/\.\d{3}Z$/,"Z"),answers:{...n.values},diff:[]},Fe(We)}let r=We;if(!r||t.interactionKey!==r.key)throw Error("Synthetic context missing");if(r.errors=[],t.operation==="review"){if(ht)return ht=!1,r.errors=[{fieldApi:"Amount",code:"INVALID_VALUE",message:"Synthetic server rule rejected this Amount. Change it and review again."}],Fe(r);r.diff=[];let n=Be.get(r.recordId);for(let l of t.changes){let s=l.operation==="clear"?null:l.value;r.answers[l.fieldApi]=s,s!==n.values[l.fieldApi]&&r.diff.push({fieldApi:l.fieldApi,label:vt(n).find(o=>o.fieldApi===l.fieldApi).label,beforeValue:n.values[l.fieldApi],afterValue:s})}r.diff.length?(r.status="Review",r.revision++,r.reviewRevision++,r.grant=crypto.randomUUID().replaceAll("-","")+crypto.randomUUID().replaceAll("-","")):Pt(r,"noChanges");let a=Fe(r);return pt&&(pt=!1,await new Promise(l=>setTimeout(l,2e3))),a}if(t.operation==="confirm"){if(Be.get(r.recordId).values={...r.answers},Ut++,Pt(r,"saved"),At(),ft)throw ft=!1,Error("Synthetic response dropped after fixture commit");return Fe(r)}return t.operation==="back"&&(r.status="Editing",r.revision++,r.diff=[]),t.operation==="cancel"&&(r.status="Cancelled",r.revision++,r.diff=[]),t.operation==="resume"&&r.status==="Review"&&(r.revision++,r.reviewRevision++,r.grant=crypto.randomUUID().replaceAll("-","")+crypto.randomUUID().replaceAll("-","")),Fe(r)}},hr=Kt(_e,document);_e.ontoolresult(et());At();addEventListener("pagehide",()=>hr.disconnect(),{once:!0});})();
+</script></body></html>

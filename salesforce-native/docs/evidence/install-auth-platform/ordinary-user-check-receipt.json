@@ -1,0 +1,14 @@
+{
+  "checkedAt": "2026-10-09T14:58:16.694Z",
+  "checkOnly": true,
+  "persisted": false,
+  "done": true,
+  "success": true,
+  "status": "Succeeded",
+  "components": 3,
+  "componentErrors": 0,
+  "testErrors": 0,
+  "testsCompleted": 3,
+  "failureNames": [],
+  "componentFailureNames": []
+}

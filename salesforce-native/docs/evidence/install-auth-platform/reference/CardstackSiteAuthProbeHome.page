@@ -1,0 +1,5 @@
+<apex:page showHeader="false" sidebar="false" standardStylesheets="false" applyHtmlTag="false" applyBodyTag="false" docType="html-5.0">
+<html lang="en"><head><title>Cardstack authentication probe</title></head><body>
+<p>Disposable authentication feasibility probe. No CRM information is served here.</p>
+</body></html>
+</apex:page>

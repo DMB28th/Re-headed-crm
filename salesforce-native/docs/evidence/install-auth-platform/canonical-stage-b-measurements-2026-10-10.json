@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-10-11T00:06:26.985Z",
+  "stage": "B",
+  "source": "actual API67 and native Chrome fresh ChatGPT synthetic execution",
+  "humanApproval": true,
+  "scope": "synthetic transport and host UI; no CRM records",
+  "deployment": {
+    "ownedDefinitions": 4,
+    "exactTestsPassed": 60,
+    "componentErrors": 0,
+    "testErrors": 0,
+    "deploySha256": "0254b198c7c303f699ff009ba8dea0d4e9dbca726cbfcae60f06e2b78a34baa2",
+    "resourceSha256": "2ca5d8564f646d661763dfc924d49133ad66e43d195f990a690d47eb73ea758f",
+    "resourceByteLength": 309866,
+    "staticResourceCacheControl": "Private",
+    "abortedSessionBeforeEnqueueRetained": true
+  },
+  "protocolSanity": {
+    "completeMatrixCoverage": false,
+    "coveredCases": 10,
+    "allSelectedCasesPass": true,
+    "networkAttempts": 10,
+    "cases": [
+      {
+        "id": "chatgpt.metadata",
+        "status": "Pass",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.guest-mcp",
+        "status": "Pass",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.initialize-2025-06-18",
+        "status": "Pass",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.initialize-2025-11-25",
+        "status": "Pass",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.notification",
+        "status": "Pass",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.tools",
+        "status": "Pass",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.html",
+        "status": "Pass",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.open",
+        "status": "Pass",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.echo",
+        "status": "Pass",
+        "attempts": 1
+      },
+      {
+        "id": "chatgpt.empty-echo",
+        "status": "Pass",
+        "attempts": 1
+      }
+    ],
+    "priorStageAReceiptUnchanged": true
+  },
+  "freshClient": {
+    "name": "Cardstack Fresh Install QA",
+    "appApiName": "Cardstack_ChatGPT_Fresh_Install_QA",
+    "callbackDisplayedBeforeCreation": true,
+    "exactCurrentCallbackRegisteredAndReadBack": true,
+    "callbackStoredPrivately": true,
+    "localPublicClient": true,
+    "tokenEndpointAuthMethod": "none",
+    "clientSecretEntered": false,
+    "oidcEnabled": false,
+    "scopes": [
+      "api",
+      "refresh_token"
+    ],
+    "pkceRequired": true,
+    "refreshRotationRequired": true,
+    "jwtEnabled": false,
+    "humanMfaAndConsentCompleted": true,
+    "connectedEntryObserved": true,
+    "connectedUserIdentity": "Unknown-not-independently-queried"
+  },
+  "hostUi": {
+    "actualSalesforceIframe": "Pass",
+    "bridgeReady": "Pass",
+    "sevenExactKeysTypesValues": {
+      "status": "Pass",
+      "checkedAt": "2026-10-10T23:47:22.332Z",
+      "values": {
+        "text": "café ✓ \"quoted\"",
+        "amount": 0,
+        "accepted": false,
+        "choice": "beta",
+        "rating": "hot",
+        "notes": "first\nsecond",
+        "enabled": false
+      }
+    },
+    "emptyText": {
+      "status": "Pass",
+      "checkedAt": "2026-10-10T23:47:58.861Z"
+    },
+    "wholeChatReload": {
+      "status": "Pass",
+      "sameChat": true,
+      "bridgeReadyAfterReload": true
+    },
+    "repeatSevenExactKeysTypesValues": {
+      "status": "Pass",
+      "checkedAt": "2026-10-10T23:51:14.710Z"
+    },
+    "crmRecordsUsed": false
+  },
+  "cleanup": {
+    "completeOwnedRemoval": true,
+    "siteInactive": true,
+    "ownedPluginDeleted": true,
+    "ownedEcaAbsent": true,
+    "temporaryGuestGrantsRemaining": 0,
+    "temporaryAssignmentRemaining": 0,
+    "ownedDefinitionsRemaining": 0,
+    "ownedIdsAndGlobalReferencesAbsent": true,
+    "originalFourEcasPreserved": true,
+    "originalTwoClientEntriesVisible": true,
+    "originalConnectionRuntimeHealth": "Unknown-not-retested",
+    "fullBaselinePreserved": true,
+    "foundationPreserved": true,
+    "constantPagePreserved": true,
+    "originalGuestProfilePreserved": true,
+    "independentConsentRevocation": "Unknown",
+    "independentConsentRevocationReason": "Supported Salesforce OAuth usage route rendered blank after read-only reload; no revocation control or token extraction",
+    "revocationSubmitted": false,
+    "singleCleanupSubmission": true,
+    "cleanupSha256": "b256372aa78693ab396854bc21f4146aa506b09959ec905bf6374d36c7da3329",
+    "cleanupJob": {
+      "done": true,
+      "success": true,
+      "status": "Succeeded",
+      "numberComponentErrors": 0,
+      "numberTestErrors": 0
+    },
+    "cleanupEnqueuedAt": "2026-10-11T00:03:48.938Z",
+    "jwtOffSavedAt": "2026-10-11T00:03:10.888Z",
+    "freshOpaqueManagedLoginAt": "2026-10-11T00:03:30.432Z",
+    "jwtOnSavedAt": "2026-10-11T00:04:03.013Z",
+    "deploymentJwtOn": true,
+    "queueClear": true,
+    "finalCheckedAt": "2026-10-11T00:05:47.329Z"
+  },
+  "proofLimits": {
+    "exactResourceMapping": "Unknown",
+    "networkAbort": "Unknown-unverified",
+    "freshSecondOrgInstall": "Unknown",
+    "productionCrmWrites": "Unproved",
+    "stageAOriginalCounts": {
+      "Pass": 75,
+      "Fail": 2,
+      "Unknown": 7
+    },
+    "stageAEncodedNegativeFailuresRetained": true
+  },
+  "production": {
+    "task1Complete": false,
+    "task3Dispatched": false,
+    "released": false,
+    "pushed": false,
+    "merged": false
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "checkedAt": "2026-10-08T21:20:24.850Z",
+  "success": true,
+  "apiVersion": "67.0",
+  "checks": {
+    "anonymous": {
+      "status": 200,
+      "requestError": null,
+      "exactPublicKeys": true,
+      "baseMatches": true,
+      "prefixMatches": true,
+      "issuerMatches": true
+    },
+    "named": {
+      "status": 200,
+      "requestError": null,
+      "exactPublicKeys": true,
+      "baseMatches": true,
+      "prefixMatches": true,
+      "issuerMatches": true
+    },
+    "hostileReferer": {
+      "status": 200,
+      "requestError": null,
+      "exactPublicKeys": true,
+      "baseMatches": true,
+      "prefixMatches": true,
+      "issuerMatches": true
+    },
+    "hostileForwardedHost": {
+      "status": 200,
+      "requestError": null,
+      "exactPublicKeys": true,
+      "baseMatches": true,
+      "prefixMatches": true,
+      "issuerMatches": true
+    },
+    "hostileForwarded": {
+      "status": 200,
+      "requestError": null,
+      "exactPublicKeys": true,
+      "baseMatches": true,
+      "prefixMatches": true,
+      "issuerMatches": true
+    },
+    "hostileHeadersStable": true,
+    "nested": {
+      "status": 404,
+      "requestError": null,
+      "rejected": true
+    },
+    "nonSite": {
+      "status": 200,
+      "requestError": null,
+      "siteContextEmpty": true,
+      "issuerMatches": true
+    },
+    "computedCandidates": {
+      "claude": {
+        "resourceMatches": true,
+        "metadataMatches": true,
+        "actualProtocolEndpointTested": false
+      },
+      "chatgpt": {
+        "resourceMatches": true,
+        "metadataMatches": true,
+        "actualProtocolEndpointTested": false
+      }
+    },
+    "secureBaseObservation": {
+      "empty": false,
+      "matchesApprovedBase": true
+    }
+  },
+  "publicContextMeasured": true,
+  "resourceAudienceBinding": "Unknown",
+  "secondOrgPortability": "Unknown"
+}

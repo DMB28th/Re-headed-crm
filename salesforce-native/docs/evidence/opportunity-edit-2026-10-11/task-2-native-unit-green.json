@@ -1,0 +1,76 @@
+{
+  "sourceHead": "515d87555f6eae01cc749b0784320a598780f763",
+  "zipSha256": "9d8592e3fe9c87f85b365bfa40907b61276a145d4259c8c22caebb32167f63c5",
+  "apiVersion": "67.0",
+  "cliExit": 0,
+  "errorName": null,
+  "status": "Succeeded",
+  "done": true,
+  "checkOnly": true,
+  "compileErrorCount": 0,
+  "testsRun": 112,
+  "testFailures": 0,
+  "passed": 112,
+  "failures": [],
+  "coverage": [
+    {
+      "class": "CardstackOpportunityStageProvider",
+      "covered": 57,
+      "total": 61,
+      "percent": 93.443
+    },
+    {
+      "class": "CardstackOpportunityActionPolicy",
+      "covered": 20,
+      "total": 20,
+      "percent": 100.0
+    },
+    {
+      "class": "CardstackOpportunityEditDomain",
+      "covered": 128,
+      "total": 142,
+      "percent": 90.141
+    },
+    {
+      "class": "CardstackOpportunityEditRepository",
+      "covered": 185,
+      "total": 202,
+      "percent": 91.584
+    },
+    {
+      "class": "CardstackOpportunitySelector",
+      "covered": 45,
+      "total": 52,
+      "percent": 86.538
+    },
+    {
+      "class": "CardstackOpportunityEditService",
+      "covered": 195,
+      "total": 220,
+      "percent": 88.636
+    },
+    {
+      "class": "CardstackOpportunityEditTypes",
+      "covered": 53,
+      "total": 62,
+      "percent": 85.484
+    }
+  ],
+  "metadataPersisted": false,
+  "businessRecordsSaved": false,
+  "fixtureScope": "Rolled-back @IsTest fixtures only",
+  "jwt": "Deployment app restored and verified ON earlier in approved run; no subsequent setting changes.",
+  "reviews": [
+    "task-2-deadline-fix-spec-review.md: Approved",
+    "task-2-deadline-fix-quality-review.md: Approved"
+  ],
+  "proofScope": "API67 compilation, scoped unit assertions and coverage only; Confirm writes and MCP/UI delivery are not yet implemented.",
+  "remainingGates": [
+    "Task 3 confirmed save, mandatory audit, rollback and repeat-safe completion",
+    "Task 4 MCP ingress and Task 5 custom app/Studio UI",
+    "Actual supported ConnectApi.RecordUi runtime execution",
+    "Ordinary-user and two actual sales-process contexts",
+    "Currency, drift, automation and package/fresh-install proof",
+    "Static analyzer unavailable: Java missing; 0 source files scanned"
+  ]
+}

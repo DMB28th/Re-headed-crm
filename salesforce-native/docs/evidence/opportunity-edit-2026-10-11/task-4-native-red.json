@@ -1,0 +1,335 @@
+{
+  "sourceHead": "d0be0b4460f78cabd3d421aad9f55222d4e791f7",
+  "zipSha256": "0e756d4cbd0dce3e2d7dda31c48b88278d3c2967656f4caa838ce69734d863ad",
+  "apiVersion": "67.0",
+  "cliExit": 0,
+  "errorName": null,
+  "status": "Failed",
+  "done": true,
+  "checkOnly": true,
+  "compileErrorCount": 0,
+  "testsRun": 272,
+  "testFailures": 49,
+  "passed": 223,
+  "failures": [
+    {
+      "class": "CardstackMcpDispatcherTest",
+      "method": "productToolsRouteExactNamesOnly",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackMcpDispatcherTest",
+      "method": "toolsAndResourceContract",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "backRejectsGrant",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "cancelRejectsMissingRevision",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "cardDoesNotRequireStageChoiceProvider",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "clearRejectsExplicitNullValueKey",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "confirmRejectsActionRedirect",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "confirmRejectsBooleanConfirmation",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "confirmRejectsBooleanGrant",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "confirmRejectsExplicitNullChanges",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "confirmRejectsFractionalRevision",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "confirmRejectsMissingReviewRevision",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "confirmRejectsPatchOrRedirect",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "confirmRejectsRecordRedirect",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "confirmRejectsStringRevision",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "confirmSavesOnlyReviewedPatchAndReturnsReceipt",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "confirmationKeysOnlyInMeta",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "decodedUtf8ExactLimitReachesDomain",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "decodedUtf8OverLimitRejected",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "nestedChangeSchemaKeepsStringValuesAndExplicitClear",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "noneditableRequiredFieldRemovesEditAction",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "nullArgumentsRejected",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "openCompatibilityAliasesMatch",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "openIsOnlyModelVisible",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "openReadsFixedCardAndSafeActions",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "openRejectsUnknownKey",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "operationIsExactCaseSensitive",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "readOnlyPolicyStillAllowsCardWithoutEdit",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "recordToolSchemasAdvertiseExactInputs",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "refreshIsSeparateAuthoritativeRead",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "refreshRechecksPublishedFieldsAndActionPolicy",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "refreshRejectsInteractionHandle",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "repeatConfirmReturnsOriginalReceipt",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "resourceMimeAndCspMatch",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "resumeAfterSaveReturnsReceiptBeforeRefresh",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "resumeRejectsChanges",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "resumeRejectsExplicitNullRevision",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "reviewRejectsDuplicateFields",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "reviewRejectsNumericAmount",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "reviewRejectsUnknownFieldChangeKeys",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "reviewRejectsUnknownFields",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "setRequiresPresentStringValue",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "startNormalizesPlatform15Identity",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "startRejectsBooleanAction",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "suppliedBadChecksumRejected",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "transitionSchemaAdvertisesExactOperations",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "unknownToolRejected",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "unpublishedFieldsNeverEnterReadCard",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapterTest",
+      "method": "unpublishedRequiredFieldRemovesEditAction",
+      "type": "System.AssertException"
+    }
+  ],
+  "coverage": [
+    {
+      "class": "CardstackOpportunityEditTypes",
+      "covered": 56,
+      "total": 65,
+      "percent": 86.154
+    },
+    {
+      "class": "CardstackOpportunityEditService",
+      "covered": 204,
+      "total": 228,
+      "percent": 89.474
+    },
+    {
+      "class": "CardstackOpportunityWriteService",
+      "covered": 100,
+      "total": 107,
+      "percent": 93.458
+    },
+    {
+      "class": "CardstackOpportunityActionPolicy",
+      "covered": 20,
+      "total": 20,
+      "percent": 100.0
+    },
+    {
+      "class": "CardstackOpportunityEditDomain",
+      "covered": 128,
+      "total": 142,
+      "percent": 90.141
+    },
+    {
+      "class": "CardstackOpportunityEditRepository",
+      "covered": 235,
+      "total": 256,
+      "percent": 91.797
+    },
+    {
+      "class": "CardstackOpportunitySelector",
+      "covered": 45,
+      "total": 52,
+      "percent": 86.538
+    },
+    {
+      "class": "CardstackOpportunityMcpAdapter",
+      "covered": 13,
+      "total": 13,
+      "percent": 100.0
+    },
+    {
+      "class": "CardstackOpportunityWriteAudit",
+      "covered": 28,
+      "total": 28,
+      "percent": 100.0
+    },
+    {
+      "class": "CardstackOpportunityStageProvider",
+      "covered": 57,
+      "total": 61,
+      "percent": 93.443
+    }
+  ],
+  "metadataPersisted": false,
+  "businessRecordsSaved": false,
+  "behavioralRedEstablished": true,
+  "expectedFailureMethodSetsEqual": true,
+  "fixtureErrors": 0,
+  "fixtureScope": "Rolled-back @IsTest fixtures only; unchanged diagnostic schema supplied in checkOnly overlay",
+  "proofScope": "Native compilation and49 exact intended behavioral assertion failures; adapter implementation now permitted",
+  "reviews": [
+    "task-4-red-spec-review.md: Approved",
+    "task-4-red-quality-review.md: Approved"
+  ],
+  "jwt": "Previously restored verified ON; no subsequent setting changes"
+}

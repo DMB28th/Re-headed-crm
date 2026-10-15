@@ -1,0 +1,126 @@
+{
+  "sourceHead": "66a13e55e321b757253d5c62d95cb033ae442c2e",
+  "zipSha256": "9bd04e8640052814cef58b96d063f6ffe9e4617d44e0d1a69d5bcda3d785ecbe",
+  "apiVersion": "67.0",
+  "cliExit": 1,
+  "errorName": null,
+  "status": "Failed",
+  "done": true,
+  "checkOnly": true,
+  "compileErrorCount": 0,
+  "testsRun": 111,
+  "testFailures": 12,
+  "passed": 99,
+  "failures": [
+    {
+      "class": "CardstackOpportunityEditRepositoryTest",
+      "method": "ownedStateRoundTripsWithoutRawKey",
+      "type": "OtherTestFailure"
+    },
+    {
+      "class": "CardstackOpportunityEditRepositoryTest",
+      "method": "savedRevisionIsDurable",
+      "type": "OtherTestFailure"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "absoluteExpiryIsNotExtended",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "backAndCancelInvalidateGrant",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "changedReviewContextReturnsConflictWithoutGrant",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "completedNoOpResumeRetrievesReceiptAfterExpiry",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "expiredReviewReturnsExpiredWithoutGrant",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "invalidReviewHasNoGrant",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "noOpCompletesWithoutGrant",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "reviewDoesNoCrmDml",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "reviewResumeReissuesSamePatchWithoutExtendingExpiry",
+      "type": "System.AssertException"
+    },
+    {
+      "class": "CardstackOpportunityEditServiceTest",
+      "method": "rightsLossHidesReviewFields",
+      "type": "System.AssertException"
+    }
+  ],
+  "coverage": [
+    {
+      "class": "CardstackOpportunityActionPolicy",
+      "covered": 20,
+      "total": 20,
+      "percent": 100.0
+    },
+    {
+      "class": "CardstackOpportunityEditDomain",
+      "covered": 128,
+      "total": 142,
+      "percent": 90.141
+    },
+    {
+      "class": "CardstackOpportunityEditRepository",
+      "covered": 97,
+      "total": 197,
+      "percent": 49.239
+    },
+    {
+      "class": "CardstackOpportunitySelector",
+      "covered": 45,
+      "total": 52,
+      "percent": 86.538
+    },
+    {
+      "class": "CardstackOpportunityEditService",
+      "covered": 96,
+      "total": 220,
+      "percent": 43.636
+    },
+    {
+      "class": "CardstackOpportunityEditTypes",
+      "covered": 43,
+      "total": 62,
+      "percent": 69.355
+    },
+    {
+      "class": "CardstackOpportunityStageProvider",
+      "covered": 57,
+      "total": 61,
+      "percent": 93.443
+    }
+  ],
+  "proofScope": "First implemented review-flow checkOnly failed; not acceptance",
+  "metadataPersisted": false,
+  "businessRecordsSaved": false,
+  "privateCaptureSha256": {
+    "native-task2-green.private.json": "e8e1bafb480b9d8cb0957a9d3fa4dec0c16cefbe176d283eb948c5e40d428275"
+  }
+}

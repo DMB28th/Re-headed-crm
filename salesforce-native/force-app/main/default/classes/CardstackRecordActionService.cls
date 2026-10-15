@@ -9,6 +9,14 @@ public with sharing class CardstackRecordActionService {
   if(count!=1 || match.enabled!=true)throw new ActionException('Action is not published or enabled. Refresh the record card.');
   if(String.isBlank(match.label))match.label=match.name;
   if(match.type=='record-edit'){
+   if(objectName=='Opportunity' && CardstackRecordScreenCapability.hasStage(match)){
+    CardstackOpportunityActionPolicy.validate(objectName,match,CardstackPolicyService.resolve(objectName));
+    return match;
+   }
+   if(objectName!='Account' || CardstackRecordScreenCapability.currentOnly(match)){
+    CardstackRecordScreenCapability.validate(objectName,match,CardstackPolicyService.resolve(objectName));
+    return match;
+   }
    if(objectName!='Account')throw new ActionException('Guided record edits currently support Account.');
    CardstackPolicyService.Policy p=CardstackPolicyService.resolve(objectName);
    if(!p.editEnabled)throw new ActionException('Chat edits are disabled in the published layout.');
@@ -22,6 +30,11 @@ public with sharing class CardstackRecordActionService {
     if(m.source=='field' && !p.fields.containsKey(m.sourceField))throw new ActionException('Mapped source must be exposed and readable in the published layout.');
     if(m.source=='constant' && m.value==null)throw new ActionException('Enter a constant value; use empty text explicitly when intended.');
    }
+  }else if(match.type=='screen-flow'){
+   if(!'screen-flow'.equals(match.type))throw new ActionException('Noncanonical Screen Flow action type.');
+   CardstackFlowPublication.Published publication=CardstackFlowPublication.load(match.flowApiName);CardstackFlowPlan.Plan plan=CardstackFlowPlan.decode(publication.planJson);
+   if(publication.policyRevision!=CardstackPolicyService.resolve(objectName).revision)throw new ActionException('Published Flow policy changed.');
+   CardstackRecordScreenCapability.flowDefinition(objectName,match,CardstackPolicyService.resolve(objectName),plan);
   }else if(match.type=='flow'){
    if(String.isBlank(match.flowApiName)||!Pattern.matches('[a-zA-Z][a-zA-Z0-9_]{0,79}',match.flowApiName))throw new ActionException('Choose a published Salesforce launch card.');
    Boolean published=false;String raw=CardstackConfigService.getConfig('flows');
@@ -38,7 +51,7 @@ public with sharing class CardstackRecordActionService {
  public static List<Definition> available(String objectName){
   List<Definition> result=new List<Definition>();List<Definition> configured;
   try{configured=definitions(objectName);}catch(Exception e){return result;}
-  for(Integer i=0;i<Math.min(20,configured.size());i++){Definition d=configured[i];{try{if(d!=null)result.add(resolve(objectName,d.name));}catch(Exception e){/* Unavailable actions must not become executable buttons. */}}}
+  for(Integer i=0;i<Math.min(20,configured.size());i++){Definition d=configured[i];{try{if(d!=null)result.add(resolve(objectName,d.name));}catch(Exception e){continue; /* Unavailable actions never become executable buttons. */}}}
   return result;
  }
  private static List<Definition> definitions(String objectName){

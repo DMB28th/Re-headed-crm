@@ -1,0 +1,36 @@
+{
+  "checkedAt": "2026-10-10T09:13:34Z",
+  "apiVersion": "67.0",
+  "source": "controller read-only CLI metadata inventory",
+  "target": "cardstack-spike2",
+  "ownedNameCollisions": {
+    "classes": 0,
+    "resource": 0,
+    "permissionSet": 0,
+    "eca": 0
+  },
+  "siteCount": 1,
+  "siteInactive": true,
+  "prefixMatches": true,
+  "liveMutation": false,
+  "chatgpt": {
+    "authenticatedUiObserved": true,
+    "customMcpFormObserved": true,
+    "formUnsaved": true,
+    "urlEntered": false,
+    "callbackShown": false,
+    "advancedOAuthInitiallyDisabled": true,
+    "riskAcknowledged": false,
+    "createClicked": false,
+    "formCanceled": true,
+    "freshInstallSequence": "Unknown"
+  },
+  "minimumAdminRights": "Unknown",
+  "fullAccessBaseline": "Required before mutation",
+  "jwtOn": "Historical cleanup receipt only; fresh action-time verification required",
+  "secondOrg": {
+    "cachedConnectedCandidates": 1,
+    "freshLiveSuitability": "Unknown",
+    "installAuthorized": false
+  }
+}

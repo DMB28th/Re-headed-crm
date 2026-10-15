@@ -1,0 +1,35 @@
+{
+  "sourceCommit": "710fa97",
+  "zipSha256": "af03705015144a58b2136a916a07a162248d9df0c4c4dabae27af307f7cbdb54",
+  "apiVersion": "67.0",
+  "checkOnly": true,
+  "status": "Failed",
+  "persisted": false,
+  "componentErrors": 0,
+  "expectedTestCount": 66,
+  "exactMethodSet": true,
+  "passing": 65,
+  "failing": 1,
+  "failures": [
+    {
+      "className": "CardstackMcpIngressTest",
+      "methodName": "revokedPermissionDeniedOnNextCall",
+      "errorCode": "PROFILE_ASSOCIATED_PERMISSION_ASSIGNMENT_DELETE",
+      "stage": "TEST_SETUP"
+    }
+  ],
+  "coverage": [
+    {
+      "className": "CardstackMcpDispatcher",
+      "totalLocations": 85,
+      "uncoveredLocations": 5
+    },
+    {
+      "className": "CardstackMcpIngress",
+      "totalLocations": 89,
+      "uncoveredLocations": 5
+    }
+  ],
+  "liveAccessChanges": false,
+  "jwtSettingsChanged": false
+}

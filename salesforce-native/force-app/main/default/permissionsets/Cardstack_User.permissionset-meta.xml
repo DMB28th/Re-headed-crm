@@ -9,6 +9,19 @@
         <enabled>true</enabled>
     </classAccesses>
     <classAccesses><apexClass>CardstackRecordEditAction</apexClass><enabled>true</enabled></classAccesses>
+    <classAccesses>
+        <apexClass>CardstackConnectionSetup</apexClass>
+        <enabled>true</enabled>
+    </classAccesses>
+    <classAccesses>
+        <apexClass>CardstackMcpIngress</apexClass>
+        <enabled>true</enabled>
+    </classAccesses>
+    <classAccesses><apexClass>CardstackMcpTransportProbe</apexClass><enabled>true</enabled></classAccesses>
+    <customPermissions>
+        <enabled>true</enabled>
+        <name>Cardstack_Use_Connections</name>
+    </customPermissions>
     <description>End-user access to the Cardstack package: execute MCP Apex tools and read published configuration. No admin (no draft/publish, no config edits).</description>
     <fieldPermissions>
         <editable>false</editable>

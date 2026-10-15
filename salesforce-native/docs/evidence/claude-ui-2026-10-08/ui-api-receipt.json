@@ -1,0 +1,43 @@
+{
+  "startedAt": "2026-10-08T20:34:16.090Z",
+  "checks": {
+    "metadata": {
+      "status": 200,
+      "resourceMatches": true,
+      "issuerMatches": true
+    },
+    "challenge": {
+      "status": 401,
+      "pointerMatches": true
+    },
+    "missingBearer": {
+      "status": 401,
+      "resourceDenied": true
+    },
+    "invalidBearer": {
+      "status": 401,
+      "resourceDenied": true
+    },
+    "actor": {
+      "status": 200,
+      "matchesConnectedUser": true
+    },
+    "tools": {
+      "status": 200,
+      "twoTools": true,
+      "resourceLinkMatches": true
+    },
+    "resource": {
+      "status": 200,
+      "mimeMatches": true,
+      "uriMatches": true,
+      "htmlMatches": true
+    },
+    "echo": {
+      "status": 200,
+      "exactTypesAndValues": true
+    }
+  },
+  "identityGatePassed": true,
+  "finishedAt": "2026-10-08T20:34:18.285Z"
+}
